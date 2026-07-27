@@ -1,55 +1,48 @@
 # project-conventions
 
-一套**项目工作区布局 + 文件命名 + 多 agent 协作**规范，作为 agent skill 分发。
+项目工作区布局 / 文件命名 / 多 agent 协作规范。
 
-> 本仓库根目录**就是 skill 包**（`SKILL.md` + `references/`）。克隆到 skills 目录即可直接被 agent 加载，无需任何额外步骤。
+> 本 skill 是 **`obisoldbee/skills` monorepo** 的一部分（子目录 `project-conventions/`）。
+> 单独维护、单独加载，但和其他 skill 共享同一个 git 仓库同步。
 
-## 安装（某设备 / 某 agent）
+## 这是什么
 
-```bash
-# 克隆到对应 agent 工具的 skills 目录——SKILL.md 在仓库根，立即可用
-git clone https://github.com/obisoldbee/project-conventions.git <skills-dir>/project-conventions
-```
+一套规范，用来标准化一个项目工作区的目录结构（`AGENTS.md` / `docs/` / `memory/` / `conversation/`）和文件命名，以及 fork 工作流（clone 上游到 `src/<repo-name>/`，配置 origin/upstream，提 PR）。适用于启动新项目、写文档（spec/plan/review/research/report）、记录决策、管理版本化提交、fork 别人仓库。
 
-常见 skills 目录：
+## 作为 monorepo 子目录的安装
 
-| Agent 工具 | Skills 路径 |
-|---|---|
-| WorkBuddy | `~/.workbuddy/skills/` |
-| QoderWork | `~/.qoderworkcn/skills/` |
-| Claude Code | `~/.claude/skills/` |
-| CodeBuddy | `~/.codebuddy/skills/` |
-
-> 因为 SKILL.md 在仓库根，克隆完文件夹名就是 skill 名，直接生效。
-
-## 更新
+**不要用 `git clone` 单独拉这个目录**——它属于上面的 monorepo。正确做法：
 
 ```bash
-git -C <skills-dir>/project-conventions pull --rebase
+# 在任意设备 clone 整个 monorepo（一次拿全部 skill）
+git clone https://github.com/obisoldbee/skills.git ~/proj/skills
+
+# 跑软链脚本，自动把 project-conventions 等所有 skill 链到 agent skills 目录
+# Windows:
+pwsh ~/proj/skills/scripts/link-windows.ps1
+# macOS / Linux:
+bash ~/proj/skills/scripts/link-macos.sh
 ```
 
-## 语言约定
+脚本会在 `~/.workbuddy/skills/project-conventions` 建一个**目录联接/符号链接**，直接指向
+`~/proj/skills/project-conventions/`。之后你改真源、保存，重启 WorkBuddy 即加载最新版。
 
-SKILL.md 和 references/ 使用英文编写（供 agent 消费，减少 token 开销）；用户可见的模板内容（如 `提交记录/` 相关模板）可能使用中文。这是有意为之，非不一致。
+## 仓库结构（本 skill 包）
 
-## 作为开发者：迭代规范
+```
+project-conventions/
+├── SKILL.md            # 规范定义，agent 加载入口
+├── references/         # 7 个参考文件（目录布局 / fork 流程 / 命名等）
+└── README.md           # 本文件
+```
 
-本 GitHub 仓库的**开发真源**在开发机的工作区里，路径为 `src/project-conventions/`（遵循 project-conventions 自身的 SOP wrapper 约定：`src/<repo-name>/` 独立 git 仓库）。开发者在真源改 `SKILL.md` / `references/`，提交并推送到本 GitHub 仓库；各设备再 `pull` 同步。
+## 同步
 
-多设备协作：先 `git pull --rebase origin main` 接他人改动，再 `git push origin main`。
+- 改完内容 → 在 monorepo 根 `git commit && git push`
+- 其他设备 `git pull` → 软链指向同一 checkout，自动最新
+- 详见 monorepo 根 `README.md`
 
-## 内容
+## 消费者向笔记
 
-- `SKILL.md` — skill 定义（agent 加载入口，frontmatter + 规范概览）
-- `references/` — 规范参考文档：
-  - `directory-layout.md` — 完整目录布局规范
-  - `fork-workflow.md` — fork 仓库工作流（gh CLI、PR、upstream 同步）
-  - `agents-md-template.md` — AGENTS.md 模板
-  - `conversation-format.md` — 对话记录格式
-  - `review-naming.md` — 评审文件命名
-  - `migration-guide.md` — 目录迁移指南
-  - `versioned-records.md` — 版本化提交记录（文档类项目）
-
-## License
-
-个人规范库，按需自取自用。
+- 仓库根 = skill 包，clone 即用（符合 Agent Skills 开放标准）。
+- `.git` / `README.md` / `.gitignore` 在 skill 目录里无害，agent 只读 `SKILL.md` + `references/`。
