@@ -56,15 +56,15 @@ project-root/
 ├── memory/                  # Agent-maintained project memory
 │   ├── YYYY-MM-DD.md        # Daily work log (append-only)
 │   └── MEMORY.md            # Curated long-term project notes
-└── .workbuddy/              # WorkBuddy system directory (NOT managed by this skill)
-    └── memory/              # WorkBuddy auto-maintained memory
+└── <agent-system-dir>/      # Agent platform's system directory (e.g. .workbuddy/, .qoderworkcn/) — NOT managed by this skill
+    └── memory/              # Platform auto-maintained memory
 ```
 
 ## Per-Directory Specification
 
 ### `AGENTS.md` (Required)
 
-**Purpose**: Agent entry point — the first file an agent reads when entering a workspace. WorkBuddy auto-detects and loads it into the system prompt. It is an **index**, not a reference manual.
+**Purpose**: Agent entry point — the first file an agent reads when entering a workspace. Most agent tools auto-detect and load it into the system prompt. It is an **index**, not a reference manual.
 
 **Content** (keep under ~60 lines):
 - **Project**: one-line description
@@ -72,7 +72,7 @@ project-root/
 - **Directory Index**: table of path → one-line description → link to details
 - **Quick Reminders**: 5-7 critical naming patterns and do/don't bullets
 
-**Naming**: Fixed as `AGENTS.md`. WorkBuddy also supports `CODEBUDDY.md` (takes priority if both exist — do NOT create both). Use `AGENTS.md` for cross-tool portability.
+**Naming**: Fixed as `AGENTS.md`. Some agent tools also support `CODEBUDDY.md` (takes priority if both exist — do NOT create both). Use `AGENTS.md` for cross-tool portability.
 
 **Maintained by**: Any agent initializing or restructuring the project. Update when directory structure changes or key conventions change. Do NOT update for daily work logs or individual file content changes.
 
@@ -241,7 +241,7 @@ project-root/
 
 ### `memory/` (Required)
 
-**Purpose**: Agent-maintained project memory, visible to any agent that reads the project. Distinct from `.workbuddy/memory/`.
+**Purpose**: Agent-maintained project memory, visible to any agent that reads the project. Distinct from the agent platform's system memory directory.
 
 **Files**:
 - `memory/YYYY-MM-DD.md` — Daily work log. Append-only. One file per calendar day.
@@ -272,43 +272,19 @@ project-root/
 
 ---
 
-### `.workbuddy/` (System — NOT managed by this skill)
+### `<agent-system-dir>/` (System — NOT managed by this skill)
 
-**Purpose**: WorkBuddy system directory. Contains system-managed memory that gets auto-injected into the system prompt.
+**Purpose**: The agent platform's own system directory (e.g. `.workbuddy/`, `.qoderworkcn/`, `.claude/`). Contains platform-managed memory that gets auto-injected into the system prompt.
 
-**Important**: This skill's workflows NEVER write to `.workbuddy/memory/`. That location is reserved for WorkBuddy's own system-managed memory. Use `memory/` at project root instead.
+**Important**: This skill's workflows NEVER write to the agent platform's system memory directory. That location is reserved for the platform itself. Use `memory/` at project root instead.
 
-If you need to record something for other agents to discover, write to `memory/` — not `.workbuddy/memory/`.
+If you need to record something for other agents to discover, write to `memory/` — not the platform's system directory.
 
 ## Migration Guidance
 
-For the full step-by-step migration procedure, see **`migration-guide.md`** — it covers pre-flight safety checks, atomic Git repo moves, reference sync across all file types, archive strategy, and verification.
+For the full step-by-step migration procedure (pre-flight checks, atomic moves, reference sync, archive strategy, verification, and common migration patterns), see **`migration-guide.md`**.
 
-Key principles (summarized):
-
-1. **Snapshot before moving** — check for active processes (IDE, builds, Git) and record the Git status (uncommitted change count) before touching anything.
-2. **Move code atomically** — `src/` with its `.git/` moves as one unit via `mv`. No re-init, no commit, no reset. Uncommitted changes travel with the move.
-3. **Get user confirmation** before moving any files.
-4. **Sync ALL reference types** — grep across `.md`, `.json`, `.sh`, `.py`, `.swift`, and `file://` links. Not just Markdown. Historical files (`conversation/`, `memory/`) must have path references updated too — but never alter the narrative around them.
-5. **Archive, don't delete** — superseded docs go to `docs/archive/YYYY-MM-DD-<topic>/`. Files inside keep original names.
-6. **Record the migration** in `docs/migrations/YYYY-MM-DD-directory-migration.md`.
-7. **Verify** — run build/test from new paths; confirm Git state (uncommitted change count) unchanged; grep for old paths one final time.
-
-### Common Migration Patterns
-
-| Current location | Target location | Notes |
-|---|---|---|
-| `docs/code-review-YYYY-MM-DD.md` | `docs/reviews/YYYY-MM-DD-engineer-code-HHMMSS.md` | Rename per review naming rule |
-| `docs/review/YYYY-MM-DD-takeover-review.md` | `docs/reviews/YYYY-MM-DD-takeover-full-HHMMSS.md` | Singular `review/` → plural `reviews/` |
-| `docs/superpowers/specs/*.md` | `docs/specs/*.md` | Remove `superpowers/` layer |
-| `docs/superpowers/plans/*.md` | `docs/plans/*.md` | Remove `superpowers/` layer |
-| Spec file at project root | `docs/specs/` | Centralize |
-| `<old-code-dir>/` (with `.git/`) | `src/` | Move atomically; preserve `.git/`, uncommitted changes, build intermediates |
-| `<old-design-dir>/` | `design/<package-name>/` | Preserve internal structure; update JSON metadata paths |
-| Superseded draft plans | `docs/archive/YYYY-MM-DD-<topic>/` | Never delete; archive with original names |
-| Implementation reports in `docs/` root | `docs/reports/implementation/` | Centralize |
-| Migration record in `docs/` root | `docs/migrations/` | Use dedicated subdirectory |
-| Duplicate `memory/` and `.workbuddy/memory/` | Keep both; clarify roles per the Memory Rule | Do not merge |
+Key rule: never restructure without reading that guide first. Move code atomically (`mv`, not `cp`+`rm`), sync ALL reference types (not just Markdown), and archive superseded docs instead of deleting.
 
 ## Edge Cases
 

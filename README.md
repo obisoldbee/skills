@@ -1,23 +1,36 @@
 # project-conventions
 
-一套**项目工作区布局 + 文件命名 + 多 agent 协作**规范，作为 WorkBuddy skill 分发。
+一套**项目工作区布局 + 文件命名 + 多 agent 协作**规范，作为 agent skill 分发。
 
 > 本仓库根目录**就是 skill 包**（`SKILL.md` + `references/`）。克隆到 skills 目录即可直接被 agent 加载，无需任何额外步骤。
 
 ## 安装（某设备 / 某 agent）
 
 ```bash
-# 直接克隆到 skills 目录——SKILL.md 在仓库根，立即可用
-git clone https://github.com/obisoldbee/project-conventions.git ~/.workbuddy/skills/project-conventions
+# 克隆到对应 agent 工具的 skills 目录——SKILL.md 在仓库根，立即可用
+git clone https://github.com/obisoldbee/project-conventions.git <skills-dir>/project-conventions
 ```
 
-> 不同 agent 工具的 skills 目录可能不同（`~/.workbuddy/skills/`、`~/.claude/skills/`、`~/.codebuddy/skills/` 等），克隆到对应目录即可。因为 SKILL.md 在仓库根，克隆完文件夹名就是 skill 名，直接生效。
+常见 skills 目录：
+
+| Agent 工具 | Skills 路径 |
+|---|---|
+| WorkBuddy | `~/.workbuddy/skills/` |
+| QoderWork | `~/.qoderworkcn/skills/` |
+| Claude Code | `~/.claude/skills/` |
+| CodeBuddy | `~/.codebuddy/skills/` |
+
+> 因为 SKILL.md 在仓库根，克隆完文件夹名就是 skill 名，直接生效。
 
 ## 更新
 
 ```bash
-git -C ~/.workbuddy/skills/project-conventions pull --rebase
+git -C <skills-dir>/project-conventions pull --rebase
 ```
+
+## 语言约定
+
+SKILL.md 和 references/ 使用英文编写（供 agent 消费，减少 token 开销）；用户可见的模板内容（如 `提交记录/` 相关模板）可能使用中文。这是有意为之，非不一致。
 
 ## 作为开发者：迭代规范
 

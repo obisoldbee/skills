@@ -24,7 +24,7 @@ AGENTS.md is an **index**, not a reference manual. It follows three principles:
 ## Mandatory Rules
 
 When working in this workspace, follow the `project-conventions` skill:
-- Skill location: `~/.workbuddy/skills/project-conventions/SKILL.md`
+- Skill location: `<skills-dir>/project-conventions/SKILL.md` (path varies by agent tool)
 - [3-5 key rules, one line each]
 
 ## Directory Index
@@ -46,7 +46,7 @@ When working in this workspace, follow the `project-conventions` skill:
 - Significant decision or direction change? Create a `conversation/NN-topic.md` file (scan for next number)
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
 - Done working? Append a note to `memory/YYYY-MM-DD.md`
-- Never write to `.workbuddy/memory/` — use `memory/` instead
+- Never write to the agent platform's system memory directory — use `memory/` instead
 - Source files (certificates, reports) are read-only — copy before modifying
 - Code in `src/`, artifacts in `release/`, documents in `docs/` — never mix
 ```
@@ -65,11 +65,11 @@ OB Dim — Windows 系统托盘小程序，在 Work/Away 模式间一键切换�
 ## Mandatory Rules
 
 When working in this workspace, follow the `project-conventions` skill:
-- Skill location: `~/.workbuddy/skills/project-conventions/SKILL.md`
+- Skill location: `<skills-dir>/project-conventions/SKILL.md`
 - Centralize all documents under `docs/` (specs/plans/reviews/research)
 - Review files: `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md` under `docs/reviews/`
 - Conversation files: `NN-kebab-topic.md` under `conversation/` (next available number)
-- After substantive work, append to `memory/YYYY-MM-DD.md` (NOT `.workbuddy/memory/`)
+- After substantive work, append to `memory/YYYY-MM-DD.md` (NOT the agent platform's system memory)
 
 ## Directory Index
 
@@ -91,7 +91,7 @@ When working in this workspace, follow the `project-conventions` skill:
 - Significant decision or direction change? Create a `conversation/NN-topic.md` (currently max is `05-`)
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
 - Done working? Append a note to `memory/YYYY-MM-DD.md`
-- Never write to `.workbuddy/memory/` — that's WorkBuddy system memory, use `memory/` instead
+- Never write to the agent platform's system memory — that's reserved for the tool itself, use `memory/` instead
 - Code goes in `src/`, artifacts in `release/`, never in `docs/`
 - Source namespace is `ScreenTimeoutToggle` (legacy, not renamed to `OBDim` — intentional)
 ```

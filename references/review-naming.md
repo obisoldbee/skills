@@ -58,6 +58,8 @@ If the scope doesn't fit any of the above, propose a new value and document it h
 
 The second-precision timestamp is the primary uniqueness guarantee. Combined with reviewer and scope, collisions become extremely unlikely.
 
+**Relaxation for single-agent projects**: When only one agent (or human) creates reviews, date-precision is acceptable — omit `HHMMSS` and use `YYYY-MM-DD-<reviewer>-<scope>.md`. HHMMSS is mandatory only when multiple agents may create reviews concurrently. If a project transitions from single-agent to multi-agent, existing date-precision files remain valid; new files adopt HHMMSS from that point.
+
 ## Examples
 
 ```
@@ -173,4 +175,4 @@ When migrating a file with a non-standard name, determine the reviewer and scope
 | Security-focused audit | `security` | `code` or `full` |
 | User's own review | `user` | varies |
 
-When ambiguous, default to the agent role that authored the review. If the review was done by WorkBuddy directly (not a specific team role), use the most fitting role from the content (e.g., `takeover` for a comprehensive project review).
+When ambiguous, default to the agent role that authored the review. If the review was done by the agent tool directly (not a specific team role), use the most fitting role from the content (e.g., `takeover` for a comprehensive project review).

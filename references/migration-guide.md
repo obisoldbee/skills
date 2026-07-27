@@ -39,7 +39,7 @@ Record the count of uncommitted changes. This count must be **identical** after 
 
 ### 1.3 File Inventory Snapshot
 
-List all visible files (excluding hidden directories like `.git`, `.workbuddy`, `.superpowers`):
+List all visible files (excluding hidden directories like `.git`, agent system directories, etc.):
 
 ```bash
 find . -not -path '*/.*' -type f | sort > /tmp/pre-migration-files.txt
@@ -169,7 +169,7 @@ grep -rn "trae/k3" . --include="*.md" --include="*.json" --include="*.sh"
 
 ### 4.4 Exceptions (Do NOT Update)
 
-- **Hidden directories** (`.workbuddy/`, `.superpowers/`, `.uploads/`) — these are system-managed; do not update their internal references unless explicitly asked.
+- **Hidden directories** (agent system directories like `.workbuddy/` or `.qoderworkcn/`, `.superpowers/`, `.uploads/`) — these are system-managed; do not update their internal references unless explicitly asked.
 - **Git history** inside `src/.git/` — never modify Git internals.
 - **Build intermediates** (`DerivedData/`, `bin/`, `obj/`) — these will be regenerated on next build.
 - **Migration records** — the `docs/migrations/` document intentionally contains old paths for before/after comparison.
@@ -216,7 +216,7 @@ If the project has an `AGENTS.md`, update its Directory Index table to reflect t
 After all moves and reference updates:
 1. Delete now-empty old directories (e.g., `trae/` if all contents moved).
 2. Verify no files were left behind: `find <old-parent-dir> -type f` should return nothing.
-3. Do NOT delete hidden directories (`.workbuddy/`, etc.).
+3. Do NOT delete hidden directories (agent system directories, etc.).
 
 ## Phase 6: Verification
 
@@ -269,6 +269,6 @@ Any match in active code, configs, or active documents indicates a missed refere
 | Committing during migration | Pollutes Git history with path-only changes | Never commit during migration; let user commit after verification |
 | Only updating Markdown references | Broken JSON configs, script paths | Grep ALL file types (Phase 4.2) |
 | Deleting superseded docs instead of archiving | Lost history, can't recover drafts | Always archive to `docs/archive/` |
-| Updating `.workbuddy/memory/` references | Breaks system-managed memory | Leave hidden directories alone |
+| Updating agent platform's system memory references | Breaks platform-managed memory | Leave hidden/system directories alone |
 | Forgetting to verify build after migration | Silent breakage discovered later | Always run Phase 6 verification |
 | Moving build intermediates (`DerivedData/`) | Unnecessary rebuild time | Leave build intermediates in `src/`; only `release/` has final artifacts |
