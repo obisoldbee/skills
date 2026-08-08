@@ -9,14 +9,15 @@ Three project types, each with different required directories:
 | Type | Primary deliverable | Required dirs | Typical examples |
 |---|---|---|---|
 | **Code** | Source code / software | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` | Web app, CLI tool, mobile app, library |
-| **Document** | Documents, forms, submissions, certifications | `AGENTS.md`, `INDEX.md`, `docs/`, versioned records (e.g. `提交记录/`) | 申报材料, 合同管理, 报表, 认证材料 |
+| **Document** | Documents, forms, submissions, certifications | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, versioned records (e.g. `提交记录/`) | 申报材料, 合同管理, 报表, 认证材料 |
 | **Hybrid** | Both code and significant document/submission components | Code dirs + document dirs | SaaS with compliance docs, open-source with certifications |
 
 ### What changes by project type
 
 | Element | Code | Document | Hybrid |
 |---|---|---|---|
-| `src/`, `release/` | Required | Not needed | Required |
+| `src/` | Required | Not needed | Required |
+| `release/` | On demand | Not needed | On demand |
 | `conversation/` | Required | Optional | Required |
 | `memory/` daily logs | Required | Optional (use versioned records instead) | Required |
 | `docs/specs/`, `docs/plans/` | Required | Optional | Required |
@@ -32,13 +33,15 @@ Three project types, each with different required directories:
 
 When unsure, start minimal and add directories as needed. It's easier to add a directory later than to remove an unused one.
 
+For a Document Project Root, the root `INDEX.md` is the human navigation page. The version-record directory has its own `INDEX.md` as the version ledger and may contain `MATERIALS.md` as the shared source-material checklist. See `versioned-records.md` for the exact boundary.
+
 ## Complete Tree
 
 ```
 project-root/
 ├── AGENTS.md                # Required. Agent entry point — directory index + rule reference (auto-loaded)
 ├── README.md                # Required. Project overview & directory navigation
-├── conversation/            # Required. Communication & decision records
+├── conversation/            # Required for Code/Hybrid; optional for Document
 ├── docs/                    # Required. All formal documents, centralized
 │   ├── specs/               # Spec / design documents
 │   ├── plans/               # Implementation plans, task breakdowns
@@ -50,10 +53,10 @@ project-root/
 │   ├── archive/             # On demand. Historical variants, superseded docs (never delete)
 │   └── migrations/          # On demand. Directory restructuring records
 ├── design/                  # On demand. Design assets (prototypes, SVGs, HTML mockups, design system)
-├── src/                     # Required for code projects. Source code (may have its own .git/)
+├── src/                     # Required for code projects. Source and normal Repository Root
 │   └── ...                  # Follow language ecosystem conventions; internal docs (e.g. src/docs/qa/) OK
 ├── release/                 # On demand. Final distributable artifacts only (no build intermediates)
-├── memory/                  # Agent-maintained project memory
+├── memory/                  # Required for Code/Hybrid; optional for Document
 │   ├── YYYY-MM-DD.md        # Daily work log (append-only)
 │   └── MEMORY.md            # Curated long-term project notes
 └── <agent-system-dir>/      # Agent platform's system directory (e.g. .workbuddy/, .qoderworkcn/) — NOT managed by this skill
@@ -101,7 +104,7 @@ project-root/
 
 ---
 
-### `conversation/` (Required)
+### `conversation/` (Required for Code/Hybrid; optional for Document)
 
 **Purpose**: Capture the collaboration process — agent proposals, user modifications, rationale, and final decisions. This is the "how we got here" record, distinct from formal specs.
 
@@ -208,19 +211,37 @@ project-root/
 
 ### `src/` (Required for code projects)
 
-**Purpose**: All source code, tests, and project/build files.
+**Purpose**: All source code, tests, and project/build files. For a Git-backed Project Root, `src/` normally contains the one mapped Repository Root.
 
 **Naming**: Follow the conventions of the language ecosystem (e.g., `.sln`/`.csproj` for .NET, `package.json` for Node, `Cargo.toml` for Rust, `Package.swift` for Swift).
 
 **Maintained by**: Engineer agent.
 
 **Notes**:
-- May contain its own `.git/` directory if the source is tracked separately from the handover directory. When migrating, move `src/` as one atomic unit — do not re-init, commit, or reset. See `migration-guide.md`.
+- **One Project Root, one source-repository mapping by default.** Record it in `AGENTS.md`. If unrelated repositories are needed, create sibling Project Roots instead of hiding them in one wrapper.
+- The Repository Root may be `src/` itself or one named child such as `src/<repo-name>/`. Verify it with `git rev-parse --show-toplevel`.
+- Keep the Project Root wrapper outside the source repository unless the user explicitly chooses a repository that includes the wrapper.
+- When migrating an existing Git worktree into `src/`, preserve its `.git` data atomically; do not re-init, commit, reset, or rewrite history. See `migration-guide.md`.
 - Tests typically live under `src/tests/` or alongside source per ecosystem convention.
 - **Internal docs are OK**: code repositories may have their own documentation that is version-tracked with the code (e.g., `src/docs/qa/`, `src/script/qa/`). These stay in `src/` — they are part of the codebase, not project-level docs.
 - **Build intermediates** (`DerivedData/`, `bin/`, `obj/`) stay under `src/`. Only final distributable artifacts go to `release/`. Never move build intermediates to `release/`.
 - **Uncommitted changes** travel with the directory during migration. Do not stash or commit during a migration.
-- **Fork workflow**: when `src/` holds a fork of an upstream repo, use `src/<repo-name>/` as a named subdirectory (not `src/` itself). `src/` becomes a container that may hold multiple forks. Each fork has its own `.git/`, `origin` (your fork), and `upstream` (original repo) remotes. AGENTS.md must include a "Fork Workflow" section. See `fork-workflow.md` for full setup.
+- **Monorepo member**: clone or check out the actual repository under `src/` and record the managed subpath. A provider `/tree/<ref>/<subpath>` URL is not a clone URL. Sparse checkout is optional and must preserve the verified Repository Root.
+- **Fork workflow**: one contribution fork is still the Project Root's one repository mapping. Use `origin` for the personal fork and `upstream` for the original. See `fork-workflow.md`.
+
+### Repository mapping contract
+
+Every Git-backed Project Root's `AGENTS.md` must identify:
+
+| Field | Required value |
+|---|---|
+| Project Root | The wrapper path governed by this convention |
+| Repository Root | Relative path under the wrapper, normally `src` or `src/<repo-name>` |
+| Clone URL / remote | Credential-free URL or repository identity; write `local only` when no remote exists |
+| Default ref | Observed default branch/ref, or `unknown` |
+| Managed scope | `whole repository` or an explicit monorepo subpath |
+
+This mapping prevents future agents from confusing wrapper files with repository contents or trying to push the Project Root to a repository that only owns `src/`.
 
 ---
 
@@ -239,7 +260,7 @@ project-root/
 
 ---
 
-### `memory/` (Required)
+### `memory/` (Required for Code/Hybrid; optional for Document)
 
 **Purpose**: Agent-maintained project memory, visible to any agent that reads the project. Distinct from the agent platform's system memory directory.
 
@@ -267,7 +288,7 @@ project-root/
 - Cross-session context that future agents should know
 
 **Maintenance**:
-- Distill daily logs older than 30 days into `MEMORY.md` by topic, then delete the old daily files.
+- Distill daily logs older than 30 days into `MEMORY.md` by topic. If retention is unnecessary, archive those logs under `memory/archive/`; never delete undistilled project history.
 - Never store secrets unless the user explicitly asks.
 
 ---
@@ -294,7 +315,7 @@ If a document genuinely doesn't fit `specs/`, `plans/`, `reviews/`, or `research
 
 ### What if the project has no code (docs-only project)?
 
-`src/` and `release/` are optional. A docs-only project still needs `README.md`, `conversation/`, `docs/`, and `memory/`.
+Follow the Document row in **Project Types**: require `AGENTS.md`, `README.md`, root `INDEX.md`, `docs/`, and versioned records. Add `conversation/` or `memory/` only when the project needs those patterns.
 
 ### What if multiple agents are working concurrently?
 
