@@ -1,171 +1,173 @@
 ---
 name: project-conventions
-version: 1.0.0
-description: 'Standardize project workspace layout and file naming for code, document, hybrid, and fork-workflow projects. Use when starting a project, creating documents, recording decisions, forking a repo, or unsure where a file goes. Triggers: "create project structure", "where should I put this file", "fork a repo", "项目结构", "文件放哪", "提PR". Does not cover code logic, tech stack selection, or agent system memory.'
+description: "Initialize, organize, migrate, or explain one of three filesystem governance layers: a Projects Workspace that indexes all local projects on the current computer, a Project Collection that groups related independent projects, or one Project Root with its own documents and source repository. Use for “项目目录初始化”, “项目总入口”, “项目合集”, “项目组”, “单项目根目录”, “仓库放到 src”, “项目结构”, “文件放哪”, workspace roots, collections, project roots, repository mappings, or existing-project migrations."
 ---
 
 # Project Conventions
 
-## Overview
+## Name the layer before acting
 
-Standard project workspace layout: which directory holds which content, how files are named, how multi-agent artifacts are coordinated. Keeps projects navigable, artifacts discoverable, and prevents file-name collisions.
+Use these terms consistently:
 
-## Scope
-
-**Governs**: directory structure decisions, file naming patterns, AGENTS.md content rules, project memory workflow, multi-agent write safety, fork workspace setup, versioned submission records, directory migration procedures.
-
-**Does NOT govern**: code architecture, language/framework choices, build tooling, CI/CD, the agent platform's own system directory (`<agent-system-dir>/`), or content quality of documents (only their location and naming).
-
-## Project Types
-
-Three project types, each with different required directories:
-
-| Type | Primary deliverable | Required dirs |
+| Layer | Chinese | Owns |
 |---|---|---|
-| **Code** | Source code / software | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |
-| **Document** | Documents, forms, submissions, certifications | `AGENTS.md`, `INDEX.md`, `docs/`, `提交记录/` |
-| **Hybrid** | Both code and document components | Code dirs + document dirs |
+| **Projects Workspace** | 项目工作区 / 项目总入口 | The current computer's project paths and lightweight catalog |
+| **Project Collection** | 项目合集 | Membership and routing for related independent Project Roots |
+| **Project Root** | 单项目根目录 | One project's documents, decisions, memory, source, and repository mapping |
+| **Repository Root** | Git 仓库根目录 | The directory Git identifies as the worktree root; for a Git-backed Project Root, normally under `src/` |
 
-Determine type by primary deliverable: source code → Code; documents/forms → Document; both → Hybrid. When unsure, start minimal and add directories as needed. See `references/directory-layout.md` for the full project-type matrix (what's required/optional per type).
+A folder named `项目/` may remain named that way. Its role—not its literal name—determines the layer.
 
-## Fork Workflow (Code variant)
+## Route first
 
-When the project forks an upstream repo and contributes back via PR:
+Inspect the requested path read-only and choose exactly one mode:
 
-- Clone into `src/<repo-name>/` (never directly into `src/`). Each fork has its own `.git/`.
-- Remotes: `origin` → your fork (push), `upstream` → original (fetch only). Setup: `git clone <url> src/<repo-name> && cd src/<repo-name> && gh repo fork --remote`.
-- Daily: `git fetch upstream && git rebase upstream/main` → branch → commit → `git push origin <branch>` → `gh pr create`.
-- SOP docs stay outside `src/`; AGENTS.md must include a "Fork Workflow" section.
+1. **Projects Workspace mode** — one local entry contains multiple unrelated projects or collections.
+2. **Project Collection mode** — one group contains related independent Project Roots plus one lightweight collection-control project.
+3. **Project Root mode** — one governed project with its own deliverables and normally one source repository mapping.
 
-See `references/fork-workflow.md` for full setup commands (3 methods), PR workflow, upstream sync, multi-repo, and troubleshooting.
+Ask only when evidence is genuinely ambiguous:
 
-## Standard Directory Layout
+> 你要初始化的是“项目总入口”、“项目合集”，还是一个“单项目根目录”？
 
-```
-project-root/
-├── AGENTS.md                # Required (all). Agent entry point (auto-loaded by agent tools)
-├── README.md                # Required (all). Project overview (for humans)
-├── INDEX.md                 # Required (document). Version index — one line per version
-├── conversation/            # Required (code/hybrid). Optional (document). Decision records (NN-*.md)
-├── docs/                    # Required (all). All formal documents, centralized
-│   ├── specs/  plans/  reviews/  research/  reports/  decisions/  archive/  migrations/
-├── design/                  # On demand. Design assets (prototypes, SVGs, HTML mockups)
-├── src/                     # Required (code/hybrid). Source code (may have its own .git/)
-├── release/                 # On demand (code/hybrid). Final distributable artifacts only
-├── 提交记录/ (submissions/) # Required (document). Versioned submission records (vNNN/)
-├── memory/                  # Required (code/hybrid). Optional (document). Agent-maintained memory
-│   ├── YYYY-MM-DD.md        # Daily work log (append-only)
-│   └── MEMORY.md            # Curated long-term project notes
-└── <agent-system-dir>/      # Agent tool's system directory (.workbuddy/, .qoderworkcn/, etc.) — NOT managed by this skill
-```
+| Evidence | Route |
+|---|---|
+| `项目/` contains OMS, pets, skills collection, and unrelated experiments | Projects Workspace |
+| `obisoldbee-skills/` groups multiple Skill projects and a collection-control project | Project Collection |
+| `project-handoff/` has its own docs, conversation, memory, and `src/` | Project Root |
 
-### Key Principles
+## Projects Workspace mode
 
-1. **Centralize documents under `docs/`** — never scatter spec/plan/review files at project root or inside `src/`.
-2. **One file, one topic** — if a file exceeds ~500 lines or covers unrelated topics, split it.
-3. **AGENTS.md is an index, not a dump** — keep it lean; point to where rules live, don't duplicate.
-4. **Never write to the agent tool's system memory** — directories like `.workbuddy/memory/` or `.qoderworkcn/` are reserved for the agent platform. Use `memory/` at project root.
-5. **Source files are read-only** — never modify originals (certificates, reports). Copy to `上传包/` and modify the copy.
-6. **Archive, don't delete** — superseded docs go to `docs/archive/YYYY-MM-DD-<topic>/`.
-7. **Adapt to project type** — don't force code-project conventions onto document projects.
-8. **Before migrating, read `references/migration-guide.md`** — covers safety checks, atomic Git moves, reference sync, verification.
+Read `references/projects-workspace.md` completely.
 
-## Core Rules
+1. Inspect current top-level entries and likely Git roots read-only.
+2. Preserve every child in place unless a move is separately authorized.
+3. Use only the lightweight overlay: `AGENTS.md`, generated `PROJECTS.md`, and `_project-catalog/`.
+4. Maintain four category indexes for ordinary local Project Roots and a separate structural collection index.
+5. For a collection, index the collection once and expand its declared member index; do not duplicate every member in the global category tables.
+6. Inspect before and after path/index changes and report omissions, duplicates, missing paths, and dangling links.
 
-### AGENTS.md
+The workspace catalog never owns child-project source, research, plans, specs, reviews, conversation, or memory.
 
-Agent entry point, auto-loaded by agent tools. Keep under ~60 lines. Four sections: Project (1 line), Mandatory Rules (reference this skill + 3-5 key rules), Directory Index (table), Quick Reminders (5-7 bullets). Must NOT contain full rule specs, templates, or project history. Use `AGENTS.md` (not `CODEBUDDY.md`) for cross-tool portability. See `references/agents-md-template.md` for template.
+## Project Collection mode
 
-### Review Naming
+Read `references/project-collection.md` completely.
 
-```
-YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md
-```
+1. Verify that the members are related but independently governed Project Roots.
+2. Keep the collection root as a routing overlay, not a Git super-repository and not another Project Root.
+3. Designate exactly one member as the **collection-control project**. It owns the canonical member index and collection-wide deterministic scripts.
+4. Keep each member's documents and source inside that member Project Root.
+5. Do not copy member source into the control project's `src/`.
+6. Expose a generated/readable member view at collection root when useful.
 
-- `reviewer`: architect, engineer, qa, pm, security, takeover, user
-- `scope`: code, design, pr, release, spec, full
-- Before writing: scan `docs/reviews/` for collisions; append `-1`, `-2` suffix if needed
-- Migrated historical files with unknown time: use `000000` placeholder
-- Single-agent projects (code or document): date-precision (no HHMMSS) is acceptable; HHMMSS is mandatory only when multiple agents may create reviews concurrently
+For a Skills collection, the control project may own an explicit Skill-export allowlist and safe link scripts. Linking remains a separate, explicitly approved action.
 
-See `references/review-naming.md` for full vocabulary, collision handling, and migration procedures.
+## Project Root mode
 
-### Memory (Dual-Track)
+Read `references/directory-layout.md` completely. Determine the primary deliverable:
 
-| Location | Purpose | Who writes |
+| Type | Primary deliverable | Required paths |
 |---|---|---|
-| `<agent-system-dir>/memory/` | Agent platform's system memory (auto-injected) | The agent tool itself — do NOT write here |
-| `memory/` | Agent-maintained project memory | Any agent doing substantive work |
+| **Code** | Software or source | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |
+| **Document** | Documents or submissions | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, versioned records |
+| **Hybrid** | Both | Code paths plus relevant document paths |
 
-Write to `memory/YYYY-MM-DD.md` after substantive work (append-only). Update `memory/MEMORY.md` for long-term facts. Skip for trivial exchanges. Document projects may use versioned records instead of daily logs.
+Core rules:
 
-### Versioned Records (Document Projects)
+1. Formal documents live under `docs/`; project research stays in `docs/research/`.
+2. `AGENTS.md` is a lean routing index. Read `references/agents-md-template.md`.
+3. Decisions and collaboration history live in `conversation/`; project-managed memory lives in `memory/`.
+4. Read `references/migration-guide.md` before restructuring an existing Project Root.
+5. Archive superseded project documents rather than deleting them.
+6. Verify the Repository Root with Git; never infer it from the Project Root name.
+7. A Git-backed Project Root normally maps to one Repository Root under `src/`. Record the local repository path, clone URL or remote identity, default ref, and any managed subpath in `AGENTS.md`.
+8. A GitHub `/tree/<ref>/<subpath>` URL is a repository subpath, not a clone URL. Clone or check out the repository into `src/`, then record the managed subpath.
+9. If unrelated repositories are needed, create sibling Project Roots. Do not turn one Project Root into a hidden multi-repository container.
+10. Keep local wrapper metadata out of portable or public deliverables. Export with relative paths and exclude `.DS_Store`, `__pycache__/`, `*.pyc`, credentials, and machine-specific absolute paths.
 
-For submissions/certifications, use `提交记录/` with `INDEX.md` (one line per version) + `vNNN/RECORD.md` (details) + `vNNN/上传包/` (physical copies) + `vNNN/提交凭证/` (screenshots/receipts). Source files are read-only; copies go in `上传包/`. See `references/versioned-records.md` for template and upload workflow.
+### Fork workflow
 
-### Conversation Logs
+For a contribution fork, read `references/fork-workflow.md`. Clone the one repository under `src/`, use `origin` for the personal fork and `upstream` for the original, and keep wrapper documents outside the checkout.
 
-Files under `conversation/` record agent-user collaboration: proposals, modifications, rationale, decisions. Naming: `NN-kebab-topic.md` (scan for next available number). Required sections: Metadata, Agent Proposals, User Modifications, Rationale, Final Decision. See `references/conversation-format.md` for template.
+### Records
 
-**When to create a conversation file**: one file per significant decision, topic change, or phase — not every interaction. If a discussion leads to a concrete decision or direction change, record it. Routine Q&A or lookups do not need a conversation file. For code/hybrid projects, `conversation/` is required; for document projects, it's optional.
+- Significant direction change: read `references/conversation-format.md`.
+- Reviews: read `references/review-naming.md`.
+- Versioned submissions: read `references/versioned-records.md`.
 
-## Concurrency Rule (Multi-Agent Safety)
+## Layer boundaries
 
-When multiple agents work in the same project, prevent file-write conflicts:
+| Wrong | Correct |
+|---|---|
+| Put `src/` or project research directly in the Projects Workspace | Put it in a Project Root |
+| Put member source in a collection-control project's `src/` | Keep source in the member Project Root |
+| List collection members twice in workspace indexes | Index the collection once and expand its member index |
+| Put the Git checkout at the Project Root while wrapper docs are meant to stay outside Git | Put the Repository Root under `src/` |
+| Treat every device as a shared inventory model | Manage the current computer; another computer repeats the same local flow |
+| Infer that a missing local path means a remote project is invalid | Report only the current computer's observed state |
 
-| File type | Conflict risk | Safe strategy |
-|---|---|---|
-| `conversation/NN-*.md` | Two agents pick same number | Scan before creating; if collision, append `-1` suffix (e.g., `06-topic-1.md`) |
-| `docs/reviews/*.md` | Two agents start same-second review | HHMMSS + collision scan + `-1` suffix (see Review Naming above) |
-| `memory/YYYY-MM-DD.md` | Concurrent appends | **Append-only** — safe; both appends are valid chronological entries |
-| `memory/MEMORY.md` | Concurrent overwrites | **Read-modify-write**: re-read before writing; if content changed since last read, merge instead of overwrite |
-| `AGENTS.md` | Concurrent overwrites | **Single writer**: only the lead/initializing agent updates AGENTS.md. Working agents propose changes via message, not direct edit |
-| `提交记录/INDEX.md` | Concurrent version-row additions | **Read-modify-write**: re-read before adding a row; append new row at end |
-| `提交记录/vNNN/` | Two agents pick same version number | Scan before creating; if collision, use next available number |
+## Mutation and safety
 
-**General rule**: append-only files (`memory/YYYY-MM-DD.md`) are safe for concurrent writes. Read-modify-write files (`MEMORY.md`, `INDEX.md`, `AGENTS.md`) require re-reading before writing and merging conflicts. New-file creation (`conversation/`, `reviews/`, `vNNN/`) requires scanning for collisions before writing.
+Inspection or planning does not authorize mutation.
+
+Before a write:
+
+1. State the selected mode and exact target.
+2. List exact creates, edits, and moves.
+3. Preserve user files and unrelated dirty changes.
+4. For a structural migration, show the mapping and obtain approval.
+5. For links, scan targets, show a dry run, and require explicit apply approval.
+
+Never clone, fetch, pull, push, merge, rebase, delete, schedule, notify, or create links merely because initialization was requested.
+
+After an authorized write:
+
+1. Re-read the resulting structure.
+2. Run the relevant validator/tests.
+3. Report observed facts, unresolved findings, and actions not taken.
+
+## Workspace inspector
+
+Use `scripts/inspect_projects_workspace.py` only for Projects Workspace mode:
+
+```text
+python3 scripts/inspect_projects_workspace.py <workspace-root> [--indexes-dir PATH] [--max-depth N] [--format json|markdown]
+```
+
+It is offline and read-only. It understands the structural collection index and expands each safe `members_index`; it does not classify, move, link, or repair anything.
+
+## Success criteria
+
+A successful run:
+
+- names exactly one of the three modes;
+- does not create another layer's structure;
+- keeps each Project Root's content and source inside that Project Root;
+- records one clear repository mapping for each Git-backed Project Root;
+- preserves existing files and Git history;
+- distinguishes proposed from executed actions;
+- validates authorized changes before reporting completion.
 
 ## References
 
-| File | When to load |
+| File | Load when |
 |---|---|
-| `references/directory-layout.md` | Full directory spec, project-type matrix, edge cases, archive strategy |
-| `references/fork-workflow.md` | Forking an upstream repo: setup (gh CLI, 3 methods), PR workflow, upstream sync, multi-repo, troubleshooting |
-| `references/migration-guide.md` | Restructuring a project: safety checks, atomic moves, reference sync, verification |
-| `references/versioned-records.md` | Document/submission projects: INDEX + vNNN template, source file principle, upload workflow |
-| `references/agents-md-template.md` | Creating AGENTS.md: ready-to-use template and worked example |
-| `references/conversation-format.md` | Creating conversation files: full template with agent proposal / user modification / rationale |
-| `references/review-naming.md` | Creating review files: full vocabulary, collision handling, migration procedures |
+| `references/projects-workspace.md` | Maintaining the current computer's Projects Workspace |
+| `references/project-collection.md` | Initializing or maintaining a related-project collection |
+| `references/directory-layout.md` | Initializing or explaining one Project Root |
+| `references/agents-md-template.md` | Creating or revising a Project Root AGENTS.md |
+| `references/migration-guide.md` | Moving existing files or repository boundaries |
+| `references/fork-workflow.md` | Configuring a fork and upstream |
+| `references/conversation-format.md` | Recording a significant decision |
+| `references/review-naming.md` | Creating or migrating reviews |
+| `references/versioned-records.md` | Managing document submissions or versions |
 
-## Adopting into an Existing Project (Minimal Path)
+## Cross-model execution contract
 
-Not every project needs a full restructure. To adopt conventions gradually:
+Materials: Use the request, the inspected target, its existing entries, and only the routed references as evidence. Do not invent filesystem, Git, link, or remote facts.
 
-1. Add `AGENTS.md` at project root (index only, ~60 lines) and `memory/` directory.
-2. New files follow naming conventions from day one; existing files stay as-is.
-3. Create `docs/` subdirectories as needed when adding new documents.
-4. Migrate existing files only when touching them for other reasons (opportunistic, not batch).
-5. Full restructure is optional — see `references/migration-guide.md` only when the project layout actively causes friction.
+Task: Select exactly one layer, then inspect, propose, or apply only that layer's conventions.
 
-## Quick Reference Checklist
+Constraints: Stay inside the authorized target; preserve existing content; maintain layer boundaries; obtain explicit authorization for structural moves and link application.
 
-**Starting work:**
-- [ ] Determine project type (Code / Document / Hybrid)
-- [ ] If forking an upstream repo → follow Fork Workflow (Code variant): clone to `src/<repo-name>/`, configure origin/upstream remotes
-- [ ] Confirm `AGENTS.md` and required dirs exist; create if missing
-- [ ] Read `AGENTS.md` first — it indexes the project
-- [ ] Place documents under correct `docs/` subdirectory
-- [ ] After substantive work, append to `memory/YYYY-MM-DD.md` (code) or update `提交记录/INDEX.md` (document)
-
-**Creating files (check for collisions first):**
-- [ ] Review: `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md` — scan `docs/reviews/`
-- [ ] Conversation: `NN-kebab-topic.md` — scan `conversation/` for next number
-- [ ] Submission version: `vNNN/` — scan `提交记录/` for next number
-
-**Restructuring:**
-- [ ] Read `references/migration-guide.md` first
-- [ ] Snapshot processes and Git state before moving
-- [ ] Move `src/` (with `.git/`) atomically — no re-init, no commit
-- [ ] Grep ALL file types for old paths; update every match
-- [ ] Archive superseded docs — never delete
-- [ ] Record migration in `docs/migrations/`; verify build from new paths
+Output: In the user's language, state the selected mode and target, observed facts, proposed versus executed changes, validation, and unresolved findings.

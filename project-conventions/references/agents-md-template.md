@@ -38,8 +38,18 @@ When working in this workspace, follow the `project-conventions` skill:
 | `docs/reviews/` | Review documents (`YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`) | skill: references/review-naming.md |
 | `docs/research/` | Research documents | — |
 | `src/` | Source code | — |
-| `release/` | Build artifacts | — |
+| `release/` | Build artifacts (on demand) | — |
 | `memory/` | Agent-maintained project memory | — |
+
+## Source Mapping
+
+| Field | Value |
+|---|---|
+| Project Root | `.` |
+| Repository Root | `src` or `src/<repo-name>` |
+| Clone URL / remote | `<credential-free URL or local only>` |
+| Default ref | `<branch/ref or unknown>` |
+| Managed scope | `whole repository` or `<monorepo subpath>` |
 
 ## Quick Reminders
 
@@ -47,9 +57,11 @@ When working in this workspace, follow the `project-conventions` skill:
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
 - Done working? Append a note to `memory/YYYY-MM-DD.md`
 - Never write to the agent platform's system memory directory — use `memory/` instead
-- Source files (certificates, reports) are read-only — copy before modifying
+- Document/submission projects only: treat canonical certificates and reports as read-only; copy before modifying
 - Code in `src/`, artifacts in `release/`, documents in `docs/` — never mix
 ```
+
+The Source Mapping is required for every Git-backed Project Root. Keep one mapping per Project Root. If the source is a subdirectory of a larger GitHub repository, record the repository's clone URL and put the subtree in `Managed scope`; never use a `/tree/...` page as the clone URL.
 
 ## Worked Example (OB Dim Project)
 
@@ -81,7 +93,7 @@ When working in this workspace, follow the `project-conventions` skill:
 | `docs/plans/` | Implementation plan (12 TDD tasks) | `2026-07-19-screen-timeout-toggle.md` |
 | `docs/reviews/` | 2 review documents (takeover reviews) | skill: references/review-naming.md |
 | `docs/research/` | Research documents (currently empty) | — |
-| `docs/2026-07-20-directory-migration.md` | Directory restructuring record | One-time migration doc |
+| `docs/migrations/2026-07-20-directory-migration.md` | Directory restructuring record | One-time migration doc |
 | `src/` | Source code (C# .NET 8, 15 .cs files, .git with tag v1.0.0) | — |
 | `release/` | Compiled EXE (192KB, framework-dependent) | `ScreenTimeoutToggle.exe` |
 | `memory/` | Agent-maintained daily logs + long-term memory | `MEMORY.md` + `YYYY-MM-DD.md` |

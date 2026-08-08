@@ -79,6 +79,37 @@ When moving a code directory (e.g., `trae/K3/code/` → `src/`):
    git -C src status --short | wc -l          # must match pre-migration count
    ```
 
+### 2.1A Moving a Repository Boundary from Project Root to `src/`
+
+Use this only when the Project Root already contains wrapper documents that must remain outside Git, while its existing `.git/` accidentally sits at the Project Root.
+
+Preconditions:
+
+1. Verify `src/.git` does not already exist.
+2. Snapshot the existing `.git` directory and relevant Git observations.
+3. Check for Git operation locks such as `.git/index.lock`.
+4. Record remotes, branch/ref, worktree status, and whether commits exist.
+5. If process inspection is unavailable, record that limitation instead of claiming no process is active.
+6. Present the exact `<project>/.git → <project>/src/.git` mapping and obtain approval.
+
+After approval, move the existing Git metadata atomically. Do not run `git init`:
+
+```bash
+mv .git src/.git
+git -C src rev-parse --show-toplevel
+```
+
+Copy or move repository ignore rules into `src/.gitignore` as appropriate, while retaining any separate wrapper ignore policy deliberately. Update `AGENTS.md` with the new Source Mapping.
+
+Verify:
+
+- `git -C src rev-parse --show-toplevel` resolves to `src`;
+- the Project Root no longer resolves as a Git worktree;
+- remotes, refs, status, stashes, and commit identity match the preflight snapshot;
+- existing consumer links to source subdirectories still resolve.
+
+Rollback before any later Git write by moving `src/.git` back or restoring the frozen snapshot. Never reconstruct the metadata with a new repository.
+
 ### 2.2 Moving Design Assets
 
 When moving a design package (e.g., `trae/k3/` → `design/trae-k3/`):
@@ -92,7 +123,7 @@ When moving a design package (e.g., `trae/k3/` → `design/trae-k3/`):
 When centralizing documents:
 
 1. Create standard subdirectories: `docs/specs/`, `docs/plans/`, `docs/reviews/`, `docs/research/`, `docs/reports/`, `docs/decisions/`.
-2. Move each document to its correct subdirectory (see SKILL.md Directory Content Rules table).
+2. Move each document to its correct subdirectory (see `directory-layout.md` **Complete Tree** and **Per-Directory Specification**).
 3. Rename review files to the standard pattern (`YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`).
 4. For historical files with unknown timestamps, use `000000` as placeholder (see `review-naming.md`).
 
@@ -146,9 +177,9 @@ Search the **entire project root** for old path patterns. Use `grep -rn` or the 
 | File type | What to look for | Example |
 |---|---|---|
 | `.md` (Markdown) | Relative path references in text, tables, links | `docs/superpowers/specs/...` → `docs/specs/...` |
-| `.json` | Absolute or relative path strings | `"path": "/Users/.../trae/K3/code"` → `".../src"` |
+| `.json` | Absolute or relative path strings | `"path": "<old-root>/trae/K3/code"` → `"<project-root>/src"` |
 | `.sh` / `.py` / `.swift` (scripts) | Path variables, `cd` commands, file paths | `CODE_DIR="trae/K3/code"` → `CODE_DIR="src"` |
-| `.md` with `file://` links | `file:///absolute/path/to/old/dir` | Update to new path |
+| `.md` with absolute local URI links | Machine-specific URI to an old directory | Replace with a relative project link when portable navigation is intended |
 | `.json` / `.plist` (config) | Build paths, DerivedData paths | May reference old code root |
 | `.xcconfig` / `.pbxproj` | Xcode project file paths | Usually relative — verify still correct |
 
@@ -214,7 +245,7 @@ If the project has an `AGENTS.md`, update its Directory Index table to reflect t
 ### 5.5 Cleanup
 
 After all moves and reference updates:
-1. Delete now-empty old directories (e.g., `trae/` if all contents moved).
+1. Remove only verified-empty old directories (for example, `trae/` after every intended file moved). This cleanup never authorizes deleting files.
 2. Verify no files were left behind: `find <old-parent-dir> -type f` should return nothing.
 3. Do NOT delete hidden directories (agent system directories, etc.).
 
