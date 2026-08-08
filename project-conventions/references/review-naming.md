@@ -29,6 +29,7 @@ Lowercase identifier from the vocabulary below. If a review is jointly conducted
 | `qa` | QA agent | Test review, quality review |
 | `pm` | Product Manager agent | Spec review, requirement review |
 | `security` | Security-focused review | Security audit, vulnerability review |
+| `auditor` | Independent audit or third-party review | Cross-document audit, package scan, compliance review |
 | `takeover` | Project handover / takeover | When a new agent or person takes over a project |
 | `user` | Human user's manual review | When the user personally reviews something |
 
