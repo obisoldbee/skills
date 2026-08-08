@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Conventions"
+  short_description: "Govern workspaces, project collections, and Project Roots"
+  default_prompt: "Use $project-conventions to identify whether the target is a Projects Workspace, Project Collection, or Project Root; preserve the layer boundaries and initialize only the selected layer."
