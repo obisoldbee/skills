@@ -14,20 +14,29 @@ This document provides the complete specification for the versioned records patt
 - **One-off documents**: a single spec or plan doesn't need versioned records
 - **Projects with no submission/versioning cycle**
 
+## Navigation boundary
+
+- The Project Root `INDEX.md` is the human entry point: project summary, current status, and links to `docs/` and the version-record directory.
+- The version-record directory's `INDEX.md` is the authoritative one-row-per-version ledger. It does not duplicate the project overview.
+- `MATERIALS.md` lives in the version-record directory and lists shared canonical source materials by relative path. It never contains copied source files or credentials.
+
 ## Structure
 
 ```
-提交记录/ (or submissions/, 版本记录/)
-├── INDEX.md          # One line per version — never grows long
-├── v001/
-│   ├── RECORD.md     # This version's content, limits, result, rejection reasons
-│   ├── 上传包/        # Physical files prepared for upload (copies, NOT symlinks)
-│   └── 提交凭证/      # Screenshots, receipts, rejection pages
-├── v002/
-│   ├── RECORD.md
-│   ├── 上传包/
-│   └── 提交凭证/
-└── ...
+project-root/
+├── INDEX.md                  # Project navigation; not the version ledger
+└── 提交记录/                  # Or submissions/ / 版本记录/
+    ├── INDEX.md              # One line per version
+    ├── MATERIALS.md          # Shared source-material checklist
+    ├── v001/
+    │   ├── RECORD.md         # Version content, limits, result, rejection reasons
+    │   ├── 上传包/            # Prepared copies, never symlinks
+    │   └── 提交凭证/          # Screenshots, receipts, rejection pages
+    ├── v002/
+    │   ├── RECORD.md
+    │   ├── 上传包/
+    │   └── 提交凭证/
+    └── ...
 ```
 
 ### Directory naming
@@ -47,7 +56,7 @@ This document provides the complete specification for the versioned records patt
 ```markdown
 # 提交记录索引
 
-| 版本 | 日期 | 状态 | 主要变化 | 详情 |
+| 版本 | 创建日期 | 状态 | 主要变化 | 详情 |
 |---|---|---|---|---|
 | v001 | 2026-07-09 | 已退回 | 首次提交 | `v001/RECORD.md` |
 | v002 | 2026-07-14 | 准备中 | 更新证书和信用报告 | `v002/RECORD.md` |
@@ -57,6 +66,7 @@ This document provides the complete specification for the versioned records patt
 ### INDEX.md Rules
 
 - **One line per version** — never expand a version into multiple rows
+- **创建日期** — the date the version directory/record was first created; never replace it with a later submission or review date
 - **Status values**: `准备中` (preparing), `已提交` (submitted), `已退回` (rejected), `已通过` (approved), `已撤回` (withdrawn)
 - **主要变化** — one short phrase, NOT a paragraph
 - **详情** — link to the version's `RECORD.md`
@@ -68,8 +78,8 @@ This document provides the complete specification for the versioned records patt
 # [版本号] 提交记录
 
 > **版本**: vNNN
-> **日期**: YYYY-MM-DD
-> **状态**: [准备中 / 已提交 / 已退回 / 已通过]
+> **创建日期**: YYYY-MM-DD
+> **状态**: [准备中 / 已提交 / 已退回 / 已通过 / 已撤回]
 > **申报路线**: [标准制修订 / 产品评价 / ...]
 
 ---
@@ -173,7 +183,19 @@ This document provides the complete specification for the versioned records patt
 | Original certificate/report/contract | `公司资料/.../` (canonical source) | Read-only, irreplaceable |
 | Modified copy for upload | `vNNN/上传包/` | Version-specific, disposable after submission |
 | Submission screenshot/receipt | `vNNN/提交凭证/` | Proof of submission, needed for audit |
-| Material checklist | `MATERIALS.md` (product-level) | References source files by path, doesn't duplicate them |
+| Material checklist | `<record-root>/MATERIALS.md` | Shared project/product checklist; references canonical sources by relative path and never duplicates them |
+
+### `MATERIALS.md` minimum format
+
+Keep one row per canonical material:
+
+```markdown
+| 材料 | 规范来源 | 用途 | 当前状态 |
+|---|---|---|---|
+| 营业执照 | `source/company/license.pdf` | 主体证明 | 有效 |
+```
+
+Use paths relative to the Project Root. Do not place local absolute paths, credentials, or physical copies in this checklist. Version-specific transformed copies still belong under `vNNN/上传包/`.
 
 ## Upload Interaction Workflow
 
@@ -197,13 +219,14 @@ A company is submitting standard revision documents. The submission website has 
 
 ```
 标准制修订申报/2026年立项/
-├── INDEX.md
+├── INDEX.md                         # Project navigation
 ├── 工作版本/
 │   ├── v001/                    # Jul 9 initial draft
 │   ├── v002/                    # Jul 14 updated draft
 │   └── v003/                    # "ob 提交版" (current working version)
 └── 提交记录/
     ├── INDEX.md
+    ├── MATERIALS.md                 # Shared canonical-material checklist
     ├── v001/
     │   ├── RECORD.md            # First submission, rejected (missing drafters)
     │   ├── 上传包/
@@ -220,9 +243,9 @@ A company is submitting standard revision documents. The submission website has 
 ```markdown
 # 提交记录索引
 
-| 版本 | 日期 | 状态 | 主要变化 | 详情 |
+| 版本 | 创建日期 | 状态 | 主要变化 | 详情 |
 |---|---|---|---|---|
-| v001 | 2026-07-14 | 已退回 | 首次提交，缺起草人 | `v001/RECORD.md` |
+| v001 | 2026-07-09 | 已退回 | 首次提交，缺起草人 | `v001/RECORD.md` |
 | v002 | 2026-07-20 | 准备中 | 补起草人，4字段待补 | `v002/RECORD.md` |
 ```
 
