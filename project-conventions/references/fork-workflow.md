@@ -1,13 +1,13 @@
 # Fork Workflow — Full Setup & PR Guide
 
-This document provides the complete workflow for projects that fork an upstream repo and contribute back via PR. Covers setup (3 methods), daily PR flow, upstream sync, multi-repo, and troubleshooting.
+This document provides the workflow for one Project Root that wraps one upstream repository fork and contributes back by PR.
 
 ## When to Use
 
 - Forking an upstream repo to contribute changes back via PR
 - Setting up a fork-based workspace for the first time
 - Syncing with upstream, submitting PRs, or resolving remote issues
-- Managing multiple forked repos under one SOP wrapper
+- Recording one fork's Project Root and Repository Root mapping
 
 ## Prerequisites
 
@@ -63,14 +63,14 @@ project-root/                 # SOP wrapper (NOT pushed to upstream)
 ├── docs/                     # SOP docs (specs/plans/reviews) — outside src/
 ├── memory/                   # Agent memory — outside src/
 ├── conversation/             # Decision records — outside src/
-└── src/                      # Fork repo container
-    └── <repo-name>/          # Each fork is a subdirectory with its own .git/
+└── src/                      # Source container
+    └── <repo-name>/          # The one mapped fork Repository Root
         ├── .git/
         ├── (upstream repo contents)
         └── ...
 ```
 
-**Key principle**: `src/` is a **container**, not a single repo. Each fork lives in `src/<repo-name>/`. This allows multiple forks to coexist cleanly. Never clone a fork directly into `src/` — always use a named subdirectory.
+**Key principle**: this Project Root has one fork repository mapping. Put that Repository Root at `src/<repo-name>/` and record it in `AGENTS.md`. Do not add an unrelated second fork to the same Project Root.
 
 ## Setup Methods
 
@@ -213,29 +213,19 @@ If you want to abort:
 git rebase --abort            # or: git merge --abort
 ```
 
-## Multi-Repo Setup
+## More Than One Fork
 
-When working with multiple forks under one SOP wrapper:
+Create a sibling Project Root for every additional fork. If the forks are related, a Project Collection may route between them without owning their source:
 
 ```
-project-root/
-├── AGENTS.md                 # Document all forks in Directory Index
-├── docs/
-└── src/
-    ├── repo-a/               # Fork 1
-    │   ├── .git/
-    │   └── ...
-    └── repo-b/               # Fork 2
-        ├── .git/
-        └── ...
+collection-root/
+├── repo-a-project/
+│   └── src/repo-a/.git/
+└── repo-b-project/
+    └── src/repo-b/.git/
 ```
 
-**AGENTS.md for multi-repo**: list each fork in the Directory Index with its upstream URL and current remote status. Example:
-
-```markdown
-| `src/repo-a/` | repo-a fork (Node.js, origin → my fork, upstream → owner-a/repo-a) | PR from here |
-| `src/repo-b/` | repo-b fork (Rust, origin → my fork, upstream → owner-b/repo-b) | PR from here |
-```
+Each member `AGENTS.md` records only its own Repository Root, `origin`, and `upstream`. The collection member index records membership, not Git remotes on behalf of the projects.
 
 ## AGENTS.md Fork Section
 
