@@ -22,7 +22,7 @@ Use this stage when the required Skill is not already available from an approved
 
 1. Confirm the exact distribution clone URL, current bootstrap Project Root, checkout path inside it, and Skill package subpath. Do not substitute a conventional global directory for a path the user supplied.
 2. Refuse a provider `/tree/<ref>/<subpath>` page as a clone URL. Clone the repository URL and address the Skill by its managed subpath.
-3. For a governed Project Root, default the checkout to its mapped `src/<repository-name>/` Repository Root. If the exact checkout path is absent, clone there. If it exists, verify its identity and apply the update-only Git safety gates to that checkout; do not clone over it or reduce the overall full-initialization request to update-only.
+3. For a governed Project Root, default the checkout to its mapped `src/<repository-name>/` Repository Root. If the exact checkout path is absent, clone there. If it exists, verify its identity and apply the update-only Git safety gates to that checkout; do not clone over it or reduce the overall full-initialization request to update-only. If clean fast-forward is impossible because the attached local default branch is ahead/diverged, stop unless the user explicitly authorized this full-chain recovery: rename the current branch to a collision-free `<branch>-preserved-<short-head>`, create the original default branch anew tracking the fetched remote default, verify the preserved ref still equals the old HEAD and the active ref equals the remote, then continue. This recovery is forbidden for update-only, dirty/detached worktrees, unknown remotes/default refs, or branch-name collisions; never rebase, reset, delete, or push the preserved branch automatically.
 4. Validate both the distribution manifest and requested Skill package.
 5. If the user requested clone/download only, report the checkout and validation and stop. Do not inspect the target, siblings, consumer roots, or links.
 6. For an explicitly requested end-to-end chain, read the checked-out Skill and routed references directly and continue. Runtime auto-discovery is not required merely to follow an explicitly named local `SKILL.md`.
@@ -77,7 +77,7 @@ The final package source is:
 <project-parent>\obisoldbee-skills\project-conventions\src\skills\project-conventions
 ```
 
-Only after both moves and final-path validation may a consumer junction be proposed for that package. If the checkout already exists at `$Checkout`, verify and safely fast-forward that exact checkout instead of cloning a duplicate, then continue the named full chain.
+Only after both moves and final-path validation may a consumer junction be proposed for that package. If the checkout already exists at `$Checkout`, verify and safely fast-forward that exact checkout instead of cloning a duplicate. For a known clean local-ahead/diverged default branch, continue only when the user's full-chain request explicitly authorizes the preserved-branch recovery above; otherwise stop without changing refs.
 
 ## Update-only workflow
 

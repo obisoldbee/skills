@@ -41,7 +41,39 @@ python -B (Join-Path $Checkout 'scripts\verify_release.py') $Checkout
 python -B (Join-Path $Checkout 'project-conventions\scripts\test_inspect_projects_workspace.py')
 ```
 
-若 `$Checkout` 已经是同一仓库，不重复 clone；先核实 remote、branch、status、ahead/behind，只允许 clean fast-forward，然后继续本次完整初始化。dirty、ahead、detached 或 diverged 才是应当停止的真实 Git 阻塞。
+若 `$Checkout` 已经是同一仓库，不重复 clone；先核实 remote、branch、status、ahead/behind。可以 clean fast-forward 时直接更新并继续。
+
+如果它正是旧任务留下的 **clean、attached、本地 `main` ahead/diverged** checkout，而本次完整链路已经明确授权“保留旧本地提交并切回最新远端 main”，使用分支保留，不 rebase、不 reset、不删除提交：
+
+```powershell
+$OldHead = (git -C "$Checkout" rev-parse HEAD).Trim()
+$CurrentBranch = (git -C "$Checkout" symbolic-ref --quiet --short HEAD).Trim()
+$Status = @(git -C "$Checkout" status --porcelain=v1)
+if ($Status.Count -ne 0) { throw 'worktree 不是 clean，停止' }
+if ($CurrentBranch -ne 'main') { throw "当前分支不是预期 main：$CurrentBranch" }
+
+git -C "$Checkout" fetch origin
+if ($LASTEXITCODE -ne 0) { throw 'fetch origin 失败' }
+
+$ShortHead = $OldHead.Substring(0, 7)
+$PreservedBranch = "main-preserved-$ShortHead"
+git -C "$Checkout" show-ref --verify --quiet "refs/heads/$PreservedBranch"
+if ($LASTEXITCODE -eq 0) { throw "保留分支已存在：$PreservedBranch" }
+if ($LASTEXITCODE -ne 1) { throw '无法检查保留分支冲突' }
+
+git -C "$Checkout" branch -m "$PreservedBranch"
+if ($LASTEXITCODE -ne 0) { throw '无法重命名旧本地分支' }
+git -C "$Checkout" switch -c main --track origin/main
+if ($LASTEXITCODE -ne 0) { throw '无法从 origin/main 创建新的本地 main；旧提交仍保留在重命名分支' }
+
+$PreservedHead = (git -C "$Checkout" rev-parse "$PreservedBranch").Trim()
+$FreshHead = (git -C "$Checkout" rev-parse HEAD).Trim()
+$RemoteHead = (git -C "$Checkout" rev-parse origin/main).Trim()
+if ($PreservedHead -ne $OldHead) { throw '保留分支未指向旧 HEAD' }
+if ($FreshHead -ne $RemoteHead) { throw '新的 main 未指向 origin/main' }
+```
+
+此操作只属于用户明确授权的完整初始化恢复，不属于 update-only。保留分支不自动 push，随后会随整个 `project-conventions` Project Root 一起迁移。dirty、detached、remote/default branch 不明或保留分支重名时仍应停止，但只报告这个真实阻塞。
 
 随后直接读取：
 

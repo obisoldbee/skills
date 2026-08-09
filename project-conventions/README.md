@@ -27,7 +27,7 @@ The package includes a read-only Projects Workspace inspector and deterministic 
 
 ## Install
 
-When using this package from the `obisoldbee/skills` repository, follow the repository root README. For clone-only, validate and stop. For an explicitly named complete chain, clone under the current Project Root, read the checked-out `SKILL.md` directly, initialize and migrate the named paths in the same task, and defer consumer linking until the final source path exists. A fresh task is needed only when bootstrap stops for later runtime discovery.
+When using this package from the `obisoldbee/skills` repository, follow the repository root README. For clone-only, validate and stop. For an explicitly named complete chain, clone under the current Project Root, or preserve an explicitly authorized clean local-ahead branch before restoring the checkout to fresh remote main; then read the checked-out `SKILL.md` directly, initialize and migrate the named paths in the same task, and defer consumer linking until the final source path exists. A fresh task is needed only when bootstrap stops for later runtime discovery.
 
 You may also copy this directory as a complete unit into a Skill root supported by your agent. Keep `SKILL.md`, `agents/`, `references/`, and `scripts/` together.
 

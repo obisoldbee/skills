@@ -25,14 +25,15 @@ A full initialization is one ordered lifecycle. A fresh Agent task is required o
 
 1. Name every path role before writing: current bootstrap Project Root, distribution checkout, final target, existing migration sources, and one optional Agent consumer.
 2. If the Skill is not available, clone the approved distribution repository into the exact user-approved location inside the current Project Root. Prefer its mapped `src/<repository-name>/` Repository Root; do not invent a separate user-global source when the user named the destination.
-3. Validate the distribution manifest and requested Skill package, then read this file and the routed lifecycle/migration references directly from that checkout.
-4. If the request is bootstrap-only, stop after validation. Do not inspect the eventual target, siblings, consumers, or links.
-5. For an explicit end-to-end request, inspect only the target and named migration sources. Read `references/migration-guide.md`, snapshot hidden files and Git state, and state the exact create/move map. A request that already names both ends of each move is the structural-move approval; do not ask the user to choose again unless observed collision, Git risk, or workspace locking changes that map.
-6. Initialize exactly one selected governance layer at the target. Reserve incoming names rather than creating paths that will collide with the named moves.
-7. If the current task is rooted inside a directory to move, switch execution to the minimum safe parent first. If the host keeps that workspace locked, stop only for the necessary reopen-at-parent handoff; never replace an atomic move with copy-and-delete.
-8. Move each approved source as a complete directory, update current path references and indexes, and preserve historical before/after records unchanged.
-9. Only after final paths exist, scan exactly one named consumer and one named Skill. Show the final-path link or junction dry run and require explicit approval before applying it. Never link a temporary path that will be moved.
-10. Verify old paths are absent, final paths exist, Git roots/status/remotes are preserved, manifests/tests pass, indexes match disk, and any applied link resolves to the final Skill package.
+3. If the checkout path already exists, verify its repository identity and Git state. Use clean fast-forward when possible. If it is clean and attached but locally ahead/diverged, normally stop; however, an explicit full-chain request may authorize preserving the current branch under a collision-free `<branch>-preserved-<short-head>` name and creating a fresh local default branch from the tracked remote default. Verify both refs before continuing. Never rebase, reset, delete, or overwrite the preserved commit.
+4. Validate the distribution manifest and requested Skill package, then read this file and the routed lifecycle/migration references directly from that checkout.
+5. If the request is bootstrap-only, stop after validation. Do not inspect the eventual target, siblings, consumers, or links.
+6. For an explicit end-to-end request, inspect only the target and named migration sources. Read `references/migration-guide.md`, snapshot hidden files and Git state, and state the exact create/move map. A request that already names both ends of each move is the structural-move approval; do not ask the user to choose again unless observed collision, Git risk, or workspace locking changes that map.
+7. Initialize exactly one selected governance layer at the target. Reserve incoming names rather than creating paths that will collide with the named moves.
+8. If the current task is rooted inside a directory to move, switch execution to the minimum safe parent first. If the host keeps that workspace locked, stop only for the necessary reopen-at-parent handoff; never replace an atomic move with copy-and-delete.
+9. Move each approved source as a complete directory, update current path references and indexes, and preserve historical before/after records unchanged.
+10. Only after final paths exist, scan exactly one named consumer and one named Skill. Show the final-path link or junction dry run and require explicit approval before applying it. Never link a temporary path that will be moved.
+11. Verify old paths are absent, final paths exist, Git roots/status/remotes are preserved, manifests/tests pass, indexes match disk, and any applied link resolves to the final Skill package.
 
 If the Skill was already loaded before the task began, skip only the bootstrap clone/direct-load work; do not repeat it merely because full initialization was selected.
 
