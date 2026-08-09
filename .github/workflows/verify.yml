@@ -110,3 +110,4 @@ jobs:
           if ((Get-Content -LiteralPath (Join-Path $conflictSkill 'keep.txt') -Raw).Trim() -ne 'keep') {
             throw 'conflict content was modified'
           }
+          exit 0
