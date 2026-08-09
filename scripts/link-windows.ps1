@@ -28,6 +28,9 @@ if ($SkillSelectorCount -ne 1) {
 if ($Apply -and $AllAgents) {
     throw 'apply-does-not-allow-all-agents'
 }
+if ($Apply -and $AllSkills) {
+    throw 'apply-does-not-allow-all-skills'
+}
 if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw "invalid-agent: $Agent"
 }
@@ -96,6 +99,12 @@ foreach ($TargetEntry in $Targets) {
         Write-Host "target-parent-missing $TargetAgent $TargetPath"
         $MissingParents++
         continue
+    }
+    $TargetPath = (Resolve-Path -LiteralPath $TargetPath).Path
+    if ($Apply -and
+        ($TargetPath.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or
+         $TargetPath.StartsWith($RepoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) {
+        throw "target-inside-repository: $TargetPath"
     }
 
     foreach ($Export in $Exports) {

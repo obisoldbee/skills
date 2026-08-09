@@ -21,9 +21,9 @@ Determine if any processes are actively using the old directory paths:
 - **IDE / Editor**: Is Xcode, VS Code, or another IDE open with the project? Close it or confirm it won't lock files.
 - **Build processes**: Is a build running? Is a dev server active? Wait for completion or stop gracefully.
 - **Git operations**: Is a `git commit`, `push`, `rebase`, or `merge` in progress? Wait for it to finish.
-- **Terminal sessions**: Are any shells `cd`'d into directories that will be moved? They'll break.
+- **Terminal sessions**: Are any shells or the active Agent workspace rooted inside a directory that will be moved? Change their execution directory to the minimum safe parent before the move.
 
-**Rule**: If any process is actively using old paths, **pause and ask the user**. Never `kill -9` or force-terminate.
+**Rule**: Close or relocate a process you safely control. If the host application still locks the active workspace, pause only for the required reopen-at-parent handoff and retain the approved move map. Never `kill -9`, force-terminate, or substitute copy-and-delete for the blocked atomic move.
 
 ### 1.2 Git Status Snapshot
 
@@ -39,13 +39,13 @@ Record the count of uncommitted changes. This count must be **identical** after 
 
 ### 1.3 File Inventory Snapshot
 
-List all visible files (excluding hidden directories like `.git`, agent system directories, etc.):
+For an internal layout rewrite, list the governed visible files. For a whole-Project-Root move, also inventory hidden entries and record the Git metadata directory as present; otherwise a move can appear complete while omitting `.git`, ignore files, or agent configuration.
 
 ```bash
 find . -not -path '*/.*' -type f | sort > /tmp/pre-migration-files.txt
 ```
 
-This serves as the baseline for the post-migration verification.
+This serves as the baseline for the post-migration verification. A whole-directory move must preserve the complete relative entry set, including hidden entries; Git status/remotes/refs/stashes are verified separately rather than inferred from a visible-file list.
 
 ### 1.4 User Confirmation
 
@@ -53,9 +53,21 @@ Present the migration plan to the user:
 - What will move (old path → new path)
 - What will be archived (and where)
 - What will NOT be touched (hidden directories, build intermediates)
-- Get explicit confirmation before proceeding.
+- Get explicit confirmation before proceeding. A request that already states every complete old path and new path is confirmation for that exact map; do not ask the user to choose again unless preflight evidence requires the map to change.
 
 ## Phase 2: Atomic Directory Moves
+
+### 2.0 Moving the Active Project Root into a Collection
+
+When the current Agent task is opened inside the Project Root that will move:
+
+1. Finish preflight and write the exact move map before changing the execution directory.
+2. Switch command execution to the common parent of the source and destination.
+3. Move the Project Root as one directory after its destination parent exists and its destination basename is free.
+4. If the host locks the workspace even after command execution moved to the parent, stop for one reopen-at-parent handoff. Resume the same recorded map; do not re-plan unrelated directories.
+5. After the move, resolve the new Project Root and every nested Repository Root from disk before editing indexes, references, or links.
+
+If a Skill consumer points inside the Project Root, create or retarget it only after the final path exists. Never intentionally create a new link to a source path known to be temporary.
 
 ### 2.1 Moving a Code Directory with Its Own `.git/`
 

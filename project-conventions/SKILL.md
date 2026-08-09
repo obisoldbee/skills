@@ -1,6 +1,6 @@
 ---
 name: project-conventions
-description: "Initialize, organize, migrate, update, or explain project filesystems. First separate full initialization from update-only work: full initialization may create an approved structure, clone its repository, and guide one scoped Skill link; update-only refreshes one existing checkout and stops without restructuring, cataloging, recording, or relinking. Then distinguish a Projects Workspace, Project Collection, Project Root, and Repository Root. Use for 项目目录初始化, 从零初始化, 克隆最新版后初始化, 更新技能版本, 拉取最新版, 项目总入口, 项目合集, 单项目根目录, 仓库放到 src, 项目结构, 文件放哪, repository mappings, or migrations."
+description: "Initialize, organize, migrate, update, or explain project filesystems. First separate full initialization from update-only work: full initialization may bootstrap the latest Skill inside an explicitly named current Project Root, initialize a named target, migrate named legacy roots, and guide one final-path Skill link; update-only refreshes one existing checkout and stops without restructuring, cataloging, recording, or relinking. Then distinguish a Projects Workspace, Project Collection, Project Root, and Repository Root. Use for 项目目录初始化, 从零初始化, 先克隆到当前目录再初始化迁移, 克隆最新版后初始化, 更新技能版本, 拉取最新版, 项目总入口, 项目合集, 单项目根目录, 仓库放到 src, 项目结构, 文件放哪, repository mappings, or migrations."
 ---
 
 # Project Conventions
@@ -12,24 +12,29 @@ For any request involving initialization, clone, download, install, sync, pull, 
 | User intent | Lifecycle | Immediate scope |
 |---|---|---|
 | Create a new governed location and make it usable | **Full initialization** | The exact new target and its approved repository/link inputs |
-| Clone this Skill now, then initialize another target in a fresh task | **Full initialization — bootstrap stage only** | The distribution checkout and one named Skill consumer; stop before target governance |
+| Clone this Skill inside the current named Project Root, initialize a named collection, then migrate named existing roots into it | **Full initialization — named bootstrap-and-migrate chain** | The exact current source, target collection, named migration inputs, and one final Skill consumer |
+| Clone this Skill now and explicitly stop before initializing another target | **Full initialization — bootstrap stage only** | The exact distribution checkout; validate and stop |
 | Refresh an existing Skill or repository checkout | **Update-only** | That one verified checkout; update, validate, and stop |
 | Organize, migrate, audit, or explain existing project structure | **Governance maintenance** | The exact requested path, then one of the three layers below |
 
-Do not let a distribution checkout become the target merely because it contains `SKILL.md` or `AGENTS.md`. Do not inspect an old workspace, sibling projects, all configured Agent roots, or all exported Skills unless the user explicitly put them in scope.
+Do not let a distribution checkout become the target merely because it contains `SKILL.md` or `AGENTS.md`. Do not inspect unnamed old workspaces, sibling projects, Agent roots, or exported Skills. Explicitly named migration sources are in scope; their unnamed neighbors are not.
 
 ### Full initialization
 
-A full initialization is a complete, ordered lifecycle, but its bootstrap and target stages may be separated by a fresh Agent session.
+A full initialization is one ordered lifecycle. A fresh Agent task is required only when the user selected bootstrap-only or runtime discovery is required before later work. When the user explicitly requests the whole chain and supplies every path, read the newly checked-out `SKILL.md` directly and continue in the same task.
 
-1. If the Skill is not yet available, clone the approved distribution repository into one stable source location. Treat that checkout only as a distribution source.
-2. Validate the requested Skill package from the checkout.
-3. Inspect exactly one named consumer root and one named Skill. If the consumer root is absent, give one focused creation command or ask permission to create it. Show a dry run and require explicit approval before creating a link.
-4. After link readback, stop. Tell the user to open a fresh task so the runtime can discover the new Skill. Do not initialize the eventual target in the bootstrap task.
-5. In the fresh target task, inspect only the requested target, select exactly one governance layer, create that layer's required files and directories, and clone the approved project repository into the layer's mapped Repository Root when one was supplied.
-6. Validate the resulting structure, repository mapping, and any explicitly applied link.
+1. Name every path role before writing: current bootstrap Project Root, distribution checkout, final target, existing migration sources, and one optional Agent consumer.
+2. If the Skill is not available, clone the approved distribution repository into the exact user-approved location inside the current Project Root. Prefer its mapped `src/<repository-name>/` Repository Root; do not invent a separate user-global source when the user named the destination.
+3. Validate the distribution manifest and requested Skill package, then read this file and the routed lifecycle/migration references directly from that checkout.
+4. If the request is bootstrap-only, stop after validation. Do not inspect the eventual target, siblings, consumers, or links.
+5. For an explicit end-to-end request, inspect only the target and named migration sources. Read `references/migration-guide.md`, snapshot hidden files and Git state, and state the exact create/move map. A request that already names both ends of each move is the structural-move approval; do not ask the user to choose again unless observed collision, Git risk, or workspace locking changes that map.
+6. Initialize exactly one selected governance layer at the target. Reserve incoming names rather than creating paths that will collide with the named moves.
+7. If the current task is rooted inside a directory to move, switch execution to the minimum safe parent first. If the host keeps that workspace locked, stop only for the necessary reopen-at-parent handoff; never replace an atomic move with copy-and-delete.
+8. Move each approved source as a complete directory, update current path references and indexes, and preserve historical before/after records unchanged.
+9. Only after final paths exist, scan exactly one named consumer and one named Skill. Show the final-path link or junction dry run and require explicit approval before applying it. Never link a temporary path that will be moved.
+10. Verify old paths are absent, final paths exist, Git roots/status/remotes are preserved, manifests/tests pass, indexes match disk, and any applied link resolves to the final Skill package.
 
-If the user explicitly starts at step 5 because the Skill is already loaded, do not repeat the bootstrap or link steps.
+If the Skill was already loaded before the task began, skip only the bootstrap clone/direct-load work; do not repeat it merely because full initialization was selected.
 
 ### Update-only
 

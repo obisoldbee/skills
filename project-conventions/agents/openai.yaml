@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Conventions"
-  short_description: "Separate initialization from update-only project work"
-  default_prompt: "Use $project-conventions to select the lifecycle first. For full initialization, respect the bootstrap/fresh-session boundary and then initialize exactly one Projects Workspace, Project Collection, or Project Root. For update-only, refresh and validate only the named checkout, then stop without restructuring, records, scans, or link work."
+  short_description: "Route full bootstrap/migration separately from update-only"
+  default_prompt: "Use $project-conventions to select the lifecycle first. For a named full chain, clone inside the exact current Project Root, validate and read the checked-out Skill directly, continue in the same task to initialize one named target and migrate only the named sources, and defer one scoped Skill link until its final path exists. Use a fresh-session stop only for bootstrap-only discovery. For update-only, refresh and validate only the named checkout, then stop without restructuring, records, scans, or link work."

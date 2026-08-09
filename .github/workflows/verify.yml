@@ -30,11 +30,13 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Verify manifest and portability
-        run: python -B scripts/verify_release.py .
-
-      - name: Run workspace inspector tests
-        run: python -B project-conventions/scripts/test_inspect_projects_workspace.py
+      - name: Verify root manifest and portability
+        shell: bash
+        run: |
+          python -B scripts/verify_release.py .
+          python -B scripts/verify_release.py . --rebuild-root-manifest
+          python -B scripts/verify_release.py .
+          git diff --exit-code -- ROOT-MANIFEST.sha256
 
       - name: Exercise scoped Unix link workflow
         if: runner.os != 'Windows'
@@ -53,6 +55,17 @@ jobs:
             echo "unscoped invocation unexpectedly succeeded" >&2
             exit 1
           fi
+
+          if bash scripts/link-macos.sh --target "$target" --all-skills --apply; then
+            echo "broad Skill apply unexpectedly succeeded" >&2
+            exit 1
+          fi
+
+          if bash scripts/link-macos.sh --target "$PWD/config" --skill project-conventions --apply; then
+            echo "in-repository apply unexpectedly succeeded" >&2
+            exit 1
+          fi
+          test ! -e "$PWD/config/project-conventions"
 
           set +e
           bash scripts/link-macos.sh --target "$RUNNER_TEMP/missing-skills" --skill project-conventions
@@ -96,6 +109,15 @@ jobs:
 
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script
           if ($LASTEXITCODE -eq 0) { throw 'unscoped invocation unexpectedly succeeded' }
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -AllSkills -Apply
+          if ($LASTEXITCODE -eq 0) { throw 'broad Skill apply unexpectedly succeeded' }
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target (Join-Path $PWD 'config') -Skill project-conventions -Apply
+          if ($LASTEXITCODE -eq 0) { throw 'in-repository apply unexpectedly succeeded' }
+          if (Test-Path -LiteralPath (Join-Path $PWD 'config\project-conventions')) {
+            throw 'in-repository apply wrote a path'
+          }
 
           $missing = Join-Path $env:RUNNER_TEMP 'missing-skills'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $missing -Skill project-conventions
