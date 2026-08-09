@@ -122,6 +122,7 @@ python -B "$env:USERPROFILE\AppData\Local\obisoldbee-skills\scripts\verify_relea
 ```text
 .
 ├── .github/workflows/verify.yml
+├── .gitattributes
 ├── AGENTS.md
 ├── README.md
 ├── MANIFEST.sha256
