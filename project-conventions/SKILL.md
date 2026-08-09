@@ -24,16 +24,17 @@ Do not let a distribution checkout become the target merely because it contains 
 A full initialization is one ordered lifecycle. A fresh Agent task is required only when the user selected bootstrap-only or runtime discovery is required before later work. When the user explicitly requests the whole chain and supplies every path, read the newly checked-out `SKILL.md` directly and continue in the same task.
 
 1. Name every path role before writing: current bootstrap Project Root, distribution checkout, final target, existing migration sources, and one optional Agent consumer.
-2. If the Skill is not available, clone the approved distribution repository into the exact user-approved location inside the current Project Root. Prefer its mapped `src/<repository-name>/` Repository Root; do not invent a separate user-global source when the user named the destination.
+2. If the Skill is not available, clone the approved distribution repository into the exact user-approved location inside the current Project Root. When this Project Root manages `project-conventions/` inside the `obisoldbee/skills` monorepo, use `src/` itself as the Repository Root and `src/project-conventions/` as the managed package. Do not insert a redundant `src/skills/` layer or invent a user-global source.
 3. If the checkout path already exists, verify its repository identity and Git state. Use clean fast-forward when possible. If it is clean and attached but locally ahead/diverged, normally stop; however, an explicit full-chain request may authorize preserving the current branch under a collision-free `<branch>-preserved-<short-head>` name and creating a fresh local default branch from the tracked remote default. Verify both refs before continuing. Never rebase, reset, delete, or overwrite the preserved commit.
-4. Validate the distribution manifest and requested Skill package, then read this file and the routed lifecycle/migration references directly from that checkout.
-5. If the request is bootstrap-only, stop after validation. Do not inspect the eventual target, siblings, consumers, or links.
-6. For an explicit end-to-end request, inspect only the target and named migration sources. Read `references/migration-guide.md`, snapshot hidden files and Git state, and state the exact create/move map. A request that already names both ends of each move is the structural-move approval; do not ask the user to choose again unless observed collision, Git risk, or workspace locking changes that map.
-7. Initialize exactly one selected governance layer at the target. Reserve incoming names rather than creating paths that will collide with the named moves.
-8. If the current task is rooted inside a directory to move, switch execution to the minimum safe parent first. If the host keeps that workspace locked, stop only for the necessary reopen-at-parent handoff; never replace an atomic move with copy-and-delete.
-9. Move each approved source as a complete directory, update current path references and indexes, and preserve historical before/after records unchanged.
-10. Only after final paths exist, scan exactly one named consumer and one named Skill. Show the final-path link or junction dry run and require explicit approval before applying it. Never link a temporary path that will be moved.
-11. Verify old paths are absent, final paths exist, Git roots/status/remotes are preserved, manifests/tests pass, indexes match disk, and any applied link resolves to the final Skill package.
+4. Treat `<bootstrap-root>/src/skills/` as an obsolete layout, not a valid success. Repair it only when `src/` contains exactly that one verified clean checkout: snapshot Git state, move the whole checkout to become `src/`, verify the same HEAD/remotes/status, and remove only the verified-empty staging directory. Otherwise stop on the exact collision. Never copy-and-delete or clone a second checkout.
+5. Validate the distribution manifest and require the package entry at `<bootstrap-root>/src/project-conventions/SKILL.md`, then read this file and the routed lifecycle/migration references directly from that package.
+6. If the request is bootstrap-only, stop after validation. Do not inspect the eventual target, siblings, consumers, or links.
+7. For an explicit end-to-end request, inspect only the target and named migration sources. Read `references/migration-guide.md`, snapshot hidden files and Git state, and state the exact create/move map. A request that already names both ends of each move is the structural-move approval; do not ask the user to choose again unless observed collision, Git risk, or workspace locking changes that map.
+8. Initialize exactly one selected governance layer at the target. For a Project Collection, use `scripts/initialize_project_collection.py --apply` as the first bounded write, reserve incoming names, immediately read back its three root files, and report that checkpoint before deeper inventory or migration. Do not spend an unbounded preflight recursively scanning repository contents.
+9. If the current task is rooted inside a directory to move, switch execution to the minimum safe parent first. If the host keeps that workspace locked, stop only for the necessary reopen-at-parent handoff; never replace an atomic move with copy-and-delete.
+10. Move each approved source as a complete directory, update current path references and indexes, and preserve historical before/after records unchanged.
+11. Only after final paths exist, scan exactly one named consumer and one named Skill. Show the final-path link or junction dry run and require explicit approval before applying it. Never link a temporary path that will be moved.
+12. Verify old paths are absent, final paths exist, Git roots/status/remotes are preserved, manifests/tests pass, indexes match disk, and any applied link resolves to the final Skill package.
 
 If the Skill was already loaded before the task began, skip only the bootstrap clone/direct-load work; do not repeat it merely because full initialization was selected.
 
@@ -190,6 +191,8 @@ A successful run:
 - does not create another layer's structure;
 - keeps each Project Root's content and source inside that Project Root;
 - records one clear repository mapping for each Git-backed Project Root;
+- places the bootstrapped package at `src/project-conventions/SKILL.md`, never `src/skills/project-conventions/SKILL.md`;
+- creates and reads back the Project Collection root overlay before any long migration inventory;
 - preserves existing files and Git history;
 - distinguishes proposed from executed actions;
 - validates authorized changes before reporting completion.

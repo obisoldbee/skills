@@ -23,11 +23,11 @@ project-conventions/
 └── scripts/
 ```
 
-The package includes a read-only Projects Workspace inspector and deterministic tests. It provides execution rules but does not perform work merely by being installed.
+The package includes a read-only Projects Workspace inspector, a fail-closed Project Collection initializer, and deterministic tests. It provides execution rules but does not perform work merely by being installed.
 
 ## Install
 
-When using this package from the `obisoldbee/skills` repository, follow the repository root README. For clone-only, validate and stop. For an explicitly named complete chain, clone under the current Project Root, or preserve an explicitly authorized clean local-ahead branch before restoring the checkout to fresh remote main; then read the checked-out `SKILL.md` directly, initialize and migrate the named paths in the same task, and defer consumer linking until the final source path exists. A fresh task is needed only when bootstrap stops for later runtime discovery.
+When using this package from the `obisoldbee/skills` repository, follow the repository root README. For a `project-conventions` wrapper, clone the repository directly as `src/`; the package entry must therefore be `src/project-conventions/SKILL.md`, never `src/skills/project-conventions/SKILL.md`. For clone-only, validate and stop. For an explicitly named complete chain, initialize the target with `scripts/initialize_project_collection.py`, read back its three root files, migrate only the named paths, and defer consumer linking until the final source path exists. A fresh task is needed only when bootstrap stops for later runtime discovery.
 
 You may also copy this directory as a complete unit into a Skill root supported by your agent. Keep `SKILL.md`, `agents/`, `references/`, and `scripts/` together.
 
