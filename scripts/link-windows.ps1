@@ -1,49 +1,175 @@
-# link-windows.ps1
-# 把本 monorepo 里所有含 SKILL.md 的 skill 子目录，逐个建 junction 到各 agent 的 skills 目录。
-# 用法：在 Windows PowerShell 里运行  .\scripts\link-windows.ps1
-# 依赖：无需管理员（mklink /J 目录联接免管理员）
-# 自动发现：遍历仓库根下所有目录，含 SKILL.md 的即为 skill，无需手动列名字。
+param(
+    [switch]$Apply,
+    [string]$Agent,
+    [string]$Target,
+    [string]$Skill
+)
+
+# Scan or explicitly create Skill junctions from this checkout on Windows.
+# Default is read-only. No target parent or conflicting path is changed.
 
 $ErrorActionPreference = 'Stop'
 
-# 仓库根 = 本脚本所在 scripts/ 的上一级
-$repo = Resolve-Path (Join-Path $PSScriptRoot '..')
-
-# 目标 agent 的 skills 目录（按需增删；每个 agent 一个）
-$targets = @(
-    "$env:USERPROFILE\.workbuddy\skills"   # WorkBuddy
-    # "$env:USERPROFILE\.claude\skills"    # Claude Code（取消注释启用）
-)
-
-# 自动发现所有 skill（含 SKILL.md 的顶层目录）
-$skills = Get-ChildItem -Path $repo -Directory |
-    Where-Object { Test-Path (Join-Path $_.FullName 'SKILL.md') }
-
-if ($skills.Count -eq 0) {
-    Write-Host "未在 $repo 下发现任何 skill（需含 SKILL.md）" -ForegroundColor Yellow
-    exit 0
+if ($Agent -and $Target) {
+    throw 'choose-agent-or-target'
+}
+if ($Apply -and -not $Agent -and -not $Target) {
+    throw 'apply-requires-agent-or-target'
+}
+if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
+    throw "invalid-agent: $Agent"
+}
+if ($Skill -and $Skill -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
+    throw "invalid-skill: $Skill"
 }
 
-foreach ($t in $targets) {
-    if (-not (Test-Path $t)) {
-        Write-Host "创建目标目录: $t"
-        New-Item -ItemType Directory -Path $t -Force | Out-Null
+$ScriptDir = $PSScriptRoot
+$RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
+$ExportsFile = Join-Path $RepoRoot 'config\skill-exports.tsv'
+$TargetsFile = Join-Path $RepoRoot 'config\agent-paths.tsv'
+
+if (-not (Test-Path -LiteralPath $ExportsFile -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $TargetsFile -PathType Leaf)) {
+    throw "config-missing: $RepoRoot\config"
+}
+
+$Targets = @()
+if ($Target) {
+    if (-not [IO.Path]::IsPathRooted($Target)) {
+        throw "target-must-be-absolute: $Target"
     }
-    foreach ($s in $skills) {
-        $link = Join-Path $t $s.Name
-        if (Test-Path $link) {
-            $existing = Get-Item $link
-            if ($existing.Target -eq $s.FullName) {
-                Write-Host "skip   $link (已指向正确)" -ForegroundColor Gray
+    $Targets = @(
+        [PSCustomObject]@{
+            agent = '__override__'
+            path = $Target
+        }
+    )
+} else {
+    $Targets = @(
+        Import-Csv -LiteralPath $TargetsFile -Delimiter "`t" |
+            Where-Object {
+                $_.platform -eq 'windows' -and (-not $Agent -or $_.agent -eq $Agent)
+            } |
+            ForEach-Object {
+                [PSCustomObject]@{
+                    agent = $_.agent
+                    path = $_.path.Replace('%USERPROFILE%', $env:USERPROFILE)
+                }
+            }
+    )
+}
+
+if ($Targets.Count -eq 0) {
+    throw "agent-not-configured: $Agent"
+}
+
+$Exports = @(Import-Csv -LiteralPath $ExportsFile -Delimiter "`t")
+if ($Skill -and $Skill -notin @($Exports.skill_name)) {
+    throw "skill-not-exported: $Skill"
+}
+
+$Mode = if ($Apply) { 'apply' } else { 'scan' }
+Write-Host "mode=$Mode repository=$RepoRoot"
+
+$Checked = 0
+$WouldLink = 0
+$Linked = 0
+$Conflicts = 0
+$MissingParents = 0
+
+foreach ($TargetEntry in $Targets) {
+    $TargetAgent = $TargetEntry.agent
+    $TargetPath = $TargetEntry.path
+    if (-not (Test-Path -LiteralPath $TargetPath -PathType Container)) {
+        Write-Host "target-parent-missing $TargetAgent $TargetPath"
+        $MissingParents++
+        continue
+    }
+
+    foreach ($Export in $Exports) {
+        $SkillName = $Export.skill_name
+        $SourceRelative = $Export.source
+        $Consumers = if ($Export.consumers) { $Export.consumers } else { 'all' }
+        if ($Skill -and $SkillName -ne $Skill) {
+            continue
+        }
+        if ($TargetAgent -ne '__override__' -and $Consumers -ne 'all') {
+            $ConsumerSet = @($Consumers.Split(',') | ForEach-Object { $_.Trim() })
+            if ($TargetAgent -notin $ConsumerSet) {
                 continue
             }
-            Write-Host "remove $link (旧/错误指向)" -ForegroundColor Yellow
-            Remove-Item -LiteralPath $link -Recurse -Force
         }
-        cmd /c "mklink /J `"$link`" `"$($s.FullName)`"" | Out-Null
-        Write-Host "linked $link -> $($s.FullName)" -ForegroundColor Green
+        if ($SkillName -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
+            Write-Host "skill-name-invalid $SkillName"
+            $Conflicts++
+            continue
+        }
+        if ([IO.Path]::IsPathRooted($SourceRelative) -or
+            $SourceRelative.Split([IO.Path]::DirectorySeparatorChar) -contains '..' -or
+            $SourceRelative.Split('/') -contains '..') {
+            Write-Host "source-config-invalid $SkillName $SourceRelative"
+            $Conflicts++
+            continue
+        }
+
+        $SourceCandidate = Join-Path $RepoRoot $SourceRelative
+        if (-not (Test-Path -LiteralPath (Join-Path $SourceCandidate 'SKILL.md') -PathType Leaf)) {
+            Write-Host "source-invalid $SkillName $SourceCandidate"
+            $Conflicts++
+            continue
+        }
+        $Source = (Resolve-Path -LiteralPath $SourceCandidate).Path
+        if (-not $Source.StartsWith($RepoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "source-outside-repository $SkillName $Source"
+            $Conflicts++
+            continue
+        }
+
+        $Destination = Join-Path $TargetPath $SkillName
+        $Checked++
+        $Existing = Get-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+        if ($null -ne $Existing) {
+            $IsReparse = [bool]($Existing.Attributes -band [IO.FileAttributes]::ReparsePoint)
+            if ($IsReparse) {
+                $RawTarget = @($Existing.Target)[0]
+                if ($RawTarget) {
+                    if ([IO.Path]::IsPathRooted($RawTarget)) {
+                        $ResolvedTarget = [IO.Path]::GetFullPath($RawTarget)
+                    } else {
+                        $ResolvedTarget = [IO.Path]::GetFullPath((Join-Path $TargetPath $RawTarget))
+                    }
+                } else {
+                    $ResolvedTarget = ''
+                }
+                if ($ResolvedTarget -eq $Source -and (Test-Path -LiteralPath $Destination)) {
+                    Write-Host "healthy-link $Destination -> $Source"
+                } elseif (-not (Test-Path -LiteralPath $Destination)) {
+                    Write-Host "dangling-link-conflict $Destination -> $RawTarget"
+                    $Conflicts++
+                } else {
+                    Write-Host "wrong-link-conflict $Destination -> $RawTarget"
+                    $Conflicts++
+                }
+            } else {
+                Write-Host "real-path-conflict $Destination"
+                $Conflicts++
+            }
+            continue
+        }
+
+        Write-Host "would-link $Destination -> $Source"
+        $WouldLink++
+        if ($Apply) {
+            New-Item -ItemType Junction -Path $Destination -Target $Source | Out-Null
+            $Created = Get-Item -LiteralPath $Destination -Force
+            if ([bool]($Created.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                Write-Host "linked $Destination -> $Source"
+                $Linked++
+            } else {
+                throw "apply-verification-failed: $Destination"
+            }
+        }
     }
 }
 
-Write-Host "`n完成。共链接 $($skills.Count) 个 skill 到 $($targets.Count) 个 agent 目录。" -ForegroundColor Cyan
-Write-Host "提示：改完 skill 内容后，WorkBuddy 需重启才会重新加载；git 同步见 README。"
+Write-Host "summary checked=$Checked would_link=$WouldLink linked=$Linked conflicts=$Conflicts missing_parents=$MissingParents"

@@ -1,48 +1,40 @@
 # project-conventions
 
-项目工作区布局 / 文件命名 / 多 agent 协作规范。
+`project-conventions` helps agents distinguish and maintain three filesystem-governance layers:
 
-> 本 skill 是 **`obisoldbee/skills` monorepo** 的一部分（子目录 `project-conventions/`）。
-> 单独维护、单独加载，但和其他 skill 共享同一个 git 仓库同步。
+- a **Projects Workspace** that indexes independent local projects;
+- a **Project Collection** that groups related Project Roots;
+- a **Project Root** that owns one project's source, documents, decisions, and memory.
 
-## 这是什么
+It is designed for requests such as project initialization, directory migration, repository mapping, collection maintenance, document placement, and file naming.
 
-一套规范，用来标准化一个项目工作区的目录结构（`AGENTS.md` / `docs/` / `memory/` / `conversation/`）和文件命名，以及 fork 工作流（clone 上游到 `src/<repo-name>/`，配置 origin/upstream，提 PR）。适用于启动新项目、写文档（spec/plan/review/research/report）、记录决策、管理版本化提交、fork 别人仓库。
+## Package contents
 
-## 作为 monorepo 子目录的安装
+```text
+project-conventions/
+├── SKILL.md
+├── agents/
+├── references/
+└── scripts/
+```
 
-**不要用 `git clone` 单独拉这个目录**——它属于上面的 monorepo。正确做法：
+The package includes a read-only Projects Workspace inspector and deterministic tests. It does not initialize Git, move projects, create links, or publish anything by itself.
+
+## Install
+
+When using this package from the `obisoldbee/skills` repository, follow the repository root README and run the link script in scan mode before applying a link.
+
+You may also copy this directory as a complete unit into a Skill root supported by your agent. Keep `SKILL.md`, `agents/`, `references/`, and `scripts/` together.
+
+## Validate
+
+From this directory:
 
 ```bash
-# 在任意设备 clone 整个 monorepo（一次拿全部 skill）
-git clone https://github.com/obisoldbee/skills.git ~/proj/skills
-
-# 跑软链脚本，自动把 project-conventions 等所有 skill 链到 agent skills 目录
-# Windows:
-pwsh ~/proj/skills/scripts/link-windows.ps1
-# macOS / Linux:
-bash ~/proj/skills/scripts/link-macos.sh
+python3 -B scripts/test_inspect_projects_workspace.py
 ```
 
-脚本会在 `~/.workbuddy/skills/project-conventions` 建一个**目录联接/符号链接**，直接指向
-`~/proj/skills/project-conventions/`。之后你改真源、保存，重启 WorkBuddy 即加载最新版。
+The `-B` flag prevents validation itself from writing `__pycache__` into the publishable package.
 
-## 仓库结构（本 skill 包）
+Skill discovery and successful test execution are separate states. After installing or linking the package, start a fresh agent session and verify discovery there.
 
-```
-project-conventions/
-├── SKILL.md            # 规范定义，agent 加载入口
-├── references/         # 7 个参考文件（目录布局 / fork 流程 / 命名等）
-└── README.md           # 本文件
-```
-
-## 同步
-
-- 改完内容 → 在 monorepo 根 `git commit && git push`
-- 其他设备 `git pull` → 软链指向同一 checkout，自动最新
-- 详见 monorepo 根 `README.md`
-
-## 消费者向笔记
-
-- 仓库根 = skill 包，clone 即用（符合 Agent Skills 开放标准）。
-- `.git` / `README.md` / `.gitignore` 在 skill 目录里无害，agent 只读 `SKILL.md` + `references/`。

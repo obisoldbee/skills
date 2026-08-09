@@ -1,48 +1,224 @@
 #!/usr/bin/env bash
-# link-macos.sh
-# 把本 monorepo 里所有含 SKILL.md 的 skill 子目录，逐个建 symlink 到各 agent 的 skills 目录。
-# 用法：在 macOS/Linux 终端运行  bash scripts/link-macos.sh
-# 依赖：用户目录内 ln -s 一般无需特殊权限
-# 自动发现：遍历仓库根下所有目录，含 SKILL.md 的即为 skill，无需手动列名字。
+# Scan or explicitly create Skill symlinks from this checkout on macOS/Linux.
+# Default is read-only. The script never creates target parents or replaces paths.
 
 set -euo pipefail
 
-# 仓库根 = 本脚本所在 scripts/ 的上一级
-repo="$(cd "$(dirname "$0")/.." && pwd)"
+apply=0
+agent_filter=""
+target_override=""
+skill_filter=""
 
-# 目标 agent 的 skills 目录（按需增删；每个 agent 一个）
-targets=(
-  "$HOME/.workbuddy/skills"   # WorkBuddy
-  # "$HOME/.claude/skills"    # Claude Code（取消注释启用）
-)
+usage() {
+  echo "usage: $0 [--apply] [--agent agent-id | --target /absolute/existing/skills-dir] [--skill skill-name]"
+}
 
-# 自动发现所有 skill（含 SKILL.md 的顶层目录）
-mapfile -t skills < <(find "$repo" -maxdepth 1 -mindepth 1 -type d -exec test -f "{}/SKILL.md" \; -print)
-
-if [ "${#skills[@]}" -eq 0 ]; then
-  echo "未在 $repo 下发现任何 skill（需含 SKILL.md）" >&2
-  exit 0
-fi
-
-for t in "${targets[@]}"; do
-  mkdir -p "$t"
-  for d in "${skills[@]}"; do
-    name="$(basename "$d")"
-    link="$t/$name"
-    real="$(cd "$d" && pwd)"
-    if [ -L "$link" ]; then
-      cur="$(readlink "$link")"
-      if [ "$cur" = "$real" ]; then
-        echo "skip   $link (已指向正确)"
-        continue
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --apply)
+      apply=1
+      ;;
+    --agent)
+      shift
+      if [ "$#" -eq 0 ]; then
+        usage >&2
+        exit 2
       fi
-    fi
-    [ -e "$link" ] && rm -rf "$link"
-    ln -s "$real" "$link"
-    echo "linked $link -> $real"
-  done
+      agent_filter="$1"
+      ;;
+    --target)
+      shift
+      if [ "$#" -eq 0 ]; then
+        usage >&2
+        exit 2
+      fi
+      target_override="$1"
+      ;;
+    --skill)
+      shift
+      if [ "$#" -eq 0 ]; then
+        usage >&2
+        exit 2
+      fi
+      skill_filter="$1"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
 done
 
-echo ""
-echo "完成。共链接 ${#skills[@]} 个 skill 到 ${#targets[@]} 个 agent 目录。"
-echo "提示：改完 skill 内容后，对应 agent 需重启才会重新加载；git 同步见 README。"
+if [ -n "$agent_filter" ] && [ -n "$target_override" ]; then
+  echo "error choose-agent-or-target" >&2
+  exit 2
+fi
+if [ "$apply" -eq 1 ] && [ -z "$agent_filter" ] && [ -z "$target_override" ]; then
+  echo "error apply-requires-agent-or-target" >&2
+  exit 2
+fi
+if [ -n "$agent_filter" ] && ! [[ "$agent_filter" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+  echo "error invalid-agent: $agent_filter" >&2
+  exit 2
+fi
+if [ -n "$skill_filter" ] && ! [[ "$skill_filter" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+  echo "error invalid-skill: $skill_filter" >&2
+  exit 2
+fi
+
+script_dir="$(cd "$(dirname "$0")" && pwd -P)"
+repo_root="$(cd "$script_dir/.." && pwd -P)"
+exports_file="$repo_root/config/skill-exports.tsv"
+targets_file="$repo_root/config/agent-paths.tsv"
+
+if [ ! -f "$exports_file" ] || [ ! -f "$targets_file" ]; then
+  echo "error config-missing: $repo_root/config" >&2
+  exit 2
+fi
+
+if [ -n "$skill_filter" ]; then
+  skill_configured=0
+  while IFS="$(printf '\t')" read -r configured_name _; do
+    [ "$configured_name" = "$skill_filter" ] && skill_configured=1
+  done < "$exports_file"
+  if [ "$skill_configured" -eq 0 ]; then
+    echo "error skill-not-exported: $skill_filter" >&2
+    exit 2
+  fi
+fi
+
+target_agents=()
+target_paths=()
+if [ -n "$target_override" ]; then
+  case "$target_override" in
+    /*) ;;
+    *)
+      echo "error target-must-be-absolute: $target_override" >&2
+      exit 2
+      ;;
+  esac
+  target_agents+=("__override__")
+  target_paths+=("$target_override")
+else
+  while IFS="$(printf '\t')" read -r platform agent raw_path; do
+    [ "$platform" = "platform" ] && continue
+    [ "$platform" = "unix" ] || continue
+    [ -n "$agent_filter" ] && [ "$agent" != "$agent_filter" ] && continue
+    case "$raw_path" in
+      "~/"*) target="$HOME/${raw_path#\~/}" ;;
+      /*) target="$raw_path" ;;
+      *)
+        echo "error invalid-target-config: $agent $raw_path" >&2
+        exit 2
+        ;;
+    esac
+    target_agents+=("$agent")
+    target_paths+=("$target")
+  done < "$targets_file"
+fi
+
+if [ "${#target_paths[@]}" -eq 0 ]; then
+  echo "error agent-not-configured: $agent_filter" >&2
+  exit 2
+fi
+
+mode="scan"
+[ "$apply" -eq 1 ] && mode="apply"
+echo "mode=$mode repository=$repo_root"
+
+checked=0
+would_link=0
+linked=0
+conflicts=0
+missing_parents=0
+
+for target_index in "${!target_paths[@]}"; do
+  target_agent="${target_agents[$target_index]}"
+  target="${target_paths[$target_index]}"
+  if [ ! -d "$target" ]; then
+    echo "target-parent-missing $target_agent $target"
+    missing_parents=$((missing_parents + 1))
+    continue
+  fi
+
+  while IFS="$(printf '\t')" read -r skill_name source_rel consumers; do
+    [ "$skill_name" = "skill_name" ] && continue
+    [ -z "$skill_name" ] && continue
+    [ -n "$skill_filter" ] && [ "$skill_name" != "$skill_filter" ] && continue
+    [ -z "$consumers" ] && consumers="all"
+    if [ "$target_agent" != "__override__" ] && [ "$consumers" != "all" ]; then
+      case ",$consumers," in
+        *",$target_agent,"*) ;;
+        *) continue ;;
+      esac
+    fi
+    if ! [[ "$skill_name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+      echo "skill-name-invalid $skill_name"
+      conflicts=$((conflicts + 1))
+      continue
+    fi
+    case "$source_rel" in
+      /*|*".."*)
+        echo "source-config-invalid $skill_name $source_rel"
+        conflicts=$((conflicts + 1))
+        continue
+        ;;
+    esac
+    source_candidate="$repo_root/$source_rel"
+    if [ ! -d "$source_candidate" ] || [ ! -f "$source_candidate/SKILL.md" ]; then
+      echo "source-invalid $skill_name $source_candidate"
+      conflicts=$((conflicts + 1))
+      continue
+    fi
+    source="$(cd "$source_candidate" && pwd -P)"
+    case "$source" in
+      "$repo_root"/*) ;;
+      *)
+        echo "source-outside-repository $skill_name $source"
+        conflicts=$((conflicts + 1))
+        continue
+        ;;
+    esac
+
+    destination="$target/$skill_name"
+    checked=$((checked + 1))
+    if [ -L "$destination" ]; then
+      current="$(readlink "$destination")"
+      if [ "$current" = "$source" ] && [ -e "$destination" ]; then
+        echo "healthy-link $destination -> $source"
+      elif [ ! -e "$destination" ]; then
+        echo "dangling-link-conflict $destination -> $current"
+        conflicts=$((conflicts + 1))
+      else
+        echo "wrong-link-conflict $destination -> $current"
+        conflicts=$((conflicts + 1))
+      fi
+      continue
+    fi
+    if [ -e "$destination" ]; then
+      echo "real-path-conflict $destination"
+      conflicts=$((conflicts + 1))
+      continue
+    fi
+
+    echo "would-link $destination -> $source"
+    would_link=$((would_link + 1))
+    if [ "$apply" -eq 1 ]; then
+      ln -s "$source" "$destination"
+      if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source" ]; then
+        echo "linked $destination -> $source"
+        linked=$((linked + 1))
+      else
+        echo "apply-verification-failed $destination" >&2
+        exit 3
+      fi
+    fi
+  done < "$exports_file"
+done
+
+echo "summary checked=$checked would_link=$would_link linked=$linked conflicts=$conflicts missing_parents=$missing_parents"
