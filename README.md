@@ -8,7 +8,7 @@
 
 | 目的 | 正确流程 | 停止边界 |
 |---|---|---|
-| 当前目录内先取得最新版 Skill，再初始化目标并迁移指定旧目录 | 在当前 Project Root 的 `src/` 内 clone → 校验并直接读取 Skill → 初始化目标 → 原子迁移指定目录 → 最终路径校验 → 再询问链接 | 整条链路验证完成，或遇到真实碰撞/工作区锁 |
+| 当前目录内先取得最新版 Skill，再初始化目标并迁移指定旧目录 | 在当前 Project Root 的 `src/` 内 clone → 校验并直接读取 Skill → 初始化目标 → 原子迁移指定目录；若没有旧 `skills/`，运行完整控制项目初始化器 → 最终路径校验 → 再询问链接 | 整条链路验证完成，或遇到真实碰撞/工作区锁 |
 | 只克隆最新版 Skill | clone 到用户给定位置 → 校验 | 校验后立即停止，不看最终目标、兄弟目录或链接 |
 | 只更新已有 Skill 版本 | 在现有 checkout 中仅做 fast-forward 更新 → 校验 | 校验后立即停止，不触发目录治理或链接工作 |
 
@@ -129,6 +129,23 @@ Get-Item (Join-Path $TargetCollection 'AGENTS.md'), `
 
 迁移后，更新 collection 路由文件、成员索引和当前路径引用，并验证旧路径消失、最终路径存在、两个目录的隐藏文件与 Git 状态未变。历史迁移记录中的旧路径保留。
 
+如果磁盘上根本没有要迁入的旧 `$LegacyControl`，不要临场手写一个只有 `README.md` 和 `src\config` 的缩水版。应先确保最终 member checkout 已位于 `$TargetCollection\project-conventions\src`、处于 clean `main`、跟踪并等于 `origin/main`，然后使用最新版包内的第二个确定性初始化器：
+
+```powershell
+$FinalRepositoryRoot = Join-Path $TargetCollection 'project-conventions\src'
+$FinalPackageRoot = Join-Path $FinalRepositoryRoot 'project-conventions'
+$ControlInitializer = Join-Path $FinalPackageRoot 'scripts\initialize_skills_control_project.py'
+
+python -B $ControlInitializer $TargetCollection `
+  --distribution-root $FinalRepositoryRoot
+python -B $ControlInitializer $TargetCollection `
+  --distribution-root $FinalRepositoryRoot `
+  --apply
+python -B (Join-Path $TargetCollection 'skills\src\tests\test_public_root_overlay.py')
+```
+
+dry-run 会先列出完整写入集合；apply 会创建与本地标准同层级的 portable 控制项目：`docs/`、`conversation/`、`memory/`、`release/`、`runtime/`，以及 `src/README.md`、`src/config/`、`src/public-repo/`、`src/scripts/`、`src/tests/`。它不会复制另一台设备的历史记录或生成物，不创建 Git，不创建 junction，并会从最终 Git checkout 回读后再写 canonical member index 与根 `MEMBERS.md`。
+
 #### 3. 最后才处理 Skill junction
 
 最终 checkout 与 Skill 包路径是：
@@ -223,7 +240,8 @@ python -B (Join-Path $RepositoryRoot 'scripts\verify_release.py') $RepositoryRoo
     ├── SKILL.md
     ├── agents/
     ├── references/
-    └── scripts/
+    ├── scripts/
+    └── assets/skills-control/
 ```
 
 `ROOT-MANIFEST.sha256` 只覆盖仓库根目录管理项目拥有的文件，不列入或校验任何成员 Skill 包。CI 会在 macOS、Linux 和 Windows 上校验根文件，并实际执行平台链接脚本的 scoped scan/apply/readback；成员包内容由各自 Project Root 独立维护。

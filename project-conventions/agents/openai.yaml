@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Conventions"
-  short_description: "Initialize exact project paths without redundant checkout layers"
-  default_prompt: "Use $project-conventions to select the lifecycle first. For a named full chain that bootstraps project-conventions from obisoldbee/skills, map the monorepo Repository Root directly to the current Project Root's src/ and require the package at src/project-conventions/SKILL.md; reject or safely flatten the obsolete src/skills nesting, and preserve an explicitly authorized clean local-ahead branch. Read the checked-out Skill and continue the same task. Initialize one named Project Collection with the deterministic three-file initializer, read it back immediately, migrate only the named sources, and defer one scoped Skill link until its final path exists. For update-only, refresh and validate only the named checkout, then stop without restructuring, records, scans, or link work."
+  short_description: "Initialize exact paths with strict lifecycle boundaries"
+  default_prompt: "Use $project-conventions to select full initialization or update-only, initialize only the named target, run initialize_skills_control_project.py when no control project exists, and stop updates after validating the exact checkout."

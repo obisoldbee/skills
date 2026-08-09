@@ -33,8 +33,9 @@ A full initialization is one ordered lifecycle. A fresh Agent task is required o
 8. Initialize exactly one selected governance layer at the target. For a Project Collection, use `scripts/initialize_project_collection.py --apply` as the first bounded write, reserve incoming names, immediately read back its three root files, and report that checkpoint before deeper inventory or migration. Do not spend an unbounded preflight recursively scanning repository contents.
 9. If the current task is rooted inside a directory to move, switch execution to the minimum safe parent first. If the host keeps that workspace locked, stop only for the necessary reopen-at-parent handoff; never replace an atomic move with copy-and-delete.
 10. Move each approved source as a complete directory, update current path references and indexes, and preserve historical before/after records unchanged.
-11. Only after final paths exist, scan exactly one named consumer and one named Skill. Show the final-path link or junction dry run and require explicit approval before applying it. Never link a temporary path that will be moved.
-12. Verify old paths are absent, final paths exist, Git roots/status/remotes are preserved, manifests/tests pass, indexes match disk, and any applied link resolves to the final Skill package.
+11. If an approved collection-control Project Root already exists, move it whole and preserve its deterministic assets. If no control project exists for a fresh Skills collection, wait until the named member checkout is at its final path, then run `scripts/initialize_skills_control_project.py` first as a dry run and then with `--apply`. It creates the complete portable control shape, canonical index, root mirror, collection-aware link tools, public-root source, and tests without creating links or Git roots. **Do not handwrite a reduced control project** containing only `README.md` and `src/config/`.
+12. Only after final paths exist, scan exactly one named consumer and one named Skill. Show the final-path link or junction dry run and require explicit approval before applying it. Never link a temporary path that will be moved.
+13. Verify old paths are absent, final paths exist, Git roots/status/remotes are preserved, manifests/tests pass, indexes match disk, and any applied link resolves to the final Skill package.
 
 If the Skill was already loaded before the task began, skip only the bootstrap clone/direct-load work; do not repeat it merely because full initialization was selected.
 
@@ -105,7 +106,7 @@ Read `references/project-collection.md` completely.
 5. Do not copy member source into the control project's `src/`.
 6. Expose a generated/readable member view at collection root when useful.
 
-For a Skills collection, the control project may own an explicit Skill-export allowlist and safe link scripts. Linking remains a separate, explicitly approved action.
+For a Skills collection, the control project may own an explicit Skill-export allowlist and safe link scripts. A fresh control project must be created with `scripts/initialize_skills_control_project.py`, which materializes `src/config/`, `src/public-repo/`, `src/scripts/`, and `src/tests/`; do not improvise a smaller substitute. Linking remains a separate, explicitly approved action.
 
 ## Project Root mode
 
@@ -193,6 +194,7 @@ A successful run:
 - records one clear repository mapping for each Git-backed Project Root;
 - places the bootstrapped package at `src/project-conventions/SKILL.md`, never `src/skills/project-conventions/SKILL.md`;
 - creates and reads back the Project Collection root overlay before any long migration inventory;
+- moves an existing control Project Root whole or uses `initialize_skills_control_project.py` to create the complete portable control shape when none exists;
 - preserves existing files and Git history;
 - distinguishes proposed from executed actions;
 - validates authorized changes before reporting completion.
