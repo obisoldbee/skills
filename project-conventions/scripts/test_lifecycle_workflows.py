@@ -236,6 +236,9 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.assertEqual({path.name for path in target.iterdir()}, {"keep.txt"})
 
     def test_fresh_skills_control_project_is_complete_and_deterministic(self) -> None:
+        if not (self.distribution_root / "ROOT-MANIFEST.sha256").is_file():
+            self.skipTest("requires a complete distribution checkout")
+
         def git(*arguments: str, cwd: Path) -> str:
             result = subprocess.run(
                 ["git", *arguments],
