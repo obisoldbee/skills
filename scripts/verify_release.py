@@ -40,6 +40,7 @@ FORBIDDEN_NAMES = {".DS_Store", "__pycache__"}
 FORBIDDEN_SUFFIXES = {".pyc", ".pyo"}
 FORBIDDEN_MARKERS = {
     b"/" + b"Users/": "personal-macos-path",
+    b"C:" + b"\\Users\\": "personal-windows-path",
     b"file" + b"://": "local-file-uri",
     b"192" + b".168.": "private-network-address",
     b"BEGIN OPENSSH " + b"PRIVATE KEY": "private-key",

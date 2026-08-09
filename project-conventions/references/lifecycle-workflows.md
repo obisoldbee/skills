@@ -45,7 +45,7 @@ Run this stage in a fresh task after bootstrap-only discovery, immediately when 
 5. For a Project Collection, run the package's deterministic initializer as the first write, with the incoming member names reserved. Immediately read back `AGENTS.md`, `README.md`, and `MEMBERS.md` and report the checkpoint. The command must not create the reserved member directories. Continue with deeper migration inventory only after this checkpoint.
 6. If the running task is rooted inside a source to move, change execution to the minimum safe parent before the move. If the host keeps the workspace locked, stop only for a reopen-at-parent handoff and resume from the recorded move map. Do not emulate an atomic directory move with copy-and-delete.
 7. Move every approved source directory as a whole. Preserve hidden entries, Git metadata, worktree state, and file counts.
-8. Update current source mappings, active references, collection indexes, and generated views from observed disk state. Keep historical narrative and migration before/after records unchanged.
+8. Update current source mappings, active references, collection indexes, and generated views from observed disk state. Keep historical narrative and migration before/after records unchanged. If an existing collection-control Project Root was named, move it whole. If none exists for a fresh Skills collection, create the complete portable control project with `scripts/initialize_skills_control_project.py` only after the member checkout reaches its final path. Do not handwrite a reduced control project with only wrapper files or `src/config/`.
 9. After the final Skill source path exists, scan one named Agent consumer and one named Skill. Show the exact final-path link or junction, apply only with explicit approval, and read it back from disk.
 10. Verify old paths are absent, final paths exist, repository identity/status is unchanged, package/manifest/tests pass, indexes match disk, and any applied link resolves to the final package.
 
@@ -109,6 +109,25 @@ The final package source is:
 ```text
 <project-parent>\obisoldbee-skills\project-conventions\src\project-conventions
 ```
+
+### Fresh control project when no legacy `skills/` exists
+
+The two-source move above is correct only when the named legacy control Project Root actually exists. If the user instead requested a fresh collection and no incoming `skills/` Project Root exists, do not invent a minimal replacement. After the final `project-conventions` checkout is on clean `main` tracking `origin/main`, run the deterministic control initializer from that checkout:
+
+```powershell
+$FinalRepositoryRoot = Join-Path $TargetCollection 'project-conventions\src'
+$FinalPackageRoot = Join-Path $FinalRepositoryRoot 'project-conventions'
+$ControlInitializer = Join-Path $FinalPackageRoot 'scripts\initialize_skills_control_project.py'
+
+python -B $ControlInitializer $TargetCollection `
+  --distribution-root $FinalRepositoryRoot
+python -B $ControlInitializer $TargetCollection `
+  --distribution-root $FinalRepositoryRoot `
+  --apply
+python -B (Join-Path $TargetCollection 'skills\src\tests\test_public_root_overlay.py')
+```
+
+The dry run must name every file and directory before apply. Apply creates the complete portable `skills/` Project Root, including `docs/`, `conversation/`, `memory/`, `release/`, `runtime/`, and the exact `src/` children `config/`, `public-repo/`, `scripts/`, and `tests/`. It copies no member source, creates no Git root, creates no link, and finalizes the collection root index from the verified member checkout. **Do not handwrite a reduced control project.** Device histories and generated release/runtime contents remain empty on a new computer; structural parity does not mean copying another device's records.
 
 Only after both moves and final-path validation may a consumer junction be proposed for that package. If the Repository Root already exists at `$RepositoryRoot`, verify and safely fast-forward that exact checkout instead of cloning a duplicate. For a known clean local-ahead/diverged default branch, continue only when the user's full-chain request explicitly authorizes the preserved-branch recovery above; otherwise stop without changing refs.
 

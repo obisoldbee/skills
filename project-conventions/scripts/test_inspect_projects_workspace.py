@@ -610,6 +610,7 @@ class InspectorCollectionTests(unittest.TestCase):
             ".yml",
         }
         personal_home_marker = "/" + "Users" + "/"
+        personal_windows_marker = "C:" + "\\Users\\"
         local_uri_marker = "file" + "://"
         violations: list[str] = []
         for path in package_root.rglob("*"):
@@ -619,7 +620,11 @@ class InspectorCollectionTests(unittest.TestCase):
                 continue
             if path.is_file() and path.suffix in text_suffixes:
                 content = path.read_text(encoding="utf-8")
-                if personal_home_marker in content or local_uri_marker in content:
+                if (
+                    personal_home_marker in content
+                    or personal_windows_marker in content
+                    or local_uri_marker in content
+                ):
                     violations.append(relative)
         self.assertEqual(violations, [])
 

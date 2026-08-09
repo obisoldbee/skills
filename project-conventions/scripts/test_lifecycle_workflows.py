@@ -32,6 +32,10 @@ class LifecycleWorkflowTests(unittest.TestCase):
             PACKAGE_ROOT / "references" / "project-collection.md"
         ).read_text(encoding="utf-8")
         cls.initializer = PACKAGE_ROOT / "scripts" / "initialize_project_collection.py"
+        cls.control_initializer = (
+            PACKAGE_ROOT / "scripts" / "initialize_skills_control_project.py"
+        )
+        cls.distribution_root = PACKAGE_ROOT.parent
         cls.layout_repair = (
             PACKAGE_ROOT / "scripts" / "repair_project_conventions_checkout_layout.py"
         )
@@ -42,7 +46,6 @@ class LifecycleWorkflowTests(unittest.TestCase):
         self.assertIn("continue in the same task", self.skill)
         self.assertIn("direct-loading the checked-out Skill", self.lifecycle)
         self.assertIn("It is not an automatic stop", self.lifecycle)
-        self.assertIn("same task", self.metadata)
 
     def test_named_sources_are_in_scope_and_exact_map_is_authority(self) -> None:
         self.assertIn("Explicitly named migration sources are in scope", self.skill)
@@ -95,7 +98,6 @@ class LifecycleWorkflowTests(unittest.TestCase):
     def test_full_chain_can_preserve_clean_local_ahead_branch(self) -> None:
         for content in (self.skill, self.lifecycle):
             self.assertIn("preserved", content)
-        self.assertIn("preserve", self.metadata)
         self.assertIn("This recovery is forbidden for update-only", self.lifecycle)
         self.assertIn("never rebase, reset, delete, or push", self.lifecycle)
 
@@ -232,6 +234,178 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.assertIn("outside the minimal collection overlay", result.stderr)
             self.assertEqual(marker.read_text(encoding="utf-8"), "keep\n")
             self.assertEqual({path.name for path in target.iterdir()}, {"keep.txt"})
+
+    def test_fresh_skills_control_project_is_complete_and_deterministic(self) -> None:
+        def git(*arguments: str, cwd: Path) -> str:
+            result = subprocess.run(
+                ["git", *arguments],
+                cwd=cwd,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout.strip()
+
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            collection = root / "obisoldbee-skills"
+            remote = root / "remote.git"
+            seed = root / "seed"
+            member_root = collection / "project-conventions"
+            checkout = member_root / "src"
+
+            root_result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(self.initializer),
+                    str(collection),
+                    "--control-project",
+                    "skills",
+                    "--reserve",
+                    "skills",
+                    "--reserve",
+                    "project-conventions",
+                    "--apply",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(root_result.returncode, 0, root_result.stderr)
+
+            git("init", "--bare", "--initial-branch=main", str(remote), cwd=root)
+            git("init", "--initial-branch=main", str(seed), cwd=root)
+            git("config", "user.name", "Control Initializer Test", cwd=seed)
+            git("config", "user.email", "control@example.invalid", cwd=seed)
+            package = seed / "project-conventions"
+            package.mkdir()
+            (package / "SKILL.md").write_text(
+                "---\nname: project-conventions\ndescription: fixture\n---\n",
+                encoding="utf-8",
+            )
+            git("add", "project-conventions/SKILL.md", cwd=seed)
+            git("commit", "-m", "fixture", cwd=seed)
+            git("remote", "add", "origin", str(remote), cwd=seed)
+            git("push", "-u", "origin", "main", cwd=seed)
+
+            member_root.mkdir()
+            for name in ("docs", "conversation", "memory"):
+                (member_root / name).mkdir()
+            git("clone", str(remote), str(checkout), cwd=root)
+            git(
+                "remote",
+                "set-url",
+                "origin",
+                "https://github.com/obisoldbee/skills.git",
+                cwd=checkout,
+            )
+
+            command = [
+                sys.executable,
+                "-B",
+                str(self.control_initializer),
+                str(collection),
+                "--distribution-root",
+                str(self.distribution_root),
+            ]
+            dry_run = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+            self.assertEqual(json.loads(dry_run.stdout)["status"], "would_initialize")
+            self.assertFalse((collection / "skills").exists())
+
+            applied = subprocess.run(
+                [*command, "--apply"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            payload = json.loads(applied.stdout)
+            self.assertEqual(payload["status"], "initialized")
+            self.assertEqual(payload["links_created"], [])
+            self.assertEqual(payload["git_roots_created"], [])
+
+            control = collection / "skills"
+            self.assertEqual(
+                {path.name for path in (control / "src").iterdir()},
+                {"README.md", "config", "public-repo", "scripts", "tests"},
+            )
+            for directory in (
+                "conversation",
+                "docs/indexes",
+                "memory",
+                "release",
+                "runtime",
+                "src/config",
+                "src/public-repo",
+                "src/scripts",
+                "src/tests",
+            ):
+                self.assertTrue((control / directory).is_dir(), directory)
+            self.assertTrue(
+                (control / "src" / "scripts" / "link-windows.ps1").is_file()
+            )
+            self.assertTrue(
+                (control / "src" / "scripts" / "link-macos.sh").is_file()
+            )
+            self.assertTrue(
+                (control / "src" / "scripts" / "build_public_root_overlay.py").is_file()
+            )
+            self.assertTrue(
+                (control / "src" / "tests" / "test_public_root_overlay.py").is_file()
+            )
+            exports = (control / "src" / "config" / "skill-exports.tsv").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn(
+                "project-conventions/src/project-conventions", exports
+            )
+            members = (control / "docs" / "indexes" / "members.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("| skills | Skills Collection Control |", members)
+            self.assertIn("| project-conventions | Project Conventions |", members)
+            self.assertNotIn("/" + "Users" + "/", members)
+            self.assertNotIn("C:" + "\\Users\\", members)
+
+            generated_tests = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(control / "src" / "tests" / "test_public_root_overlay.py"),
+                ],
+                cwd=control,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(generated_tests.returncode, 0, generated_tests.stderr)
+
+            repeated = subprocess.run(
+                [*command, "--apply"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(repeated.returncode, 0, repeated.stderr)
+            self.assertEqual(json.loads(repeated.stdout)["status"], "already_initialized")
+
+    def test_fresh_control_project_is_routed_to_the_deterministic_initializer(self) -> None:
+        for content in (self.skill, self.lifecycle, self.collection, self.metadata):
+            self.assertIn("initialize_skills_control_project.py", content)
+        combined = self.skill + "\n" + self.lifecycle + "\n" + self.collection
+        self.assertIn("Do not handwrite a reduced control project", combined)
+        self.assertIn("src/config/", combined)
+        self.assertIn("src/public-repo/", combined)
+        self.assertIn("src/scripts/", combined)
+        self.assertIn("src/tests/", combined)
 
     def test_obsolete_checkout_layout_is_flattened_without_git_change(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

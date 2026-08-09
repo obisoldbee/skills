@@ -124,7 +124,7 @@ A Skills collection-control project may own:
 - read-only link scanning and an explicit apply command;
 - collection-level reports, plans, and research.
 
-These are responsibilities of the collection-control project. This Skill supplies the convention and the read-only workspace inspector; it does not bundle a renderer, link utility, or upstream checker.
+These are responsibilities of the collection-control project. This Skill supplies the convention, the read-only workspace inspector, and `scripts/initialize_skills_control_project.py` for the special case where a fresh Skills collection has no incoming control Project Root. The initializer materializes portable control assets under `src/config/`, `src/public-repo/`, `src/scripts/`, and `src/tests/`; after creation, those copies belong to the new control project. It does not copy member source, device histories, generated release/runtime contents, or links.
 
 Its link utility must:
 
@@ -158,6 +158,27 @@ python -B scripts/initialize_project_collection.py <target> --control-project sk
 ```
 
 Run this bounded transaction after top-level collision and Git-safety checks, then report its readback before recursively inventorying or moving large repositories. After the members arrive, replace the pending root view from the control project's canonical member index.
+
+If an existing control Project Root was explicitly named, move it as a whole and preserve its complete contents. If no control Project Root exists for a fresh Skills collection, wait until the verified member checkout is at its final path, then dry-run and apply the second deterministic initializer:
+
+```text
+python -B scripts/initialize_skills_control_project.py <collection-root> \
+  --distribution-root <final-distribution-checkout>
+python -B scripts/initialize_skills_control_project.py <collection-root> \
+  --distribution-root <final-distribution-checkout> \
+  --apply
+```
+
+The second initializer requires the member checkout to be clean, attached to `main`, tracking `origin/main`, and equal to that remote-tracking ref. It refuses a differing existing control path, creates no Git root or Skill link, and finalizes the canonical member index plus the collection root mirror. **Do not handwrite a reduced control project.** A valid fresh control `src/` contains exactly these portable branches:
+
+```text
+src/
+├── README.md
+├── config/
+├── public-repo/
+├── scripts/
+└── tests/
+```
 
 Do not initialize or restructure every member merely because it appears in the member index. A member is initialized only when the user asks to work on that Project Root.
 
