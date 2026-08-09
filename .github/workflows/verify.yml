@@ -1,0 +1,112 @@
+name: Verify release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.x"
+
+      - name: Verify manifest and portability
+        run: python -B scripts/verify_release.py .
+
+      - name: Run workspace inspector tests
+        run: python -B project-conventions/scripts/test_inspect_projects_workspace.py
+
+      - name: Exercise scoped Unix link workflow
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/healthy-skills"
+          mkdir -p "$target"
+          bash scripts/link-macos.sh --target "$target" --skill project-conventions
+          bash scripts/link-macos.sh --target "$target" --skill project-conventions --apply
+          bash scripts/link-macos.sh --target "$target" --skill project-conventions
+          test -L "$target/project-conventions"
+          test "$(readlink "$target/project-conventions")" = "$(cd project-conventions && pwd -P)"
+
+          if bash scripts/link-macos.sh; then
+            echo "unscoped invocation unexpectedly succeeded" >&2
+            exit 1
+          fi
+
+          set +e
+          bash scripts/link-macos.sh --target "$RUNNER_TEMP/missing-skills" --skill project-conventions
+          missing_status=$?
+          set -e
+          test "$missing_status" -eq 4
+
+          conflict="$RUNNER_TEMP/conflict-skills"
+          mkdir -p "$conflict/project-conventions"
+          echo keep > "$conflict/project-conventions/keep.txt"
+          set +e
+          bash scripts/link-macos.sh --target "$conflict" --skill project-conventions --apply
+          conflict_status=$?
+          set -e
+          test "$conflict_status" -eq 4
+          test "$(cat "$conflict/project-conventions/keep.txt")" = keep
+
+      - name: Exercise scoped Windows junction workflow
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $PWD 'scripts\link-windows.ps1'
+          $healthy = Join-Path $env:RUNNER_TEMP 'healthy-skills'
+          New-Item -ItemType Directory -Force $healthy | Out-Null
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
+          if ($LASTEXITCODE -ne 0) { throw "scan failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions -Apply
+          if ($LASTEXITCODE -ne 0) { throw "apply failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
+          if ($LASTEXITCODE -ne 0) { throw "readback scan failed: $LASTEXITCODE" }
+
+          $created = Get-Item -LiteralPath (Join-Path $healthy 'project-conventions') -Force
+          if (-not [bool]($created.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'junction readback failed'
+          }
+          $actual = [IO.Path]::GetFullPath(@($created.Target)[0])
+          $expected = (Resolve-Path (Join-Path $PWD 'project-conventions')).Path
+          if ($actual -ne $expected) { throw "junction target differs: $actual" }
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script
+          if ($LASTEXITCODE -eq 0) { throw 'unscoped invocation unexpectedly succeeded' }
+
+          $missing = Join-Path $env:RUNNER_TEMP 'missing-skills'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $missing -Skill project-conventions
+          if ($LASTEXITCODE -ne 4) { throw "missing target status differs: $LASTEXITCODE" }
+
+          $conflict = Join-Path $env:RUNNER_TEMP 'conflict-skills'
+          $conflictSkill = Join-Path $conflict 'project-conventions'
+          New-Item -ItemType Directory -Force $conflictSkill | Out-Null
+          Set-Content -LiteralPath (Join-Path $conflictSkill 'keep.txt') -Value keep
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $conflict -Skill project-conventions -Apply
+          if ($LASTEXITCODE -ne 4) { throw "conflict status differs: $LASTEXITCODE" }
+          if ((Get-Content -LiteralPath (Join-Path $conflictSkill 'keep.txt') -Raw).Trim() -ne 'keep') {
+            throw 'conflict content was modified'
+          }

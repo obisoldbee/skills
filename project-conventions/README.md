@@ -1,12 +1,17 @@
 # project-conventions
 
-`project-conventions` helps agents distinguish and maintain three filesystem-governance layers:
+`project-conventions` first separates two operational lifecycles:
+
+- **full initialization** creates one selected governance layer, maps/clones its approved repository, and guides one scoped Skill consumer link when needed;
+- **update-only** refreshes one existing checkout, validates it, and stops without restructuring, cataloging, records, or link work.
+
+For initialization and maintenance, it then distinguishes three filesystem-governance layers:
 
 - a **Projects Workspace** that indexes independent local projects;
 - a **Project Collection** that groups related Project Roots;
 - a **Project Root** that owns one project's source, documents, decisions, and memory.
 
-It is designed for requests such as project initialization, directory migration, repository mapping, collection maintenance, document placement, and file naming.
+It is designed for requests such as Skill bootstrap, Skill-version updates, project initialization, directory migration, repository mapping, collection maintenance, document placement, and file naming.
 
 ## Package contents
 
@@ -18,11 +23,11 @@ project-conventions/
 └── scripts/
 ```
 
-The package includes a read-only Projects Workspace inspector and deterministic tests. It does not initialize Git, move projects, create links, or publish anything by itself.
+The package includes a read-only Projects Workspace inspector and deterministic tests. It provides execution rules but does not perform work merely by being installed.
 
 ## Install
 
-When using this package from the `obisoldbee/skills` repository, follow the repository root README and run the link script in scan mode before applying a link.
+When using this package from the `obisoldbee/skills` repository, follow the repository root README. Bootstrap one named Skill into one named Agent consumer, then start a fresh task before initializing the eventual target.
 
 You may also copy this directory as a complete unit into a Skill root supported by your agent. Keep `SKILL.md`, `agents/`, `references/`, and `scripts/` together.
 
@@ -38,3 +43,4 @@ The `-B` flag prevents validation itself from writing `__pycache__` into the pub
 
 Skill discovery and successful test execution are separate states. After installing or linking the package, start a fresh agent session and verify discovery there.
 
+Updating an existing checkout is a separate update-only lifecycle: fast-forward and validate the checkout, then stop. A healthy existing link follows the updated content and must not be recreated.

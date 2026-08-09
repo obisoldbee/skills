@@ -8,9 +8,11 @@ apply=0
 agent_filter=""
 target_override=""
 skill_filter=""
+all_agents=0
+all_skills=0
 
 usage() {
-  echo "usage: $0 [--apply] [--agent agent-id | --target /absolute/existing/skills-dir] [--skill skill-name]"
+  echo "usage: $0 [--apply] (--agent agent-id | --target /absolute/existing/skills-dir | --all-agents) (--skill skill-name | --all-skills)"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -25,6 +27,9 @@ while [ "$#" -gt 0 ]; do
         exit 2
       fi
       agent_filter="$1"
+      ;;
+    --all-agents)
+      all_agents=1
       ;;
     --target)
       shift
@@ -42,6 +47,9 @@ while [ "$#" -gt 0 ]; do
       fi
       skill_filter="$1"
       ;;
+    --all-skills)
+      all_skills=1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -54,12 +62,23 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-if [ -n "$agent_filter" ] && [ -n "$target_override" ]; then
-  echo "error choose-agent-or-target" >&2
+target_selector_count=0
+if [ -n "$agent_filter" ]; then target_selector_count=$((target_selector_count + 1)); fi
+if [ -n "$target_override" ]; then target_selector_count=$((target_selector_count + 1)); fi
+if [ "$all_agents" -eq 1 ]; then target_selector_count=$((target_selector_count + 1)); fi
+if [ "$target_selector_count" -ne 1 ]; then
+  echo "error choose-exactly-one-agent-target-or-all-agents" >&2
   exit 2
 fi
-if [ "$apply" -eq 1 ] && [ -z "$agent_filter" ] && [ -z "$target_override" ]; then
-  echo "error apply-requires-agent-or-target" >&2
+skill_selector_count=0
+if [ -n "$skill_filter" ]; then skill_selector_count=$((skill_selector_count + 1)); fi
+if [ "$all_skills" -eq 1 ]; then skill_selector_count=$((skill_selector_count + 1)); fi
+if [ "$skill_selector_count" -ne 1 ]; then
+  echo "error choose-exactly-one-skill-or-all-skills" >&2
+  exit 2
+fi
+if [ "$apply" -eq 1 ] && [ "$all_agents" -eq 1 ]; then
+  echo "error apply-does-not-allow-all-agents" >&2
   exit 2
 fi
 if [ -n "$agent_filter" ] && ! [[ "$agent_filter" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
@@ -222,3 +241,6 @@ for target_index in "${!target_paths[@]}"; do
 done
 
 echo "summary checked=$checked would_link=$would_link linked=$linked conflicts=$conflicts missing_parents=$missing_parents"
+if [ "$conflicts" -gt 0 ] || [ "$missing_parents" -gt 0 ]; then
+  exit 4
+fi

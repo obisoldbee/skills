@@ -2,7 +2,9 @@ param(
     [switch]$Apply,
     [string]$Agent,
     [string]$Target,
-    [string]$Skill
+    [switch]$AllAgents,
+    [string]$Skill,
+    [switch]$AllSkills
 )
 
 # Scan or explicitly create Skill junctions from this checkout on Windows.
@@ -10,11 +12,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if ($Agent -and $Target) {
-    throw 'choose-agent-or-target'
+$TargetSelectorCount = 0
+if ($Agent) { $TargetSelectorCount++ }
+if ($Target) { $TargetSelectorCount++ }
+if ($AllAgents) { $TargetSelectorCount++ }
+if ($TargetSelectorCount -ne 1) {
+    throw 'choose-exactly-one-agent-target-or-all-agents'
 }
-if ($Apply -and -not $Agent -and -not $Target) {
-    throw 'apply-requires-agent-or-target'
+$SkillSelectorCount = 0
+if ($Skill) { $SkillSelectorCount++ }
+if ($AllSkills) { $SkillSelectorCount++ }
+if ($SkillSelectorCount -ne 1) {
+    throw 'choose-exactly-one-skill-or-all-skills'
+}
+if ($Apply -and $AllAgents) {
+    throw 'apply-does-not-allow-all-agents'
 }
 if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw "invalid-agent: $Agent"
@@ -162,7 +174,16 @@ foreach ($TargetEntry in $Targets) {
         if ($Apply) {
             New-Item -ItemType Junction -Path $Destination -Target $Source | Out-Null
             $Created = Get-Item -LiteralPath $Destination -Force
-            if ([bool]($Created.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            $CreatedRawTarget = @($Created.Target)[0]
+            if ($CreatedRawTarget -and [IO.Path]::IsPathRooted($CreatedRawTarget)) {
+                $CreatedResolvedTarget = [IO.Path]::GetFullPath($CreatedRawTarget)
+            } elseif ($CreatedRawTarget) {
+                $CreatedResolvedTarget = [IO.Path]::GetFullPath((Join-Path $TargetPath $CreatedRawTarget))
+            } else {
+                $CreatedResolvedTarget = ''
+            }
+            if ([bool]($Created.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+                $CreatedResolvedTarget -eq $Source) {
                 Write-Host "linked $Destination -> $Source"
                 $Linked++
             } else {
@@ -173,3 +194,6 @@ foreach ($TargetEntry in $Targets) {
 }
 
 Write-Host "summary checked=$Checked would_link=$WouldLink linked=$Linked conflicts=$Conflicts missing_parents=$MissingParents"
+if ($Conflicts -gt 0 -or $MissingParents -gt 0) {
+    exit 4
+}

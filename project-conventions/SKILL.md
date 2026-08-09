@@ -1,9 +1,47 @@
 ---
 name: project-conventions
-description: "Initialize, organize, migrate, or explain one of three filesystem governance layers: a Projects Workspace that indexes all local projects on the current computer, a Project Collection that groups related independent projects, or one Project Root with its own documents and source repository. Use for “项目目录初始化”, “项目总入口”, “项目合集”, “项目组”, “单项目根目录”, “仓库放到 src”, “项目结构”, “文件放哪”, workspace roots, collections, project roots, repository mappings, or existing-project migrations."
+description: "Initialize, organize, migrate, update, or explain project filesystems. First separate full initialization from update-only work: full initialization may create an approved structure, clone its repository, and guide one scoped Skill link; update-only refreshes one existing checkout and stops without restructuring, cataloging, recording, or relinking. Then distinguish a Projects Workspace, Project Collection, Project Root, and Repository Root. Use for 项目目录初始化, 从零初始化, 克隆最新版后初始化, 更新技能版本, 拉取最新版, 项目总入口, 项目合集, 单项目根目录, 仓库放到 src, 项目结构, 文件放哪, repository mappings, or migrations."
 ---
 
 # Project Conventions
+
+## Choose the lifecycle before the governance layer
+
+For any request involving initialization, clone, download, install, sync, pull, or update, read `references/lifecycle-workflows.md` completely. Classify the request before inspecting any broader directory:
+
+| User intent | Lifecycle | Immediate scope |
+|---|---|---|
+| Create a new governed location and make it usable | **Full initialization** | The exact new target and its approved repository/link inputs |
+| Clone this Skill now, then initialize another target in a fresh task | **Full initialization — bootstrap stage only** | The distribution checkout and one named Skill consumer; stop before target governance |
+| Refresh an existing Skill or repository checkout | **Update-only** | That one verified checkout; update, validate, and stop |
+| Organize, migrate, audit, or explain existing project structure | **Governance maintenance** | The exact requested path, then one of the three layers below |
+
+Do not let a distribution checkout become the target merely because it contains `SKILL.md` or `AGENTS.md`. Do not inspect an old workspace, sibling projects, all configured Agent roots, or all exported Skills unless the user explicitly put them in scope.
+
+### Full initialization
+
+A full initialization is a complete, ordered lifecycle, but its bootstrap and target stages may be separated by a fresh Agent session.
+
+1. If the Skill is not yet available, clone the approved distribution repository into one stable source location. Treat that checkout only as a distribution source.
+2. Validate the requested Skill package from the checkout.
+3. Inspect exactly one named consumer root and one named Skill. If the consumer root is absent, give one focused creation command or ask permission to create it. Show a dry run and require explicit approval before creating a link.
+4. After link readback, stop. Tell the user to open a fresh task so the runtime can discover the new Skill. Do not initialize the eventual target in the bootstrap task.
+5. In the fresh target task, inspect only the requested target, select exactly one governance layer, create that layer's required files and directories, and clone the approved project repository into the layer's mapped Repository Root when one was supplied.
+6. Validate the resulting structure, repository mapping, and any explicitly applied link.
+
+If the user explicitly starts at step 5 because the Skill is already loaded, do not repeat the bootstrap or link steps.
+
+### Update-only
+
+An update-only request is deliberately narrow:
+
+1. Verify the exact checkout, its Git worktree root, current ref, remote, and worktree status.
+2. If it is clean and only behind its tracked remote, fetch and fast-forward only. If it is already current, make no change.
+3. If it is dirty, ahead, detached, or diverged, stop with one focused report. Do not merge, rebase, reset, stash, cherry-pick, or port local commits automatically.
+4. Run the checkout's package/manifest validation and report the before/after commit.
+5. Stop. Do not select a governance layer; create or revise `AGENTS.md`, `README.md`, indexes, `docs/`, `conversation/`, or `memory/`; scan siblings or old workspaces; or inspect, create, repair, or reapply links.
+
+An existing healthy link points into the checkout, so a content update does not require relinking. Link troubleshooting is a separate explicitly requested task.
 
 ## Name the layer before acting
 
@@ -112,13 +150,13 @@ Inspection or planning does not authorize mutation.
 
 Before a write:
 
-1. State the selected mode and exact target.
+1. State the selected lifecycle, mode when applicable, and exact target.
 2. List exact creates, edits, and moves.
 3. Preserve user files and unrelated dirty changes.
 4. For a structural migration, show the mapping and obtain approval.
 5. For links, scan targets, show a dry run, and require explicit apply approval.
 
-Never clone, fetch, pull, push, merge, rebase, delete, schedule, notify, or create links merely because initialization was requested.
+Do not infer authorization for clone, fetch, pull, push, merge, rebase, delete, schedule, notify, or link creation from a vague request. The only exceptions are the exact clone or fast-forward steps explicitly selected by the lifecycle contract above; link application still requires explicit approval.
 
 After an authorized write:
 
@@ -140,7 +178,9 @@ It is offline and read-only. It understands the structural collection index and 
 
 A successful run:
 
-- names exactly one of the three modes;
+- names the selected lifecycle before any governance layer;
+- hard-stops update-only work after checkout validation;
+- for target initialization or governance maintenance, names exactly one of the three modes;
 - does not create another layer's structure;
 - keeps each Project Root's content and source inside that Project Root;
 - records one clear repository mapping for each Git-backed Project Root;
@@ -152,6 +192,7 @@ A successful run:
 
 | File | Load when |
 |---|---|
+| `references/lifecycle-workflows.md` | Initializing, cloning, installing, syncing, pulling, or updating |
 | `references/projects-workspace.md` | Maintaining the current computer's Projects Workspace |
 | `references/project-collection.md` | Initializing or maintaining a related-project collection |
 | `references/directory-layout.md` | Initializing or explaining one Project Root |
@@ -164,10 +205,10 @@ A successful run:
 
 ## Cross-model execution contract
 
-Materials: Use the request, the inspected target, its existing entries, and only the routed references as evidence. Do not invent filesystem, Git, link, or remote facts.
+Materials: Use the request, the exact lifecycle target, its existing entries, and only the routed references as evidence. Do not invent filesystem, Git, link, or remote facts.
 
-Task: Select exactly one layer, then inspect, propose, or apply only that layer's conventions.
+Task: Select one lifecycle first. For full initialization or governance maintenance, select exactly one layer at the target stage. For update-only, update and validate the exact checkout, then stop without layer selection.
 
-Constraints: Stay inside the authorized target; preserve existing content; maintain layer boundaries; obtain explicit authorization for structural moves and link application.
+Constraints: Stay inside the authorized lifecycle target; preserve existing content; maintain stage and layer boundaries; obtain explicit authorization for structural moves and link application; never broaden a bootstrap or update into workspace governance.
 
-Output: In the user's language, state the selected mode and target, observed facts, proposed versus executed changes, validation, and unresolved findings.
+Output: In the user's language, state the selected lifecycle, stage or mode when applicable, exact target, observed facts, proposed versus executed changes, validation, stop boundary, and unresolved findings.

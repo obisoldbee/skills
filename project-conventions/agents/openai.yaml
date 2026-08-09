@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Conventions"
-  short_description: "Govern workspaces, project collections, and Project Roots"
-  default_prompt: "Use $project-conventions to identify whether the target is a Projects Workspace, Project Collection, or Project Root; preserve the layer boundaries and initialize only the selected layer."
+  short_description: "Separate initialization from update-only project work"
+  default_prompt: "Use $project-conventions to select the lifecycle first. For full initialization, respect the bootstrap/fresh-session boundary and then initialize exactly one Projects Workspace, Project Collection, or Project Root. For update-only, refresh and validate only the named checkout, then stop without restructuring, records, scans, or link work."

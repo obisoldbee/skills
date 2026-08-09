@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,16 @@ SPEC.loader.exec_module(INSPECTOR)
 
 
 class InspectorCollectionTests(unittest.TestCase):
+    def create_symlink(
+        self, link: Path, target: Path, *, target_is_directory: bool = False
+    ) -> None:
+        try:
+            link.symlink_to(target, target_is_directory=target_is_directory)
+        except OSError as exc:
+            if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+                self.skipTest("Windows symlink privilege is unavailable")
+            raise
+
     def run_command(
         self, root: Path, *arguments: str
     ) -> subprocess.CompletedProcess[str]:
@@ -184,7 +195,9 @@ class InspectorCollectionTests(unittest.TestCase):
                 "| leaked | Leaked | leaked | member | src | none | - | local-only | active | test |\n",
                 encoding="utf-8",
             )
-            (root / "linked-collection").symlink_to(outside, target_is_directory=True)
+            self.create_symlink(
+                root / "linked-collection", outside, target_is_directory=True
+            )
             (indexes / "00-collections.md").write_text(
                 "| key | name | path | kind | members_index | purpose | tags |\n"
                 "|---|---|---|---|---|---|---|\n"
@@ -344,7 +357,7 @@ class InspectorCollectionTests(unittest.TestCase):
                 "| manager | Manager | skills | collection-control | src | none | - | local-only | active | control |\n",
                 encoding="utf-8",
             )
-            (members_dir / "members.md").symlink_to(real_members)
+            self.create_symlink(members_dir / "members.md", real_members)
             (indexes / "00-collections.md").write_text(
                 "| key | name | path | kind | members_index | purpose | tags |\n"
                 "|---|---|---|---|---|---|---|\n"
@@ -469,8 +482,8 @@ class InspectorCollectionTests(unittest.TestCase):
             indexes.mkdir(parents=True)
             source = indexes / "source.txt"
             source.write_text("not an index\n", encoding="utf-8")
-            (indexes / "linked.md").symlink_to(source)
-            (root / "broken-link").symlink_to(root / "missing-target")
+            self.create_symlink(indexes / "linked.md", source)
+            self.create_symlink(root / "broken-link", root / "missing-target")
 
             report = self.run_inspector(root)
             types = {finding["type"] for finding in report["findings"]}
