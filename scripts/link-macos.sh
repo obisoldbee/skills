@@ -81,6 +81,10 @@ if [ "$apply" -eq 1 ] && [ "$all_agents" -eq 1 ]; then
   echo "error apply-does-not-allow-all-agents" >&2
   exit 2
 fi
+if [ "$apply" -eq 1 ] && [ "$all_skills" -eq 1 ]; then
+  echo "error apply-does-not-allow-all-skills" >&2
+  exit 2
+fi
 if [ -n "$agent_filter" ] && ! [[ "$agent_filter" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
   echo "error invalid-agent: $agent_filter" >&2
   exit 2
@@ -164,6 +168,16 @@ for target_index in "${!target_paths[@]}"; do
     missing_parents=$((missing_parents + 1))
     continue
   fi
+  target_resolved="$(cd "$target" && pwd -P)"
+  if [ "$apply" -eq 1 ]; then
+    case "$target_resolved" in
+      "$repo_root"|"$repo_root"/*)
+        echo "error target-inside-repository: $target_resolved" >&2
+        exit 2
+        ;;
+    esac
+  fi
+  target="$target_resolved"
 
   while IFS="$(printf '\t')" read -r skill_name source_rel consumers; do
     [ "$skill_name" = "skill_name" ] && continue

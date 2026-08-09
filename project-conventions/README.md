@@ -2,7 +2,7 @@
 
 `project-conventions` first separates two operational lifecycles:
 
-- **full initialization** creates one selected governance layer, maps/clones its approved repository, and guides one scoped Skill consumer link when needed;
+- **full initialization** can clone the latest distribution inside an explicitly named current Project Root, initialize one target, migrate named existing roots, and then guide one scoped final-path Skill consumer link;
 - **update-only** refreshes one existing checkout, validates it, and stops without restructuring, cataloging, records, or link work.
 
 For initialization and maintenance, it then distinguishes three filesystem-governance layers:
@@ -27,7 +27,7 @@ The package includes a read-only Projects Workspace inspector and deterministic 
 
 ## Install
 
-When using this package from the `obisoldbee/skills` repository, follow the repository root README. Bootstrap one named Skill into one named Agent consumer, then start a fresh task before initializing the eventual target.
+When using this package from the `obisoldbee/skills` repository, follow the repository root README. For clone-only, validate and stop. For an explicitly named complete chain, clone under the current Project Root, read the checked-out `SKILL.md` directly, initialize and migrate the named paths in the same task, and defer consumer linking until the final source path exists. A fresh task is needed only when bootstrap stops for later runtime discovery.
 
 You may also copy this directory as a complete unit into a Skill root supported by your agent. Keep `SKILL.md`, `agents/`, `references/`, and `scripts/` together.
 
@@ -37,6 +37,7 @@ From this directory:
 
 ```bash
 python3 -B scripts/test_inspect_projects_workspace.py
+python3 -B scripts/test_lifecycle_workflows.py
 ```
 
 The `-B` flag prevents validation itself from writing `__pycache__` into the publishable package.
