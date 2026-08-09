@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +27,13 @@ class LifecycleWorkflowTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         cls.metadata = (PACKAGE_ROOT / "agents" / "openai.yaml").read_text(
             encoding="utf-8"
+        )
+        cls.collection = (
+            PACKAGE_ROOT / "references" / "project-collection.md"
+        ).read_text(encoding="utf-8")
+        cls.initializer = PACKAGE_ROOT / "scripts" / "initialize_project_collection.py"
+        cls.layout_repair = (
+            PACKAGE_ROOT / "scripts" / "repair_project_conventions_checkout_layout.py"
         )
 
     def test_named_full_chain_continues_after_direct_load(self) -> None:
@@ -51,12 +60,19 @@ class LifecycleWorkflowTests(unittest.TestCase):
         )
 
     def test_checkout_and_link_use_migration_safe_paths(self) -> None:
-        self.assertIn("$Checkout = Join-Path $BootstrapRoot 'src\\skills'", self.lifecycle)
+        self.assertIn("$RepositoryRoot = Join-Path $BootstrapRoot 'src'", self.lifecycle)
         self.assertIn(
-            "<project-parent>\\obisoldbee-skills\\project-conventions"
-            "\\src\\skills\\project-conventions",
+            "$PackageRoot = Join-Path $RepositoryRoot 'project-conventions'",
             self.lifecycle,
         )
+        self.assertIn(
+            "<project-parent>\\obisoldbee-skills\\project-conventions"
+            "\\src\\project-conventions",
+            self.lifecycle,
+        )
+        self.assertIn("obsolete nested layout", self.lifecycle)
+        self.assertIn("src/skills/project-conventions/SKILL.md", self.skill)
+        self.assertIn("never `src/skills/project-conventions/SKILL.md`", self.skill)
         self.assertIn("Never link a temporary path", self.skill)
         self.assertIn("Only after both moves", self.lifecycle)
         combined = self.skill + "\n" + self.lifecycle
@@ -128,6 +144,167 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 git("rev-parse", "origin/main", cwd=checkout),
             )
             self.assertEqual(git("status", "--porcelain=v1", cwd=checkout), "")
+
+    def test_collection_initializer_is_first_bounded_write(self) -> None:
+        for content in (self.skill, self.lifecycle, self.collection):
+            self.assertIn("initialize_project_collection.py", content)
+        self.assertIn("first bounded write", self.skill)
+        self.assertIn("first write", self.lifecycle)
+        self.assertIn("read back", self.collection)
+
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "obisoldbee-skills"
+            command = [
+                sys.executable,
+                "-B",
+                str(self.initializer),
+                str(target),
+                "--control-project",
+                "skills",
+                "--reserve",
+                "skills",
+                "--reserve",
+                "project-conventions",
+            ]
+            dry_run = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+            dry_payload = json.loads(dry_run.stdout)
+            self.assertEqual(dry_payload["status"], "would_initialize")
+            self.assertEqual(
+                dry_payload["would_create"],
+                ["AGENTS.md", "README.md", "MEMBERS.md"],
+            )
+            self.assertFalse(target.exists())
+
+            applied = subprocess.run(
+                [*command, "--apply"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            applied_payload = json.loads(applied.stdout)
+            self.assertEqual(applied_payload["status"], "initialized")
+            self.assertEqual(
+                {path.name for path in target.iterdir()},
+                {"AGENTS.md", "README.md", "MEMBERS.md"},
+            )
+            self.assertFalse((target / "skills").exists())
+            self.assertFalse((target / "project-conventions").exists())
+
+            repeated = subprocess.run(
+                [*command, "--apply"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(repeated.returncode, 0, repeated.stderr)
+            self.assertEqual(json.loads(repeated.stdout)["status"], "already_initialized")
+
+    def test_collection_initializer_refuses_existing_content(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "obisoldbee-skills"
+            target.mkdir()
+            marker = target / "keep.txt"
+            marker.write_text("keep\n", encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(self.initializer),
+                    str(target),
+                    "--control-project",
+                    "skills",
+                    "--reserve",
+                    "project-conventions",
+                    "--apply",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("outside the minimal collection overlay", result.stderr)
+            self.assertEqual(marker.read_text(encoding="utf-8"), "keep\n")
+            self.assertEqual({path.name for path in target.iterdir()}, {"keep.txt"})
+
+    def test_obsolete_checkout_layout_is_flattened_without_git_change(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            bootstrap = Path(raw) / "project-conventions"
+            checkout = bootstrap / "src" / "skills"
+            package = checkout / "project-conventions"
+            package.mkdir(parents=True)
+            (package / "SKILL.md").write_text(
+                "---\nname: project-conventions\ndescription: fixture\n---\n",
+                encoding="utf-8",
+            )
+            fixture_repair = (
+                package / "scripts" / "repair_project_conventions_checkout_layout.py"
+            )
+            fixture_repair.parent.mkdir()
+            fixture_repair.write_bytes(self.layout_repair.read_bytes())
+
+            def run_git(*arguments: str, cwd: Path = checkout) -> str:
+                result = subprocess.run(
+                    ["git", *arguments],
+                    cwd=cwd,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return result.stdout.strip()
+
+            run_git("init", "--initial-branch=main")
+            run_git("config", "user.name", "Layout Test")
+            run_git("config", "user.email", "layout@example.invalid")
+            run_git("add", "project-conventions")
+            run_git("commit", "-m", "fixture")
+            run_git("remote", "add", "origin", "https://github.com/obisoldbee/skills.git")
+            before_head = run_git("rev-parse", "HEAD")
+
+            dry_run = subprocess.run(
+                [sys.executable, "-B", str(fixture_repair), str(bootstrap)],
+                cwd=bootstrap,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+            self.assertEqual(json.loads(dry_run.stdout)["status"], "would_repair")
+            self.assertTrue(checkout.is_dir())
+
+            applied = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(fixture_repair),
+                    str(bootstrap),
+                    "--apply",
+                ],
+                cwd=bootstrap,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            payload = json.loads(applied.stdout)
+            self.assertEqual(payload["status"], "repaired")
+            repository_root = bootstrap / "src"
+            self.assertTrue((repository_root / ".git").is_dir())
+            self.assertTrue((repository_root / "project-conventions" / "SKILL.md").is_file())
+            self.assertFalse((repository_root / "skills").exists())
+            self.assertFalse((bootstrap / ".src-layout-repair").exists())
+            self.assertEqual(
+                run_git("rev-parse", "HEAD", cwd=repository_root),
+                before_head,
+            )
+            self.assertEqual(run_git("status", "--porcelain=v1", cwd=repository_root), "")
 
 
 if __name__ == "__main__":

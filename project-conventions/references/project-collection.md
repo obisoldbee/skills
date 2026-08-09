@@ -142,12 +142,22 @@ Its link utility must:
 inspect collection
 → identify existing member Project Roots
 → choose one collection-control Project Root
-→ create root routing overlay
+→ create and read back the three-file root routing overlay
 → write canonical member index
 → validate member paths and source mappings
 → render MEMBERS.md
 → report unresolved boundaries
 ```
+
+When this Skill package is available, use `scripts/initialize_project_collection.py` for the first write. Pass the exact target, one control-project name, and every incoming member basename with `--reserve`; use `--apply` only when initialization is already authorized. The script creates only `AGENTS.md`, `README.md`, and `MEMBERS.md`, refuses unexpected target entries or differing root files, never creates reserved member directories, and reads the three files back before returning success.
+
+For an approved incoming `skills/` control project and `project-conventions/` member:
+
+```text
+python -B scripts/initialize_project_collection.py <target> --control-project skills --reserve skills --reserve project-conventions --apply
+```
+
+Run this bounded transaction after top-level collision and Git-safety checks, then report its readback before recursively inventorying or moving large repositories. After the members arrive, replace the pending root view from the control project's canonical member index.
 
 Do not initialize or restructure every member merely because it appears in the member index. A member is initialized only when the user asks to work on that Project Root.
 

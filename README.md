@@ -23,52 +23,65 @@
 ```powershell
 $ProjectParent = Join-Path $env:USERPROFILE 'Documents\project'
 $BootstrapRoot = Join-Path $ProjectParent 'project-conventions'
-$Checkout = Join-Path $BootstrapRoot 'src\skills'
+$RepositoryRoot = Join-Path $BootstrapRoot 'src'
+$PackageRoot = Join-Path $RepositoryRoot 'project-conventions'
 $LegacyControl = Join-Path $ProjectParent 'skills'
 $TargetCollection = Join-Path $ProjectParent 'obisoldbee-skills'
 ```
 
-这里的 checkout 必须建在用户指定的当前 `project-conventions` 里面；不要另造一个全局下载目录，也不要直接把仓库 clone 成最终 `obisoldbee-skills`。
+这里的 Git Repository Root 就是 `project-conventions\src`，仓库内受管 Skill 包是 `src\project-conventions`。不要根据远端仓库名再插入一层 `src\skills`；也不要另造全局下载目录或直接把仓库 clone 成最终 `obisoldbee-skills`。
 
 #### 1. 先在当前目录内 clone 并校验
 
-确认 `$Checkout` 不存在且不会碰撞后执行：
+确认 `$RepositoryRoot` 不存在且不会碰撞后执行：
 
 ```powershell
-New-Item -ItemType Directory -Force (Split-Path $Checkout -Parent) | Out-Null
-git clone https://github.com/obisoldbee/skills.git "$Checkout"
-python -B (Join-Path $Checkout 'scripts\verify_release.py') $Checkout
-python -B (Join-Path $Checkout 'project-conventions\scripts\test_inspect_projects_workspace.py')
+git clone https://github.com/obisoldbee/skills.git "$RepositoryRoot"
+python -B (Join-Path $RepositoryRoot 'scripts\verify_release.py') $RepositoryRoot
+python -B (Join-Path $PackageRoot 'scripts\test_inspect_projects_workspace.py')
+python -B (Join-Path $PackageRoot 'scripts\test_lifecycle_workflows.py')
+if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot 'SKILL.md') -PathType Leaf)) {
+  throw "Skill 没有位于正确路径：$PackageRoot"
+}
 ```
 
-若 `$Checkout` 已经是同一仓库，不重复 clone；先核实 remote、branch、status、ahead/behind。可以 clean fast-forward 时直接更新并继续。
+若 `$RepositoryRoot` 已经是同一仓库，不重复 clone；先核实 remote、branch、status、ahead/behind。可以 clean fast-forward 时直接更新并继续。
+
+若旧版流程已经产生 `$BootstrapRoot\src\skills\project-conventions\SKILL.md`，不要再 clone。先把 `$BootstrapRoot\src\skills` 当作旧 Repository Root 验证并更新，然后直接读取其最新 `project-conventions\references\lifecycle-workflows.md` 中的 **obsolete nested layout** 修复流程。只有 `src` 内除这个 clean checkout 外没有任何条目时，才可以整体展平为 `$BootstrapRoot\src`；不复制后删除，不丢弃本地保留分支。
+
+```powershell
+$OldPackageRoot = Join-Path $BootstrapRoot 'src\skills\project-conventions'
+$LayoutRepair = Join-Path $OldPackageRoot 'scripts\repair_project_conventions_checkout_layout.py'
+python -B $LayoutRepair $BootstrapRoot
+python -B $LayoutRepair $BootstrapRoot --apply
+```
 
 如果它正是旧任务留下的 **clean、attached、本地 `main` ahead/diverged** checkout，而本次完整链路已经明确授权“保留旧本地提交并切回最新远端 main”，使用分支保留，不 rebase、不 reset、不删除提交：
 
 ```powershell
-$OldHead = (git -C "$Checkout" rev-parse HEAD).Trim()
-$CurrentBranch = (git -C "$Checkout" symbolic-ref --quiet --short HEAD).Trim()
-$Status = @(git -C "$Checkout" status --porcelain=v1)
+$OldHead = (git -C "$RepositoryRoot" rev-parse HEAD).Trim()
+$CurrentBranch = (git -C "$RepositoryRoot" symbolic-ref --quiet --short HEAD).Trim()
+$Status = @(git -C "$RepositoryRoot" status --porcelain=v1)
 if ($Status.Count -ne 0) { throw 'worktree 不是 clean，停止' }
 if ($CurrentBranch -ne 'main') { throw "当前分支不是预期 main：$CurrentBranch" }
 
-git -C "$Checkout" fetch origin
+git -C "$RepositoryRoot" fetch origin
 if ($LASTEXITCODE -ne 0) { throw 'fetch origin 失败' }
 
 $ShortHead = $OldHead.Substring(0, 7)
 $PreservedBranch = "main-preserved-$ShortHead"
-git -C "$Checkout" show-ref --verify --quiet "refs/heads/$PreservedBranch"
+git -C "$RepositoryRoot" show-ref --verify --quiet "refs/heads/$PreservedBranch"
 if ($LASTEXITCODE -eq 0) { throw "保留分支已存在：$PreservedBranch" }
 if ($LASTEXITCODE -ne 1) { throw '无法检查保留分支冲突' }
 
-git -C "$Checkout" branch -m "$PreservedBranch"
+git -C "$RepositoryRoot" branch -m "$PreservedBranch"
 if ($LASTEXITCODE -ne 0) { throw '无法重命名旧本地分支' }
-git -C "$Checkout" switch -c main --track origin/main
+git -C "$RepositoryRoot" switch -c main --track origin/main
 if ($LASTEXITCODE -ne 0) { throw '无法从 origin/main 创建新的本地 main；旧提交仍保留在重命名分支' }
 
-$PreservedHead = (git -C "$Checkout" rev-parse "$PreservedBranch").Trim()
-$FreshHead = (git -C "$Checkout" rev-parse HEAD).Trim()
-$RemoteHead = (git -C "$Checkout" rev-parse origin/main).Trim()
+$PreservedHead = (git -C "$RepositoryRoot" rev-parse "$PreservedBranch").Trim()
+$FreshHead = (git -C "$RepositoryRoot" rev-parse HEAD).Trim()
+$RemoteHead = (git -C "$RepositoryRoot" rev-parse origin/main).Trim()
 if ($PreservedHead -ne $OldHead) { throw '保留分支未指向旧 HEAD' }
 if ($FreshHead -ne $RemoteHead) { throw '新的 main 未指向 origin/main' }
 ```
@@ -78,9 +91,9 @@ if ($FreshHead -ne $RemoteHead) { throw '新的 main 未指向 origin/main' }
 随后直接读取：
 
 ```text
-<checkout>\project-conventions\SKILL.md
-<checkout>\project-conventions\references\lifecycle-workflows.md
-<checkout>\project-conventions\references\migration-guide.md
+<bootstrap-root>\src\project-conventions\SKILL.md
+<bootstrap-root>\src\project-conventions\references\lifecycle-workflows.md
+<bootstrap-root>\src\project-conventions\references\migration-guide.md
 ```
 
 这已经足以“基于最新版 Skill”继续执行；自动发现 Skill 才需要新会话，直接读取本地 Skill 不需要。
@@ -89,7 +102,21 @@ if ($FreshHead -ne $RemoteHead) { throw '新的 main 未指向 origin/main' }
 
 只预检 `$BootstrapRoot`、`$LegacyControl`、`$TargetCollection` 和避免碰撞所需的最小父目录。记录隐藏文件、Git 根/remote/ref/status/stash、链接和活动工作目录；不要扫描其他兄弟项目。
 
-将 `$TargetCollection` 初始化为 Project Collection，但先保留两个即将迁入的名称，不创建会碰撞的 `skills` 或 `project-conventions`。迁移映射只有这两条：
+完成顶层碰撞与 Git 安全检查后，立即用包内确定性初始化器创建 Project Collection 的三个根文件，并当场回读；不先递归扫描大仓库：
+
+```powershell
+$Initializer = Join-Path $PackageRoot 'scripts\initialize_project_collection.py'
+python -B $Initializer $TargetCollection `
+  --control-project skills `
+  --reserve skills `
+  --reserve project-conventions `
+  --apply
+Get-Item (Join-Path $TargetCollection 'AGENTS.md'), `
+  (Join-Path $TargetCollection 'README.md'), `
+  (Join-Path $TargetCollection 'MEMBERS.md')
+```
+
+这一步只创建 `AGENTS.md`、`README.md`、`MEMBERS.md`，不创建会与迁入目录碰撞的 `skills` 或 `project-conventions`。迁移映射只有这两条：
 
 ```text
 <project-parent>\skills               -> <project-parent>\obisoldbee-skills\skills
@@ -107,20 +134,20 @@ if ($FreshHead -ne $RemoteHead) { throw '新的 main 未指向 origin/main' }
 最终 checkout 与 Skill 包路径是：
 
 ```text
-<project-parent>\obisoldbee-skills\project-conventions\src\skills
-<project-parent>\obisoldbee-skills\project-conventions\src\skills\project-conventions
+<project-parent>\obisoldbee-skills\project-conventions\src
+<project-parent>\obisoldbee-skills\project-conventions\src\project-conventions
 ```
 
 此时才为 **一个指定 Agent + `project-conventions`** 扫描最终 junction：
 
 ```powershell
-$FinalCheckout = Join-Path $TargetCollection 'project-conventions\src\skills'
-$LinkScript = Join-Path $FinalCheckout 'scripts\link-windows.ps1'
+$FinalRepositoryRoot = Join-Path $TargetCollection 'project-conventions\src'
+$LinkScript = Join-Path $FinalRepositoryRoot 'scripts\link-windows.ps1'
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File $LinkScript -Agent qwenwork-cn -Skill project-conventions
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File $LinkScript -Agent qwenwork-cn -Skill project-conventions -Apply
 ```
 
-第一条只读扫描必须先展示 `would-link` 和最终源路径；只有用户明确同意后才执行第二条。不要先链接临时 `$Checkout`，否则整个 `project-conventions` 迁移后 junction 会失效。应用后从磁盘复核；链接存在仍不等于当前会话已经自动发现 Skill。
+第一条只读扫描必须先展示 `would-link` 和最终源路径；只有用户明确同意后才执行第二条。不要先链接迁移前的临时 Repository Root，否则整个 `project-conventions` 迁移后 junction 会失效。应用后从磁盘复核；链接存在仍不等于当前会话已经自动发现 Skill。
 
 macOS/Linux 使用相同的路径关系和阶段顺序，并在最终路径运行 `scripts/link-macos.sh`。平台差异不能改变“当前目录内 clone、迁移后再链接”的顺序。
 
@@ -141,10 +168,10 @@ python3 -B /path/to/obisoldbee-skills/scripts/verify_release.py /path/to/obisold
 Windows 示例使用迁移后的实际 checkout：
 
 ```powershell
-$Checkout = Join-Path $env:USERPROFILE 'Documents\project\obisoldbee-skills\project-conventions\src\skills'
-git -C "$Checkout" status --short --branch
-git -C "$Checkout" pull --ff-only
-python -B (Join-Path $Checkout 'scripts\verify_release.py') $Checkout
+$RepositoryRoot = Join-Path $env:USERPROFILE 'Documents\project\obisoldbee-skills\project-conventions\src'
+git -C "$RepositoryRoot" status --short --branch
+git -C "$RepositoryRoot" pull --ff-only
+python -B (Join-Path $RepositoryRoot 'scripts\verify_release.py') $RepositoryRoot
 ```
 
 完整执行前仍要获取 tracked remote 并计算 ahead/behind；上面的短命令不是跳过安全门的理由。如果 worktree dirty、本地领先、detached 或分叉，应停止并单独报告；不要自动 rebase、merge、reset、stash 或搬运本地提交。更新并校验后立即停止：不修改 `AGENTS.md` / `README.md` / `docs/` / `conversation/` / `memory/`，不扫描兄弟项目、旧工作区、Agent 根，也不创建或修复链接。健康链接会自动指向 checkout 中的新内容。
