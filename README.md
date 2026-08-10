@@ -60,7 +60,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/update_shared_checkou
   <collection>/GitHub/project-conventions
 ```
 
-The helper resolves the shared checkout, permits only a clean fast-forward, validates the repository root and requested package, reports before/after commits, and stops. Dirty, ahead, detached, diverged, or wrong-remote states fail closed.
+The helper resolves the shared checkout, permits only a clean fast-forward, validates the requested package, reports before/after commits, and stops. Dirty, ahead, detached, diverged, or wrong-remote states fail closed. It does not turn a package update into repository-root publication work.
 
 Git advances the repository as one commit, so bytes in other published packages may also advance. That does not authorize editing, installing, or governing their local wrappers.
 

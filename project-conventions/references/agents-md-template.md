@@ -53,7 +53,7 @@ When working in this workspace, follow the `project-conventions` skill:
 
 ## Quick Reminders
 
-- Explicit repository/Skill update? Use update-only: fast-forward and validate the checkout, then stop without restructuring, records, or link work
+- Explicit repository/Skill update? Use update-only: fast-forward and validate the requested project or named package, then stop without restructuring, records, or link work
 - Significant decision or direction change? Create a `conversation/NN-topic.md` file (scan for next number)
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
 - Done working? Append a note to `memory/YYYY-MM-DD.md`

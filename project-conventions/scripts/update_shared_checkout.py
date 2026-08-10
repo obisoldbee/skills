@@ -3,8 +3,8 @@
 
 This is the deterministic update-only entry point. It resolves the Git worktree
 from the requested package, refuses dirty/ahead/detached/diverged states, performs
-at most one fetch plus fast-forward, validates the distribution root and the
-named package tests, reports before/after commits, and stops. It never edits
+at most one fetch plus fast-forward, validates only the named package, reports
+before/after commits, and stops. It never edits
 wrappers, indexes, records, or Skill links.
 """
 
@@ -12,17 +12,43 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+REMOTE_IDENTITY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
 class UpdateError(RuntimeError):
     """Raised when the update-only safety gate fails."""
+
+
+def is_windows_junction(path: Path) -> bool:
+    native = getattr(os.path, "isjunction", None)
+    if native is not None:
+        try:
+            return bool(native(path))
+        except OSError:
+            return False
+    if os.name != "nt":
+        return False
+    try:
+        observed = os.lstat(path)
+    except OSError:
+        return False
+    return getattr(observed, "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003
+    )
+
+
+def is_link_or_junction(path: Path) -> bool:
+    return path.is_symlink() or is_windows_junction(path)
 
 
 def run(
@@ -39,6 +65,12 @@ def run(
     )
     if result.returncode != 0 and not allow_failure:
         detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        detail = re.sub(
+            r"((?:https?|ssh|git)://)[^/@\s]+@",
+            r"\1<redacted>@",
+            detail,
+            flags=re.IGNORECASE,
+        )
         raise UpdateError(f"{' '.join(arguments)} failed at {cwd}: {detail}")
     return result
 
@@ -49,24 +81,34 @@ def git(cwd: Path, *arguments: str) -> str:
 
 def normalize_remote(url: str) -> str | None:
     value = url.strip().rstrip("/")
-    prefixes = (
-        "https://github.com/",
-        "http://github.com/",
-        "ssh://git@github.com/",
-        "git@github.com:",
-    )
-    for prefix in prefixes:
-        if value.lower().startswith(prefix.lower()):
-            identity = value[len(prefix) :]
-            if identity.endswith(".git"):
-                identity = identity[:-4]
-            return identity
+    scp = re.fullmatch(r"(?:[^@/:]+@)?github\.com:(.+)", value, re.IGNORECASE)
+    if scp:
+        identity = scp.group(1)
+    else:
+        parsed = urlsplit(value)
+        if parsed.scheme.lower() not in {"http", "https", "ssh", "git"}:
+            return None
+        if (parsed.hostname or "").lower() != "github.com":
+            return None
+        identity = parsed.path.lstrip("/")
+    if identity.endswith(".git"):
+        identity = identity[:-4]
+    if REMOTE_IDENTITY.fullmatch(identity):
+        return identity
     return None
+
+
+def display_remote(url: str) -> str:
+    """Return a credential-free identity suitable for errors and receipts."""
+    bare_identity = url.strip().rstrip("/")
+    if REMOTE_IDENTITY.fullmatch(bare_identity):
+        return bare_identity
+    return normalize_remote(url) or "<non-GitHub remote>"
 
 
 def remote_matches(observed: str, expected: str) -> bool:
     normalized = normalize_remote(observed)
-    if SAFE_COMPONENT.fullmatch(expected.split("/", 1)[0]) and "/" in expected:
+    if REMOTE_IDENTITY.fullmatch(expected):
         return normalized is not None and normalized.lower() == expected.lower()
     return observed.strip().rstrip("/") == expected.strip().rstrip("/")
 
@@ -96,17 +138,23 @@ def validate_package_name(value: str) -> str:
 
 
 def validate_after_update(repository_root: Path, package_root: Path) -> list[str]:
+    if package_root.parent != repository_root or is_link_or_junction(package_root):
+        raise UpdateError(
+            f"managed package root is outside its exact real path or linked: {package_root}"
+        )
+    if not package_root.is_dir():
+        raise UpdateError(f"managed package root is missing: {package_root}")
+    scripts_root = package_root / "scripts"
+    validator = scripts_root / "validate_package.py"
+    if is_link_or_junction(scripts_root) or not scripts_root.is_dir():
+        raise UpdateError(f"package scripts directory is missing or linked: {scripts_root}")
+    if is_link_or_junction(validator) or not validator.is_file():
+        raise UpdateError(f"package validator is missing or linked: {validator}")
     commands = [
         [
             sys.executable,
             "-B",
-            str(repository_root / "scripts" / "verify_release.py"),
-            str(repository_root),
-        ],
-        [
-            sys.executable,
-            "-B",
-            str(package_root / "scripts" / "validate_package.py"),
+            str(validator),
             str(package_root),
         ],
     ]
@@ -147,7 +195,16 @@ def update(
             f"managed package path differs: expected {package_name}, observed {relative_package}"
         )
 
-    branch = git(repository_root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    branch_result = run(
+        repository_root,
+        "git",
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "HEAD",
+        allow_failure=True,
+    )
+    branch = branch_result.stdout.strip()
     if branch != expected_ref:
         raise UpdateError(
             f"checkout branch differs: expected {expected_ref}, observed {branch or 'detached'}"
@@ -180,11 +237,21 @@ def update(
     origin = git(repository_root, "remote", "get-url", remote_name)
     if not remote_matches(origin, remote_identity):
         raise UpdateError(
-            f"checkout remote differs: expected {remote_identity}, observed {origin}"
+            "checkout remote differs: "
+            f"expected {display_remote(remote_identity)}, observed {display_remote(origin)}"
         )
 
     before = git(repository_root, "rev-parse", "HEAD")
-    git(repository_root, "fetch", "--prune", remote_name)
+    fetch = run(
+        repository_root,
+        "git",
+        "fetch",
+        "--prune",
+        remote_name,
+        allow_failure=True,
+    )
+    if fetch.returncode != 0:
+        raise UpdateError(f"git fetch failed for configured remote {remote_name}")
     counts = git(
         repository_root,
         "rev-list",
@@ -239,7 +306,7 @@ def update(
         "package": package_name,
         "package_root": str(package_root),
         "repository_root": str(repository_root),
-        "remote": origin,
+        "remote": display_remote(origin),
         "branch": branch,
         "upstream": upstream,
         "before": before,

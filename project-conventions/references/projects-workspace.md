@@ -211,6 +211,8 @@ inspect current workspace
 | `collection_member_projection_mismatch` | A declared shared source resolves somewhere other than its exact managed scope | Report the member; do not replace it |
 | `collection_repository_root_missing` | A shared Repository Root declaration has no real directory | Report the declared path |
 | `collection_repository_root_link` | A shared Repository Root is itself a link/junction | Report; the Git worktree boundary must be real |
+| `collection_repository_root_invalid` | A declared Repository Root is absolute, escapes, or otherwise unsafe | Block that Repository Root claim |
+| `collection_managed_scope_invalid` | A shared Repository Root has a missing, absolute, escaping, or otherwise unsafe managed scope | Block the shared mapping; do not follow the projection |
 | `collection_member_status_invalid` | A member status is not `active`, `inactive`, `observed`, or `archived` | Report; do not treat the row as live coverage |
 | `collection_control_role_invalid` | The member index has zero or multiple control projects | Report; do not guess the controller |
 | `repository_root_mismatch` | Observed Git root differs from the member's declared source | Report a separate history-preserving migration; do not move it automatically |

@@ -227,7 +227,7 @@ collection-root/
     └── src/repo-b/.git/
 ```
 
-Each member `AGENTS.md` records only its own Repository Root, `origin`, and `upstream`. The collection member index records membership, not Git remotes on behalf of the projects.
+Each ordinary member `AGENTS.md` records only its own Repository Root, `origin`, and `upstream`. The collection member index records membership, not Git remotes on behalf of ordinary projects. The explicit shared-repository profile is the exception: its member row records the shared Repository Root and normalized remote needed to map a managed package scope; see `shared-repository.md`.
 
 ## AGENTS.md Fork Section
 

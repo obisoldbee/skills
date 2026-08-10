@@ -130,7 +130,7 @@ The safety gate is:
 7. ahead count is zero;
 8. local `HEAD` is an ancestor of upstream;
 9. fast-forward only when behind;
-10. root and named-package validation pass.
+10. named-package validation passes.
 
 Dirty, ahead, detached, diverged, wrong-remote, wrong-upstream, or locked states stop without changing local commits or files. A fetch may update remote-tracking refs before a divergence is known; report that fact precisely.
 

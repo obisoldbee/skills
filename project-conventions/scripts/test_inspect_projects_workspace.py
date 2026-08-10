@@ -48,6 +48,18 @@ class InspectorCollectionTests(unittest.TestCase):
         else:
             link.symlink_to("../../GitHub/project-conventions", target_is_directory=True)
 
+    def create_directory_link(self, link: Path, target: Path) -> None:
+        if os.name == "nt":
+            result = subprocess.run(
+                ["cmd", "/d", "/c", "mklink", "/J", str(link), str(target)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        else:
+            link.symlink_to(target, target_is_directory=True)
+
     def run_command(
         self, root: Path, *arguments: str
     ) -> subprocess.CompletedProcess[str]:
@@ -101,6 +113,18 @@ class InspectorCollectionTests(unittest.TestCase):
                 "https://github.com/owner/repo",
             )
         )
+
+    def test_safe_relative_paths_are_platform_independent(self) -> None:
+        self.assertTrue(INSPECTOR.is_safe_relative_path("GitHub/project-conventions/"))
+        for unsafe in (
+            "/project-conventions/",
+            "C:" + "/" + "Users" + "/example/project",
+            "D:relative-drive-path",
+            "\\\\server\\share",
+            "relay\\GitHub",
+            "../escape",
+        ):
+            self.assertFalse(INSPECTOR.is_safe_relative_path(unsafe), unsafe)
 
     def test_expands_collection_member_index_for_git_coverage(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -237,6 +261,63 @@ class InspectorCollectionTests(unittest.TestCase):
             ]
             self.assertEqual(expanded, [])
 
+    def test_member_path_with_linked_intermediate_component_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            collection = root / "skill-collection"
+            members_index = collection / "skills" / "docs" / "indexes"
+            members_index.mkdir(parents=True)
+            (collection / "skills" / "src").mkdir()
+            real_members = collection / ".real-members"
+            (real_members / "project-conventions" / "src").mkdir(parents=True)
+            linked_members = collection / "members"
+            if os.name == "nt":
+                linked = subprocess.run(
+                    [
+                        "cmd",
+                        "/d",
+                        "/c",
+                        "mklink",
+                        "/J",
+                        str(linked_members),
+                        str(real_members),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(linked.returncode, 0, linked.stderr or linked.stdout)
+            else:
+                linked_members.symlink_to(real_members, target_is_directory=True)
+            (indexes / "00-collections.md").write_text(
+                "| key | name | path | kind | members_index | purpose | tags |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| skills | Skills | skill-collection | collection | "
+                "skills/docs/indexes/members.md | Test | skill |\n",
+                encoding="utf-8",
+            )
+            (members_index / "members.md").write_text(
+                "| key | name | path | role | source | vcs | remote | category | status | tags |\n"
+                "|---|---|---|---|---|---|---|---|---|---|\n"
+                "| manager | Manager | skills | collection-control | src | none | - | local-only | active | control |\n"
+                "| pc | PC | members/project-conventions | member | src | none | - | local-only | active | skill |\n",
+                encoding="utf-8",
+            )
+            report = self.run_inspector(root)
+            findings = {
+                (finding["type"], finding["path"])
+                for finding in report["findings"]
+            }
+            self.assertIn(
+                (
+                    "collection_member_path_link",
+                    "skills/pc:members/project-conventions",
+                ),
+                findings,
+            )
+
     def test_repository_root_mismatch_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -354,6 +435,145 @@ class InspectorCollectionTests(unittest.TestCase):
             report = self.run_inspector(root)
             self.assertIn(
                 "collection_member_projection_not_link",
+                {finding["type"] for finding in report["findings"]},
+            )
+
+    def test_shared_repository_rejects_linked_intermediate_component(self) -> None:
+        with tempfile.TemporaryDirectory() as raw, tempfile.TemporaryDirectory() as external:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            collection = root / "skill-collection"
+            members = collection / "skills" / "docs" / "indexes"
+            members.mkdir(parents=True)
+            outside = Path(external)
+            repository = outside / "GitHub"
+            self.init_git(repository)
+            package = repository / "project-conventions"
+            package.mkdir()
+            (package / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+            relay = collection / "relay"
+            if os.name == "nt":
+                linked = subprocess.run(
+                    ["cmd", "/d", "/c", "mklink", "/J", str(relay), str(outside)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(linked.returncode, 0, linked.stderr or linked.stdout)
+            else:
+                relay.symlink_to(outside, target_is_directory=True)
+            source_parent = collection / "project-conventions" / "src"
+            source_parent.mkdir(parents=True)
+            projection = source_parent / "project-conventions"
+            if os.name == "nt":
+                projected = subprocess.run(
+                    ["cmd", "/d", "/c", "mklink", "/J", str(projection), str(package)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(
+                    projected.returncode, 0, projected.stderr or projected.stdout
+                )
+            else:
+                projection.symlink_to(
+                    "../../relay/GitHub/project-conventions",
+                    target_is_directory=True,
+                )
+            (indexes / "00-collections.md").write_text(
+                "| key | name | path | kind | members_index | purpose | tags |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| skills | Skills | skill-collection | collection | "
+                "skills/docs/indexes/members.md | Test | skill |\n",
+                encoding="utf-8",
+            )
+            (members / "members.md").write_text(
+                "| key | name | path | role | source | repository_root | vcs | remote | managed_scope | category | status | tags |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+                "| manager | Manager | skills | collection-control | src | - | none | - | local control files | local-only | active | control |\n"
+                "| pc | PC | project-conventions | member | src/project-conventions | relay/GitHub | local_git | - | project-conventions/ | local-only | active | skill |\n",
+                encoding="utf-8",
+            )
+            report = self.run_inspector(root)
+            self.assertIn(
+                "collection_repository_root_link",
+                {finding["type"] for finding in report["findings"]},
+            )
+
+    def test_absolute_shared_managed_scope_is_rejected_before_normalization(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            collection = root / "skill-collection"
+            members = collection / "skills" / "docs" / "indexes"
+            members.mkdir(parents=True)
+            repository = collection / "GitHub"
+            self.init_git(repository)
+            package = repository / "project-conventions"
+            package.mkdir()
+            (package / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+            source_parent = collection / "project-conventions" / "src"
+            source_parent.mkdir(parents=True)
+            self.create_directory_projection(
+                source_parent / "project-conventions", package
+            )
+            (indexes / "00-collections.md").write_text(
+                "| key | name | path | kind | members_index | purpose | tags |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| skills | Skills | skill-collection | collection | "
+                "skills/docs/indexes/members.md | Test | skill |\n",
+                encoding="utf-8",
+            )
+            (members / "members.md").write_text(
+                "| key | name | path | role | source | repository_root | vcs | remote | managed_scope | category | status | tags |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+                "| manager | Manager | skills | collection-control | src | - | none | - | local control files | local-only | active | control |\n"
+                "| pc | PC | project-conventions | member | src/project-conventions | GitHub | local_git | - | /project-conventions/ | local-only | active | skill |\n",
+                encoding="utf-8",
+            )
+            report = self.run_inspector(root)
+            finding_types = {finding["type"] for finding in report["findings"]}
+            self.assertIn("collection_managed_scope_invalid", finding_types)
+            self.assertIn("collection_member_source_link", finding_types)
+
+    @unittest.skipIf(os.name == "nt", "Unix raw symlink contract")
+    def test_absolute_shared_projection_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            collection = root / "skill-collection"
+            members = collection / "skills" / "docs" / "indexes"
+            members.mkdir(parents=True)
+            repository = collection / "GitHub"
+            self.init_git(repository)
+            package = repository / "project-conventions"
+            package.mkdir()
+            (package / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+            source_parent = collection / "project-conventions" / "src"
+            source_parent.mkdir(parents=True)
+            (source_parent / "project-conventions").symlink_to(
+                package.resolve(), target_is_directory=True
+            )
+            (indexes / "00-collections.md").write_text(
+                "| key | name | path | kind | members_index | purpose | tags |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| skills | Skills | skill-collection | collection | "
+                "skills/docs/indexes/members.md | Test | skill |\n",
+                encoding="utf-8",
+            )
+            (members / "members.md").write_text(
+                "| key | name | path | role | source | repository_root | vcs | remote | managed_scope | category | status | tags |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+                "| manager | Manager | skills | collection-control | src | - | none | - | local control files | local-only | active | control |\n"
+                "| pc | PC | project-conventions | member | src/project-conventions | GitHub | local_git | - | project-conventions/ | local-only | active | skill |\n",
+                encoding="utf-8",
+            )
+            report = self.run_inspector(root)
+            self.assertIn(
+                "collection_member_projection_invalid",
                 {finding["type"] for finding in report["findings"]},
             )
 
@@ -587,6 +807,53 @@ class InspectorCollectionTests(unittest.TestCase):
             types = {finding["type"] for finding in report["findings"]}
             self.assertIn("index_path_link", types)
             self.assertIn("dangling_link", types)
+
+    def test_index_directory_link_is_reported_without_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            outside = root / "outside-indexes"
+            outside.mkdir()
+            (outside / "outside-secret.md").write_text(
+                "| key | name | path | vcs | remote | purpose | tags | update |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| outside-secret | Outside | secret | none | - | Test | test | manual |\n",
+                encoding="utf-8",
+            )
+            self.create_directory_link(indexes / "linked-directory", outside)
+
+            report = self.run_inspector(root)
+            findings = {
+                (finding["type"], finding["path"])
+                for finding in report["findings"]
+            }
+            self.assertIn(("index_path_link", "linked-directory"), findings)
+            self.assertNotIn(
+                "outside-secret",
+                {entry["key"] for entry in report["index_entries"]},
+            )
+
+    def test_indexes_parent_link_is_rejected_before_reading_external_indexes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            root = base / "workspace"
+            root.mkdir()
+            outside_catalog = base / "outside-catalog"
+            outside_indexes = outside_catalog / "docs" / "indexes"
+            outside_indexes.mkdir(parents=True)
+            (outside_indexes / "03-local-only.md").write_text(
+                "| key | name | path | vcs | remote | purpose | tags | update |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| outside-secret | Outside | secret | none | - | Test | test | manual |\n",
+                encoding="utf-8",
+            )
+            self.create_directory_link(root / "_project-catalog", outside_catalog)
+
+            result = self.run_command(root, "--format", "json")
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("contains a link/junction", result.stderr)
+            self.assertNotIn("outside-secret", result.stdout)
 
     def test_unindexed_directory_and_git_root_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

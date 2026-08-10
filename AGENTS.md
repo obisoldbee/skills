@@ -25,7 +25,7 @@ Lifecycle routing:
 
 1. **Clone/bootstrap only**: clone to the exact named destination, verify Git identity, run root validation and the named package validator, report commit, and stop.
 2. **Fresh shared Skills collection**: clone this repository as `<collection>/GitHub`, then run `project-conventions/scripts/initialize_skills_control_project.py` dry-run and apply from that checkout. It creates the collection overlay, complete control project, stable member wrapper, and member projection. It creates no Agent links.
-3. **Update-only**: run the requested package's `scripts/update_shared_checkout.py`. It permits only clean, attached, ahead-zero fast-forward behavior, validates root plus package, and stops.
+3. **Update-only**: run the requested package's `scripts/update_shared_checkout.py`. It permits only clean, attached, ahead-zero fast-forward behavior, validates that named package, and stops.
 4. **Package maintenance**: modify only the explicitly authorized top-level package and run its validators/tests.
 5. **Repository-root maintenance**: modify only root-owned files, rebuild `ROOT-MANIFEST.sha256`, verify it, and do not modify package content.
 6. **Agent installation**: separately scan and apply only exact authorized consumers using the collection control scripts or this checkout's scoped link scripts.

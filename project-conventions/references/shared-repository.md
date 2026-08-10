@@ -83,7 +83,7 @@ On Windows, create a directory junction from the same member source entry to the
 
 Creation is valid only when the destination is absent. A real directory, wrong link, dangling link, or wrong junction is a conflict and must be preserved until the user authorizes a specific backup-and-replace operation.
 
-Verification requires both link type and resolved target. The presence of `SKILL.md` alone is insufficient because an accidental copied directory can expose the same file.
+Verification requires platform-exact link type and exact target. Unix additionally requires the raw relative target derived from the final paths (for the standard layout, `../../GitHub/project-conventions`); an absolute symlink is invalid even when it resolves to the same package. Windows requires a directory junction, not a directory symlink. The presence of `SKILL.md` alone is insufficient because an accidental copied directory can expose the same file.
 
 ## Update-only
 

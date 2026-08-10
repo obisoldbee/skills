@@ -44,6 +44,8 @@ The shared initializer creates a complete `skills/` control project, a stable me
 
 ## Validate
 
+The deterministic Python tools support Python 3.11 and newer. CI exercises the Windows junction fallback on Python 3.11 and the native junction API on the latest Python.
+
 From this package:
 
 ```bash

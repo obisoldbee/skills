@@ -84,7 +84,7 @@ An update request never runs initialization. From either the true package or mem
 python -B <package>/scripts/update_shared_checkout.py <package>
 ```
 
-The helper resolves the shared Git worktree, requires clean/attached/tracked/ahead=0/fast-forwardable state, fetches and fast-forwards if needed, validates the repository root and requested package, reports before/after commits, and stops.
+The helper resolves the shared Git worktree, requires clean/attached/tracked/ahead=0/fast-forwardable state, fetches and fast-forwards if needed, validates only the requested package, reports before/after commits, and stops.
 
 If dirty, ahead, detached, diverged, locked, wrong-remote, or wrong-upstream, stop. Never auto-stash, merge a divergence, rebase, reset, preserve/rename branches, move files, rebuild wrappers, edit indexes, scan siblings, or relink during update-only.
 

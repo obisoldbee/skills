@@ -74,7 +74,7 @@ Rules:
 2. The shared Repository Root is a real directory and exact Git worktree, not a link.
 3. `repository_root` and `managed_scope` must both be explicit and safe relative paths.
 4. The projection must resolve exactly to that scope.
-5. Unix uses a relative symlink; Windows uses a final-path junction.
+5. Unix uses the exact final-path-relative symlink; Windows uses a final-path directory junction. Reject absolute Unix links and Windows directory symlinks even when they resolve to the expected bytes.
 6. Agent exports point directly to the true package, not through the projection.
 7. Updating the shared checkout does not authorize wrapper/index/link changes.
 8. Private or local-only members outside that checkout remain independent.

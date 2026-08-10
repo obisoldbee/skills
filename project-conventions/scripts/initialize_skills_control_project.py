@@ -17,10 +17,12 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +41,7 @@ PUBLIC_ROOT_FILES = (
     "scripts/link-windows.ps1",
     "scripts/verify_release.py",
 )
+PUBLIC_ROOT_DIRECTORIES = (".github", ".github/workflows", "config", "scripts")
 TEMPLATE_FILES = (
     "src/scripts/build_public_root_overlay.py",
     "src/scripts/link-macos.sh",
@@ -100,26 +103,49 @@ def validate_relative(value: str, label: str) -> str:
 
 def normalize_remote(url: str) -> str | None:
     value = url.strip().rstrip("/")
-    prefixes = (
-        "https://github.com/",
-        "http://github.com/",
-        "ssh://git@github.com/",
-        "git@github.com:",
-    )
-    for prefix in prefixes:
-        if value.lower().startswith(prefix.lower()):
-            identity = value[len(prefix) :]
-            if identity.endswith(".git"):
-                identity = identity[:-4]
-            return identity
+    scp = re.fullmatch(r"(?:[^@/:]+@)?github\.com:(.+)", value, re.IGNORECASE)
+    if scp:
+        identity = scp.group(1)
+    else:
+        parsed = urlsplit(value)
+        if parsed.scheme.lower() not in {"http", "https", "ssh", "git"}:
+            return None
+        if (parsed.hostname or "").lower() != "github.com":
+            return None
+        identity = parsed.path.lstrip("/")
+    if identity.endswith(".git"):
+        identity = identity[:-4]
+    if REMOTE_IDENTITY.fullmatch(identity):
+        return identity
     return None
+
+
+def display_remote(url: str) -> str:
+    """Return a credential-free identity suitable for errors and receipts."""
+    return normalize_remote(url) or "<unrecognized remote URL>"
+
+
+def is_windows_junction(path: Path) -> bool:
+    native = getattr(os.path, "isjunction", None)
+    if native is not None:
+        try:
+            return bool(native(path))
+        except OSError:
+            return False
+    if os.name != "nt":
+        return False
+    try:
+        observed = os.lstat(path)
+    except OSError:
+        return False
+    return getattr(observed, "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003
+    )
 
 
 def is_link_or_junction(path: Path) -> bool:
     try:
-        return path.is_symlink() or bool(
-            getattr(os.path, "isjunction", lambda _: False)(path)
-        )
+        return path.is_symlink() or is_windows_junction(path)
     except OSError:
         return False
 
@@ -133,6 +159,12 @@ def run_git(repository_root: Path, *arguments: str) -> str:
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "unknown git error"
+        detail = re.sub(
+            r"((?:https?|ssh|git)://)[^/@\s]+@",
+            r"\1<redacted>@",
+            detail,
+            flags=re.IGNORECASE,
+        )
         raise ControlInitializationError(
             f"git {' '.join(arguments)} failed at {repository_root}: {detail}"
         )
@@ -187,7 +219,13 @@ def validate_distribution(
         raise ControlInitializationError(
             f"declared shared Repository Root differs from Git readback: {observed_root}"
         )
-    branch = run_git(distribution_root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    branch_result = subprocess.run(
+        ["git", "-C", str(distribution_root), "symbolic-ref", "--quiet", "--short", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    branch = branch_result.stdout.strip()
     if branch != expected_ref:
         raise ControlInitializationError(
             f"shared checkout branch differs: expected {expected_ref}, observed {branch or 'detached'}"
@@ -214,7 +252,8 @@ def validate_distribution(
     observed_identity = normalize_remote(origin)
     if observed_identity is None or observed_identity.lower() != remote_identity.lower():
         raise ControlInitializationError(
-            f"shared checkout origin differs: expected {remote_identity}, observed {origin}"
+            "shared checkout origin differs: "
+            f"expected {remote_identity}, observed {display_remote(origin)}"
         )
     head = run_git(distribution_root, "rev-parse", "HEAD")
     remote_head = run_git(distribution_root, "rev-parse", f"origin/{expected_ref}")
@@ -225,12 +264,30 @@ def validate_distribution(
 
     validate_source_file(distribution_root / "ROOT-MANIFEST.sha256", "distribution")
     package_root = distribution_root / package_subpath
+    if is_link_or_junction(package_root) or not package_root.is_dir():
+        raise ControlInitializationError(
+            f"managed package root is missing or linked: {package_root}"
+        )
     validate_source_file(package_root / "SKILL.md", "package entry")
+    package_scripts = package_root / "scripts"
+    if is_link_or_junction(package_scripts) or not package_scripts.is_dir():
+        raise ControlInitializationError(
+            f"package scripts directory is missing or linked: {package_scripts}"
+        )
+    validate_source_file(
+        package_scripts / "validate_package.py", "package validator"
+    )
     if PACKAGE_ROOT.resolve() != package_root.resolve():
         raise ControlInitializationError(
             "initializer must run from the managed package inside the declared "
             f"shared checkout: {package_root}"
         )
+    for relative in PUBLIC_ROOT_DIRECTORIES:
+        directory = distribution_root / relative
+        if is_link_or_junction(directory) or not directory.is_dir():
+            raise ControlInitializationError(
+                f"required public-root directory is missing or linked: {directory}"
+            )
     for relative in PUBLIC_ROOT_FILES:
         validate_source_file(distribution_root / relative, "public-root")
     for relative in TEMPLATE_FILES:
@@ -253,10 +310,25 @@ def validate_distribution(
             f"distribution root verification failed: {detail}"
         )
 
+    package_verification = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            str(package_scripts / "validate_package.py"),
+            str(package_root),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if package_verification.returncode != 0:
+        detail = package_verification.stderr.strip() or package_verification.stdout.strip()
+        raise ControlInitializationError(f"package verification failed: {detail}")
+
     return {
         "branch": branch,
         "head": head,
-        "origin": origin,
+        "origin": observed_identity,
         "upstream": upstream,
         "repository_root": str(distribution_root.resolve()),
         "package_root": str(package_root.resolve()),
@@ -520,12 +592,28 @@ def expected_control_files(dynamic: dict[str, str]) -> set[str]:
     return expected
 
 
-def observed_files(root: Path) -> set[str]:
-    return {
-        path.relative_to(root).as_posix()
-        for path in root.rglob("*")
-        if path.is_file() and not is_link_or_junction(path)
-    }
+def observed_files(root: Path, ignored_links: set[str] | None = None) -> set[str]:
+    """List files without ever descending through a link or junction."""
+    ignored_links = ignored_links or set()
+    observed: set[str] = set()
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                relative = path.relative_to(root).as_posix()
+                if is_link_or_junction(path):
+                    if relative not in ignored_links:
+                        observed.add(relative)
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(path)
+                elif entry.is_file(follow_symlinks=False):
+                    observed.add(relative)
+                else:
+                    observed.add(relative)
+    return observed
 
 
 def verify_control_tree(control_root: Path, dynamic: dict[str, str]) -> None:
@@ -582,15 +670,32 @@ def verify_member_tree(
         if path.read_text(encoding="utf-8") != content:
             raise ControlInitializationError(f"generated member file differs: {path}")
     projection = member_root / "src" / member_project
-    if not is_link_or_junction(projection):
-        raise ControlInitializationError(f"member projection is not a link/junction: {projection}")
+    if os.name == "nt":
+        if not is_windows_junction(projection):
+            raise ControlInitializationError(
+                f"member projection is not a Windows directory junction: {projection}"
+            )
+    else:
+        if not projection.is_symlink():
+            raise ControlInitializationError(
+                f"member projection is not a Unix symlink: {projection}"
+            )
+        expected_raw_target = os.path.relpath(
+            package_root.resolve(), projection.parent.resolve()
+        ).replace(os.sep, "/")
+        observed_raw_target = os.readlink(projection).replace(os.sep, "/")
+        if observed_raw_target != expected_raw_target:
+            raise ControlInitializationError(
+                "member projection raw target differs: "
+                f"expected {expected_raw_target}, observed {observed_raw_target}"
+            )
     if not projection.exists() or projection.resolve() != package_root.resolve():
         raise ControlInitializationError(
             f"member projection target differs: {projection} -> {projection.resolve()}"
         )
     if not (projection / "SKILL.md").is_file():
         raise ControlInitializationError(f"member projection package entry is missing: {projection}")
-    observed = observed_files(member_root)
+    observed = observed_files(member_root, {f"src/{member_project}"})
     expected = set(dynamic)
     if observed != expected:
         raise ControlInitializationError(
@@ -635,12 +740,26 @@ def initialize(
     }:
         raise ControlInitializationError(f"unsupported member category: {member_category}")
 
-    collection_root = collection_root.expanduser().resolve()
-    distribution_root = distribution_root.expanduser().resolve()
-    if is_link_or_junction(collection_root) or not collection_root.is_dir():
+    raw_collection_root = collection_root.expanduser().absolute()
+    raw_distribution_root = distribution_root.expanduser().absolute()
+    if is_link_or_junction(raw_collection_root) or not raw_collection_root.is_dir():
         raise ControlInitializationError(
-            f"collection root is missing or linked: {collection_root}"
+            f"collection root is missing or linked: {raw_collection_root}"
         )
+    expected_distribution_root = raw_collection_root / repository_project
+    if os.path.normcase(os.path.abspath(raw_distribution_root)) != os.path.normcase(
+        os.path.abspath(expected_distribution_root)
+    ):
+        raise ControlInitializationError(
+            "distribution root must be the exact collection-local path at "
+            f"{expected_distribution_root}"
+        )
+    if is_link_or_junction(raw_distribution_root) or not raw_distribution_root.is_dir():
+        raise ControlInitializationError(
+            f"shared Repository Root is missing or linked: {raw_distribution_root}"
+        )
+    collection_root = raw_collection_root.resolve()
+    distribution_root = raw_distribution_root.resolve()
     if (collection_root / ".git").exists() or is_link_or_junction(
         collection_root / ".git"
     ):

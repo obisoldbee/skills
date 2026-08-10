@@ -12,11 +12,12 @@ import argparse
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 
@@ -73,10 +74,28 @@ def relative(path: Path, root: Path) -> str:
     return value if value != "." else ""
 
 
+def is_windows_junction(path: Path) -> bool:
+    native = getattr(os.path, "isjunction", None)
+    if native is not None:
+        try:
+            return bool(native(path))
+        except OSError:
+            return False
+    if os.name != "nt":
+        return False
+    try:
+        observed = os.lstat(path)
+    except OSError:
+        return False
+    return getattr(observed, "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003
+    )
+
+
 def entry_kind(path: Path) -> tuple[str, bool]:
     try:
         is_link = path.is_symlink()
-        is_junction = bool(getattr(os.path, "isjunction", lambda _: False)(path))
+        is_junction = is_windows_junction(path)
         if is_link or is_junction:
             return ("junction" if is_junction else "symlink", path.exists())
         if path.is_dir():
@@ -86,6 +105,21 @@ def entry_kind(path: Path) -> tuple[str, bool]:
         return ("other", True)
     except OSError:
         return ("unreadable", False)
+
+
+def iter_tree_without_following_links(root: Path):
+    """Yield descendants and kinds without recursing through links or junctions."""
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as scan:
+            entries = sorted(scan, key=lambda item: item.name, reverse=True)
+        for entry in entries:
+            path = Path(entry.path)
+            kind, _ = entry_kind(path)
+            yield path, kind
+            if kind == "directory":
+                pending.append(path)
 
 
 def scan_top_level(root: Path) -> list[dict[str, object]]:
@@ -289,11 +323,23 @@ def parse_index_file(path: Path, label_base: Path) -> list[IndexEntry]:
 
 
 def is_safe_relative_path(value: str) -> bool:
-    normalized = value.replace("\\", "/")
-    candidate = Path(normalized)
-    if candidate.is_absolute() or re.match(r"^[a-zA-Z]:/", normalized):
+    if "\\" in value:
         return False
+    normalized = value.replace("\\", "/")
+    if normalized.startswith("/") or re.match(r"^[a-zA-Z]:", normalized):
+        return False
+    candidate = PurePosixPath(normalized)
     return bool(candidate.parts) and ".." not in candidate.parts
+
+
+def first_link_or_junction(base: Path, relative_value: str) -> Path | None:
+    current = base
+    for part in PurePosixPath(relative_value.replace("\\", "/")).parts:
+        current = current / part
+        kind, _ = entry_kind(current)
+        if kind in {"symlink", "junction"}:
+            return current
+    return None
 
 
 def load_indexes(
@@ -304,14 +350,18 @@ def load_indexes(
     entries: list[IndexEntry] = []
     errors: list[dict[str, str]] = []
     expansions: list[dict[str, object]] = []
-    for path in sorted(indexes_dir.rglob("*.md")):
-        if path.is_symlink():
+    for path, kind in sorted(
+        iter_tree_without_following_links(indexes_dir), key=lambda item: item[0]
+    ):
+        if kind in {"symlink", "junction"}:
             errors.append(
                 {
                     "type": "index_path_link",
                     "path": path.relative_to(indexes_dir).as_posix(),
                 }
             )
+            continue
+        if kind != "file" or path.suffix != ".md":
             continue
         try:
             entries.extend(parse_index_file(path, indexes_dir))
@@ -335,6 +385,12 @@ def load_indexes(
             )
             continue
         collection_candidate = root / collection.path
+        collection_component_link = first_link_or_junction(root, collection.path)
+        if collection_component_link is not None:
+            errors.append(
+                {"type": "collection_path_link", "path": collection.path}
+            )
+            continue
         collection_kind, _ = entry_kind(collection_candidate)
         if collection_kind in {"symlink", "junction"}:
             errors.append(
@@ -350,6 +406,17 @@ def load_indexes(
             )
             continue
         member_index_candidate = collection_root / collection.members_index
+        member_index_component_link = first_link_or_junction(
+            collection_root, collection.members_index
+        )
+        if member_index_component_link is not None:
+            errors.append(
+                {
+                    "type": "index_path_link",
+                    "path": f"{collection.path}/{collection.members_index}",
+                }
+            )
+            continue
         member_index_kind, _ = entry_kind(member_index_candidate)
         if member_index_kind in {"symlink", "junction"}:
             errors.append(
@@ -425,6 +492,17 @@ def load_indexes(
                     }
                 )
             member_candidate = collection_root / member.path
+            member_component_link = first_link_or_junction(
+                collection_root, member.path
+            )
+            if member_component_link is not None:
+                errors.append(
+                    {
+                        "type": "collection_member_path_link",
+                        "path": f"{collection.key}/{member.key}:{member.path}",
+                    }
+                )
+                continue
             member_kind, _ = entry_kind(member_candidate)
             if member_kind in {"symlink", "junction"}:
                 errors.append(
@@ -454,22 +532,61 @@ def load_indexes(
             elif member.status in {"active", "inactive", "observed"}:
                 source_candidate = member_candidate / member.source
                 source_kind, _ = entry_kind(source_candidate)
-                repository_relative = member.repository_root.strip().strip("`/")
-                scope_relative = member.managed_scope.strip().strip("`/")
+                source_parts = PurePosixPath(
+                    member.source.replace("\\", "/")
+                ).parts
+                source_parent_link = first_link_or_junction(
+                    member_candidate, "/".join(source_parts[:-1])
+                )
+                if source_parent_link is not None:
+                    errors.append(
+                        {
+                            "type": "collection_member_source_invalid",
+                            "path": f"{collection.key}/{member.key}:{member.source}",
+                        }
+                    )
+                repository_relative = member.repository_root.strip()
+                scope_relative = member.managed_scope.strip()
+                repository_declared = repository_relative not in {"", "-"}
+                repository_safe = repository_declared and is_safe_relative_path(
+                    repository_relative
+                )
+                if repository_declared and not repository_safe:
+                    errors.append(
+                        {
+                            "type": "collection_repository_root_invalid",
+                            "path": (
+                                f"{collection.key}/{member.key}:"
+                                f"{member.repository_root}"
+                            ),
+                        }
+                    )
                 repository_candidate = collection_root / repository_relative
-                shared_mapping = False
-                if (
-                    repository_relative not in {"", "-"}
-                    and scope_relative not in {"", "-", "whole repository"}
-                    and is_safe_relative_path(repository_relative)
-                    and is_safe_relative_path(scope_relative)
-                ):
+                shared_repository = False
+                if repository_safe:
                     try:
-                        repository_candidate.resolve().relative_to(
-                            member_candidate.resolve()
-                        )
+                        repository_candidate.relative_to(member_candidate)
                     except ValueError:
-                        shared_mapping = True
+                        shared_repository = True
+                scope_safe = (
+                    scope_relative not in {"", "-", "whole repository"}
+                    and is_safe_relative_path(scope_relative)
+                )
+                if shared_repository and not scope_safe:
+                    errors.append(
+                        {
+                            "type": "collection_managed_scope_invalid",
+                            "path": (
+                                f"{collection.key}/{member.key}:"
+                                f"{member.managed_scope}"
+                            ),
+                        }
+                    )
+                shared_mapping = (
+                    shared_repository
+                    and scope_safe
+                    and source_parent_link is None
+                )
                 if source_kind in {"symlink", "junction"}:
                     if not shared_mapping:
                         errors.append(
@@ -479,54 +596,96 @@ def load_indexes(
                             }
                         )
                     else:
-                        repository_kind, _ = entry_kind(repository_candidate)
-                        if repository_kind in {"symlink", "junction"}:
+                        expected_projection_kind = (
+                            "junction" if os.name == "nt" else "symlink"
+                        )
+                        if source_kind != expected_projection_kind:
                             errors.append(
                                 {
-                                    "type": "collection_repository_root_link",
+                                    "type": "collection_member_projection_invalid",
                                     "path": (
                                         f"{collection.key}/{member.key}:"
-                                        f"{repository_relative}"
-                                    ),
-                                }
-                            )
-                        elif not repository_candidate.is_dir():
-                            errors.append(
-                                {
-                                    "type": "collection_repository_root_missing",
-                                    "path": (
-                                        f"{collection.path}/{repository_relative}"
+                                        f"{member.source}"
                                     ),
                                 }
                             )
                         else:
-                            expected_source = repository_candidate / scope_relative
-                            try:
-                                expected_source.resolve().relative_to(
-                                    repository_candidate.resolve()
-                                )
-                                source_target = source_candidate.resolve(strict=True)
-                            except (OSError, ValueError):
+                            repository_link = first_link_or_junction(
+                                collection_root, repository_relative
+                            )
+                            if repository_link is not None:
                                 errors.append(
                                     {
-                                        "type": "collection_member_projection_invalid",
+                                        "type": "collection_repository_root_link",
                                         "path": (
                                             f"{collection.key}/{member.key}:"
-                                            f"{member.source}"
+                                            f"{repository_relative}"
+                                        ),
+                                    }
+                                )
+                            elif not repository_candidate.is_dir():
+                                errors.append(
+                                    {
+                                        "type": "collection_repository_root_missing",
+                                        "path": (
+                                            f"{collection.path}/{repository_relative}"
                                         ),
                                     }
                                 )
                             else:
-                                if source_target != expected_source.resolve():
+                                expected_source = repository_candidate / scope_relative
+                                raw_target_valid = True
+                                if os.name != "nt":
+                                    expected_raw_target = os.path.relpath(
+                                        expected_source, source_candidate.parent
+                                    ).replace(os.sep, "/")
+                                    try:
+                                        observed_raw_target = os.readlink(
+                                            source_candidate
+                                        ).replace(os.sep, "/")
+                                    except OSError:
+                                        raw_target_valid = False
+                                    else:
+                                        raw_target_valid = (
+                                            observed_raw_target == expected_raw_target
+                                        )
+                                if not raw_target_valid:
                                     errors.append(
                                         {
-                                            "type": "collection_member_projection_mismatch",
+                                            "type": "collection_member_projection_invalid",
                                             "path": (
                                                 f"{collection.key}/{member.key}:"
                                                 f"{member.source}"
                                             ),
                                         }
                                     )
+                                else:
+                                    try:
+                                        expected_source.resolve().relative_to(
+                                            repository_candidate.resolve()
+                                        )
+                                        source_target = source_candidate.resolve(strict=True)
+                                    except (OSError, ValueError):
+                                        errors.append(
+                                            {
+                                                "type": "collection_member_projection_invalid",
+                                                "path": (
+                                                    f"{collection.key}/{member.key}:"
+                                                    f"{member.source}"
+                                                ),
+                                            }
+                                        )
+                                    else:
+                                        if source_target != expected_source.resolve():
+                                            errors.append(
+                                                {
+                                                    "type": "collection_member_projection_mismatch",
+                                                    "path": (
+                                                        f"{collection.key}/{member.key}:"
+                                                        f"{member.source}"
+                                                    ),
+                                                }
+                                            )
                 elif shared_mapping:
                     errors.append(
                         {
@@ -884,17 +1043,40 @@ def main() -> int:
         print("limits must be positive", file=sys.stderr)
         return 2
 
-    root = Path(args.root).expanduser().resolve()
-    if not root.is_dir() or not os.access(root, os.R_OK):
-        print(f"unreadable Projects Workspace root: {root}", file=sys.stderr)
+    raw_root = Path(args.root).expanduser().absolute()
+    root_kind, _ = entry_kind(raw_root)
+    if root_kind in {"symlink", "junction"}:
+        print(f"Projects Workspace root must not be linked: {raw_root}", file=sys.stderr)
         return 2
+    if root_kind != "directory" or not os.access(raw_root, os.R_OK):
+        print(f"unreadable Projects Workspace root: {raw_root}", file=sys.stderr)
+        return 2
+    root = raw_root.resolve()
 
-    default_indexes = root / "_project-catalog" / "docs" / "indexes"
-    indexes_dir = (
-        Path(args.indexes_dir).expanduser().resolve()
+    default_indexes = raw_root / "_project-catalog" / "docs" / "indexes"
+    raw_indexes_dir = (
+        Path(args.indexes_dir).expanduser().absolute()
         if args.indexes_dir
-        else default_indexes
+        else default_indexes.absolute()
     )
+    try:
+        indexes_relative = raw_indexes_dir.relative_to(raw_root)
+    except ValueError:
+        print(
+            f"indexes directory escapes Projects Workspace: {raw_indexes_dir}",
+            file=sys.stderr,
+        )
+        return 2
+    linked_index_component = first_link_or_junction(
+        raw_root, indexes_relative.as_posix()
+    )
+    if linked_index_component is not None:
+        print(
+            f"indexes directory path contains a link/junction: {linked_index_component}",
+            file=sys.stderr,
+        )
+        return 2
+    indexes_dir = raw_indexes_dir.resolve()
     try:
         indexes_dir.relative_to(root)
     except ValueError:

@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import sys
 from pathlib import Path
 
@@ -39,17 +40,64 @@ class ValidationError(RuntimeError):
     """Raised when the package is incomplete or not portable."""
 
 
-def is_link_or_junction(path: Path) -> bool:
-    return path.is_symlink() or bool(
-        getattr(os.path, "isjunction", lambda _: False)(path)
+def is_windows_junction(path: Path) -> bool:
+    native = getattr(os.path, "isjunction", None)
+    if native is not None:
+        try:
+            return bool(native(path))
+        except OSError:
+            return False
+    if os.name != "nt":
+        return False
+    try:
+        observed = os.lstat(path)
+    except OSError:
+        return False
+    return getattr(observed, "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003
     )
 
 
-def validate(package_root: Path) -> dict[str, object]:
-    package_root = package_root.expanduser().resolve()
-    if is_link_or_junction(package_root) or not package_root.is_dir():
-        raise ValidationError(f"package root is missing or linked: {package_root}")
+def is_link_or_junction(path: Path) -> bool:
+    return path.is_symlink() or is_windows_junction(path)
 
+
+def iter_tree_without_following_links(root: Path):
+    """Yield descendants while treating links and junctions as leaf entries."""
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as scan:
+            entries = sorted(scan, key=lambda item: item.name, reverse=True)
+        for entry in entries:
+            path = Path(entry.path)
+            yield path
+            if not is_link_or_junction(path) and entry.is_dir(follow_symlinks=False):
+                pending.append(path)
+
+
+def first_link_or_junction(root: Path, relative: str) -> Path | None:
+    current = root
+    for part in Path(relative).parts:
+        current = current / part
+        if is_link_or_junction(current):
+            return current
+    return None
+
+
+def validate(package_root: Path) -> dict[str, object]:
+    raw_package_root = package_root.expanduser().absolute()
+    if is_link_or_junction(raw_package_root) or not raw_package_root.is_dir():
+        raise ValidationError(f"package root is missing or linked: {raw_package_root}")
+    package_root = raw_package_root.resolve()
+
+    linked_required = sorted(
+        relative
+        for relative in REQUIRED_FILES | REQUIRED_DIRECTORIES
+        if first_link_or_junction(package_root, relative) is not None
+    )
+    if linked_required:
+        raise ValidationError(f"required package paths are linked: {linked_required}")
     missing_files = sorted(
         relative for relative in REQUIRED_FILES if not (package_root / relative).is_file()
     )
@@ -70,7 +118,7 @@ def validate(package_root: Path) -> dict[str, object]:
 
     files = 0
     violations: list[str] = []
-    for path in package_root.rglob("*"):
+    for path in sorted(iter_tree_without_following_links(package_root)):
         relative = path.relative_to(package_root).as_posix()
         if is_link_or_junction(path):
             violations.append(f"link:{relative}")
@@ -78,7 +126,10 @@ def validate(package_root: Path) -> dict[str, object]:
         if path.name in FORBIDDEN_NAMES or path.suffix == ".pyc":
             violations.append(f"transient:{relative}")
             continue
+        if path.is_dir():
+            continue
         if not path.is_file():
+            violations.append(f"unsupported-type:{relative}")
             continue
         files += 1
         if path.suffix.lower() not in TEXT_SUFFIXES:
