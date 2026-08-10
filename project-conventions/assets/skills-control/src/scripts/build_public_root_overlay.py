@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 CONTROL_ROOT = Path(__file__).resolve().parents[2]
-PUBLIC_ROOT_SOURCE = CONTROL_ROOT / "src" / "public-repo"
+SHARED_REPOSITORY_ROOT = CONTROL_ROOT.parent / "GitHub"
 RELEASE_ROOT = CONTROL_ROOT / "release"
 DEFAULT_OUTPUT = RELEASE_ROOT / "public-root-overlay"
 ROOT_MANIFEST = "ROOT-MANIFEST.sha256"
@@ -68,14 +68,34 @@ def validate_tree(root: Path, label: str) -> list[str]:
     return violations
 
 
-def build(output: Path) -> dict[str, object]:
-    if not PUBLIC_ROOT_SOURCE.is_dir():
-        raise BuildError(f"public root source is missing: {PUBLIC_ROOT_SOURCE}")
+def validate_root_file(path: Path, label: str) -> list[str]:
+    violations: list[str] = []
+    if path.name in FORBIDDEN_NAMES or path.suffix in FORBIDDEN_SUFFIXES:
+        violations.append(f"{label}:{path.name}:transient")
+        return violations
+    data = path.read_bytes()
+    for marker, rule in FORBIDDEN_MARKERS.items():
+        if marker in data:
+            violations.append(f"{label}:{path.name}:{rule}")
+    return violations
 
-    source_violations = validate_root_scope(PUBLIC_ROOT_SOURCE)
-    source_violations.extend(validate_tree(PUBLIC_ROOT_SOURCE, "public-root-source"))
+
+def build(output: Path) -> dict[str, object]:
+    if SHARED_REPOSITORY_ROOT.is_symlink() or not SHARED_REPOSITORY_ROOT.is_dir():
+        raise BuildError(
+            f"shared Repository Root is missing or linked: {SHARED_REPOSITORY_ROOT}"
+        )
+    source_violations: list[str] = []
+    for name in sorted(ROOT_MANAGED_ENTRIES):
+        source = SHARED_REPOSITORY_ROOT / name
+        if not source.exists() or source.is_symlink():
+            source_violations.append(f"shared-repository:{name}:missing-or-linked")
+        elif source.is_dir():
+            source_violations.extend(validate_tree(source, f"shared-repository:{name}"))
+        else:
+            source_violations.extend(validate_root_file(source, "shared-repository"))
     if source_violations:
-        raise BuildError("public root source violations:\n" + "\n".join(source_violations))
+        raise BuildError("shared repository violations:\n" + "\n".join(source_violations))
 
     if RELEASE_ROOT.is_symlink():
         raise BuildError(f"release root must not be a symlink: {RELEASE_ROOT}")
@@ -87,7 +107,7 @@ def build(output: Path) -> dict[str, object]:
         raise BuildError(f"output must stay under release root: {release_root}") from exc
     if not relative_output.parts:
         raise BuildError(f"output must be a child of release root: {release_root}")
-    if output in {CONTROL_ROOT.resolve(), PUBLIC_ROOT_SOURCE.resolve()}:
+    if output in {CONTROL_ROOT.resolve(), SHARED_REPOSITORY_ROOT.resolve()}:
         raise BuildError(f"refusing protected output: {output}")
     if output.exists() or output.is_symlink():
         raise BuildError(f"output already exists: {output}")
@@ -97,12 +117,14 @@ def build(output: Path) -> dict[str, object]:
         tempfile.mkdtemp(prefix=f".{output.name}.build-", dir=str(output.parent))
     )
     try:
-        shutil.copytree(
-            PUBLIC_ROOT_SOURCE,
-            temporary,
-            dirs_exist_ok=True,
-            copy_function=shutil.copy2,
-        )
+        for name in sorted(ROOT_MANAGED_ENTRIES):
+            source = SHARED_REPOSITORY_ROOT / name
+            destination = temporary / name
+            if source.is_dir():
+                shutil.copytree(source, destination, copy_function=shutil.copy2)
+            else:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
         for script in (temporary / "scripts").glob("*"):
             if script.is_file():
                 script.chmod(script.stat().st_mode | 0o111)

@@ -46,6 +46,8 @@ class IndexEntry:
     members_index: str = ""
     parent_collection: str = ""
     source: str = ""
+    repository_root: str = ""
+    managed_scope: str = ""
     role: str = ""
     status: str = ""
 
@@ -277,6 +279,8 @@ def parse_index_file(path: Path, label_base: Path) -> list[IndexEntry]:
                 kind=row.get("kind", "project") or "project",
                 members_index=row.get("members_index", ""),
                 source=row.get("source", ""),
+                repository_root=row.get("repository_root", ""),
+                managed_scope=row.get("managed_scope", ""),
                 role=row.get("role", ""),
                 status=row.get("status", ""),
             )
@@ -450,10 +454,83 @@ def load_indexes(
             elif member.status in {"active", "inactive", "observed"}:
                 source_candidate = member_candidate / member.source
                 source_kind, _ = entry_kind(source_candidate)
+                repository_relative = member.repository_root.strip().strip("`/")
+                scope_relative = member.managed_scope.strip().strip("`/")
+                repository_candidate = collection_root / repository_relative
+                shared_mapping = False
+                if (
+                    repository_relative not in {"", "-"}
+                    and scope_relative not in {"", "-", "whole repository"}
+                    and is_safe_relative_path(repository_relative)
+                    and is_safe_relative_path(scope_relative)
+                ):
+                    try:
+                        repository_candidate.resolve().relative_to(
+                            member_candidate.resolve()
+                        )
+                    except ValueError:
+                        shared_mapping = True
                 if source_kind in {"symlink", "junction"}:
+                    if not shared_mapping:
+                        errors.append(
+                            {
+                                "type": "collection_member_source_link",
+                                "path": f"{collection.key}/{member.key}:{member.source}",
+                            }
+                        )
+                    else:
+                        repository_kind, _ = entry_kind(repository_candidate)
+                        if repository_kind in {"symlink", "junction"}:
+                            errors.append(
+                                {
+                                    "type": "collection_repository_root_link",
+                                    "path": (
+                                        f"{collection.key}/{member.key}:"
+                                        f"{repository_relative}"
+                                    ),
+                                }
+                            )
+                        elif not repository_candidate.is_dir():
+                            errors.append(
+                                {
+                                    "type": "collection_repository_root_missing",
+                                    "path": (
+                                        f"{collection.path}/{repository_relative}"
+                                    ),
+                                }
+                            )
+                        else:
+                            expected_source = repository_candidate / scope_relative
+                            try:
+                                expected_source.resolve().relative_to(
+                                    repository_candidate.resolve()
+                                )
+                                source_target = source_candidate.resolve(strict=True)
+                            except (OSError, ValueError):
+                                errors.append(
+                                    {
+                                        "type": "collection_member_projection_invalid",
+                                        "path": (
+                                            f"{collection.key}/{member.key}:"
+                                            f"{member.source}"
+                                        ),
+                                    }
+                                )
+                            else:
+                                if source_target != expected_source.resolve():
+                                    errors.append(
+                                        {
+                                            "type": "collection_member_projection_mismatch",
+                                            "path": (
+                                                f"{collection.key}/{member.key}:"
+                                                f"{member.source}"
+                                            ),
+                                        }
+                                    )
+                elif shared_mapping:
                     errors.append(
                         {
-                            "type": "collection_member_source_link",
+                            "type": "collection_member_projection_not_link",
                             "path": f"{collection.key}/{member.key}:{member.source}",
                         }
                     )
@@ -495,6 +572,13 @@ def load_indexes(
                     source=member.source,
                     role=member.role,
                     status=member.status,
+                    repository_root=(
+                        (Path(collection.path) / Path(member.repository_root)).as_posix()
+                        if member.repository_root.strip() not in {"", "-"}
+                        and is_safe_relative_path(member.repository_root.strip())
+                        else member.repository_root
+                    ),
+                    managed_scope=member.managed_scope,
                 )
             )
             accepted += 1
@@ -579,12 +663,33 @@ def findings_for(
 
     for entry in project_entries:
         prefix = entry.path.rstrip("/")
-        contained = [
+        has_explicit_repository = (
+            entry.kind == "collection-member"
+            and entry.repository_root.strip() not in {"", "-"}
+            and is_safe_relative_path(entry.repository_root)
+        )
+        repository_prefix = (
+            entry.repository_root.rstrip("/")
+            if has_explicit_repository
+            else prefix
+        )
+        declared_contained = [
+            item
+            for item in git_roots
+            if item["path"] == repository_prefix
+            or str(item["path"]).startswith(repository_prefix + "/")
+        ]
+        member_contained = [
             item
             for item in git_roots
             if item["path"] == prefix
             or str(item["path"]).startswith(prefix + "/")
         ]
+        contained_by_path = {
+            str(item["path"]): item
+            for item in (*declared_contained, *member_contained)
+        }
+        contained = list(contained_by_path.values())
         if len(contained) > 1:
             findings.append(
                 {"type": "nested_git_detected", "path": entry.path}
@@ -617,8 +722,10 @@ def findings_for(
             and is_safe_relative_path(entry.source)
         ):
             expected = (
-                Path(entry.path) / Path(entry.source)
-            ).as_posix().rstrip("/")
+                repository_prefix
+                if has_explicit_repository
+                else (Path(entry.path) / Path(entry.source)).as_posix().rstrip("/")
+            )
             observed_roots = {str(item["path"]) for item in contained}
             if expected not in observed_roots:
                 findings.append(
@@ -640,6 +747,12 @@ def findings_for(
 
     if indexes_available:
         covered_paths = [entry.path.rstrip("/") for entry in project_entries]
+        covered_paths.extend(
+            entry.repository_root.rstrip("/")
+            for entry in project_entries
+            if entry.repository_root.strip() not in {"", "-"}
+            and is_safe_relative_path(entry.repository_root)
+        )
         for item in git_roots:
             git_path = str(item["path"])
             if git_path == "outside-workspace":
@@ -725,8 +838,8 @@ def render_markdown(report: dict[str, object]) -> str:
             "",
             "## Index entries",
             "",
-            "| key | path | kind | vcs | status | source | remote |",
-            "|---|---|---|---|---|---|---|",
+            "| key | path | kind | vcs | status | source | repository root | managed scope | remote |",
+            "|---|---|---|---|---|---|---|---|---|",
         ]
     )
     for item in report["index_entries"]:
@@ -734,10 +847,11 @@ def render_markdown(report: dict[str, object]) -> str:
             f"| `{cell(item['key'])}` | `{cell(item['path'])}` | "
             f"{cell(item['kind'])} | {cell(item['vcs'])} | "
             f"{cell(item['status'])} | `{cell(item['source'])}` | "
+            f"`{cell(item['repository_root'])}` | `{cell(item['managed_scope'])}` | "
             f"`{cell(item['remote'])}` |"
         )
     if not report["index_entries"]:
-        lines.append("| none | — | — | — | — | — | — |")
+        lines.append("| none | — | — | — | — | — | — | — | — |")
     lines.extend(
         [
             "",
@@ -801,7 +915,7 @@ def main() -> int:
             root, indexes_dir if indexes_available else None
         )
         report: dict[str, object] = {
-            "schema": "projects-workspace-inspection/v2",
+            "schema": "projects-workspace-inspection/v3",
             "observed_at": datetime.now(timezone.utc).isoformat(),
             "root": str(root),
             "limits": {

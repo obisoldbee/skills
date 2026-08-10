@@ -1,195 +1,147 @@
-# Project Collection Convention
+# Project Collection
 
-Use this reference when one directory groups related but independently governed Project Roots.
+A Project Collection groups related but independently governed Project Roots. Its root is a routing overlay, not a Project Root, Git super-repository, or monorepo.
 
-## 1. Boundary
-
-A **Project Collection** is a routing layer. It is not:
-
-- a Git super-repository;
-- a Project Root with its own `src/`, `docs/`, conversation, or memory;
-- a place to copy every member's source;
-- a cross-device inventory service.
-
-Each member remains a normal Project Root. One member is designated as the **collection-control project** and owns collection-wide indexes and deterministic utilities.
-
-## 2. Minimal layout
+## Required shape
 
 ```text
-<collection-root>/
-├── AGENTS.md                         # Collection routing and safety overlay
-├── README.md                         # Human overview
-├── MEMBERS.md                        # Generated/readable member view
-├── <control-project>/                # A normal Project Root
-│   ├── AGENTS.md
-│   ├── README.md
-│   ├── docs/
-│   │   └── indexes/
-│   │       └── members.md            # Canonical member index
-│   ├── conversation/
-│   ├── memory/
-│   └── src/                          # Collection-control scripts/config only
-├── <member-a>/                       # Independent Project Root
-│   ├── AGENTS.md
-│   ├── docs/
-│   ├── conversation/
-│   ├── memory/
-│   └── src/                          # Member source and optional Repository Root
-└── <member-b>/
-    └── ...
-```
-
-Do not initialize Git at `<collection-root>/`. The control project and members decide their own repository boundaries independently.
-
-## 3. Canonical member index
-
-The canonical table lives inside the control project, for example `skills/docs/indexes/members.md`:
-
-```markdown
-| key | name | path | role | source | vcs | remote | category | status | tags |
-|---|---|---|---|---|---|---|---|---|---|
-| project-conventions | Project Conventions | project-conventions | member | src/project-conventions | none | - | personal-open | active | skill,governance |
-```
-
-Field rules:
-
-| Field | Rule |
-|---|---|
-| `key` | Stable and unique inside the collection |
-| `path` | Member Project Root relative to the collection root |
-| `role` | `collection-control` or `member` |
-| `source` | Source or Repository Root relative to that member; normally `src` or `src/<repo>` |
-| `vcs` | Observed local state: `git` = Git worktree with a declared remote identity; `local_git` = Git worktree without one; `none` = no Git worktree at the declared source/root |
-| `remote` | Credential-free repository identity or `-`; with `none`, a separately verified intended/upstream identity is allowed but is not evidence of a local remote |
-| `category` | One of the workspace's four project categories |
-| `status` | `active` = current live member; `inactive` = retained and still checked but not routinely maintained; `observed` = inventory-only member seen on this computer and not yet initialized/adopted; `archived` = historical row that does not provide live path or Git coverage |
-
-The root `MEMBERS.md` is a generated/readable mirror. It is not a competing fact source.
-
-An `observed` row still provides path and Git coverage, but it never proves initialization, adoption, or maintenance authority. An archived row keeps its key/path history and still participates in duplicate detection. Missing archived paths or sources are not drift by themselves. If a Git root is still observed under an archived row, it remains uncovered and is reported for a human decision.
-
-## 4. Global workspace registration
-
-The Projects Workspace registers the collection once in `_project-catalog/docs/indexes/00-collections.md`:
-
-```markdown
-| key | name | path | kind | members_index | purpose | tags |
-|---|---|---|---|---|---|---|
-| obisoldbee-skills | obisoldbee Skills | obisoldbee-skills | collection | skills/docs/indexes/members.md | Related Skill projects | skill,agent |
-```
-
-`00-collections.md` is a structural index, not a fifth ownership category. Every member's `category` remains in the canonical member index.
-
-The workspace inspector:
-
-1. validates the collection path and `members_index`;
-2. expands member paths relative to the collection root;
-3. treats member rows as project coverage;
-4. reports missing or duplicate members;
-5. leaves the collection root itself out of repository checks.
-
-If the member index is missing or unreadable, report the error and do not treat nested repositories as covered.
-
-## 5. Source and repository mapping
-
-Each member Project Root normally owns one source mapping:
-
-| Field | Meaning |
-|---|---|
-| Project Root | Member wrapper, documents, decisions, conversation, memory |
-| Repository Root | Verified Git worktree under the member's `src/` |
-| Clone URL / remote | Where the repository is cloned from or pushed to |
-| Managed scope | Optional path inside a monorepo checkout |
-
-Example:
-
-```text
-<collection>/project-conventions/                # Project Root
-└── src/project-conventions/                     # Skill package source
-
-<collection>/project-handoff/                    # Project Root
-└── src/                                         # Repository Root when .git is here
-    └── project-handoff/                         # Skill package source
-```
-
-Do not assume all members share one Git repository. Do not put placeholder member source directories in the control project's `src/`.
-
-## 6. Skills collection control project
-
-A Skills collection-control project may own:
-
-- `docs/indexes/members.md`;
-- an explicit Skill export allowlist;
-- known agent Skill target-path candidates;
-- read-only link scanning and an explicit apply command;
-- collection-level reports, plans, and research.
-
-These are responsibilities of the collection-control project. This Skill supplies the convention, the read-only workspace inspector, and `scripts/initialize_skills_control_project.py` for the special case where a fresh Skills collection has no incoming control Project Root. The initializer materializes portable control assets under `src/config/`, `src/public-repo/`, `src/scripts/`, and `src/tests/`; after creation, those copies belong to the new control project. It does not copy member source, device histories, generated release/runtime contents, or links.
-
-Its link utility must:
-
-1. derive the collection root from the script location;
-2. read only explicit allowlists;
-3. verify `SKILL.md` at every source;
-4. require the target parent to already exist;
-5. default to scan/dry-run;
-6. never replace a real path, wrong link, or dangling link automatically;
-7. create a link only after explicit `--apply` or platform equivalent.
-
-## 7. Initialization flow
-
-```text
-inspect collection
-→ identify existing member Project Roots
-→ choose one collection-control Project Root
-→ create and read back the three-file root routing overlay
-→ write canonical member index
-→ validate member paths and source mappings
-→ render MEMBERS.md
-→ report unresolved boundaries
-```
-
-When this Skill package is available, use `scripts/initialize_project_collection.py` for the first write. Pass the exact target, one control-project name, and every incoming member basename with `--reserve`; use `--apply` only when initialization is already authorized. The script creates only `AGENTS.md`, `README.md`, and `MEMBERS.md`, refuses unexpected target entries or differing root files, never creates reserved member directories, and reads the three files back before returning success.
-
-For an approved incoming `skills/` control project and `project-conventions/` member:
-
-```text
-python -B scripts/initialize_project_collection.py <target> --control-project skills --reserve skills --reserve project-conventions --apply
-```
-
-Run this bounded transaction after top-level collision and Git-safety checks, then report its readback before recursively inventorying or moving large repositories. After the members arrive, replace the pending root view from the control project's canonical member index.
-
-If an existing control Project Root was explicitly named, move it as a whole and preserve its complete contents. If no control Project Root exists for a fresh Skills collection, wait until the verified member checkout is at its final path, then dry-run and apply the second deterministic initializer:
-
-```text
-python -B scripts/initialize_skills_control_project.py <collection-root> \
-  --distribution-root <final-distribution-checkout>
-python -B scripts/initialize_skills_control_project.py <collection-root> \
-  --distribution-root <final-distribution-checkout> \
-  --apply
-```
-
-The second initializer requires the member checkout to be clean, attached to `main`, tracking `origin/main`, and equal to that remote-tracking ref. It refuses a differing existing control path, creates no Git root or Skill link, and finalizes the canonical member index plus the collection root mirror. **Do not handwrite a reduced control project.** A valid fresh control `src/` contains exactly these portable branches:
-
-```text
-src/
+<collection>/
+├── AGENTS.md
 ├── README.md
-├── config/
-├── public-repo/
-├── scripts/
-└── tests/
+├── MEMBERS.md
+├── <control-project>/
+│   └── docs/indexes/members.md
+└── <member-project>/
+    ├── AGENTS.md
+    ├── README.md
+    ├── docs/
+    ├── conversation/
+    ├── memory/
+    └── src/
 ```
 
-Do not initialize or restructure every member merely because it appears in the member index. A member is initialized only when the user asks to work on that Project Root.
+The three collection-root files route; they do not absorb member documents or source. Exactly one **collection-control Project Root** owns the canonical member index and collection-wide deterministic tools.
 
-## 8. Failure handling
+## Canonical member index
 
-| Condition | Behavior |
-|---|---|
-| Member path missing | Report; retain the row |
-| Source path missing | Report; do not create or clone automatically |
-| Member has Git at the Project Root but policy expects `src/` | Propose a separate history-preserving migration |
-| No or multiple `collection-control` roles | Report; do not guess which project owns the member index |
-| Collection root has `.git` | Report a boundary conflict; do not move it automatically |
-| Duplicate member key/path | Block generated view refresh |
-| Link target conflict | Report; never delete or replace automatically |
+Use one table:
+
+| key | name | path | role | source | repository_root | vcs | remote | managed_scope | category | status | tags |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| skills | Skills Collection Control | skills | collection-control | src | - | none | - | local control files | local-only | active | collection,links |
+| project-conventions | Project Conventions | project-conventions | member | src/project-conventions | GitHub | git | obisoldbee/skills | project-conventions/ | personal-open | active | skill,governance |
+
+Field semantics:
+
+- `path`: stable collection-relative Project Root.
+- `role`: `collection-control` for exactly one row; otherwise `member`.
+- `source`: Project Root-relative deliverable/source entry.
+- `repository_root`: always collection-relative (`member/src` for an ordinary member, `GitHub` for the shared profile), or `-` when none.
+- `vcs`: `none`, `local_git`, or `git`.
+- `remote`: normalized identity such as `owner/repository`, or `-`.
+- `managed_scope`: repository-relative subpath, `whole repository`, or a local description when no repository exists.
+- `category`: `local-only`, `personal-open`, `personal-private`, or `upstream-open`.
+- `status`: `active`, `inactive`, `observed`, or `archived`.
+
+The collection-root `MEMBERS.md` is a readable mirror, not a second fact source.
+
+## Ordinary member repository mapping
+
+Normally a Git-backed member owns one Repository Root under its own `src/`:
+
+```text
+<collection>/<member>/src/<checkout>/
+```
+
+Record that Repository Root relative to the member and verify it with `git rev-parse --show-toplevel`. Do not infer it from the remote or directory name.
+
+## Shared Repository Root exception
+
+Read `shared-repository.md` before using this exception.
+
+A collection may hold one shared Repository Root as infrastructure when a single distribution repository is the physical source for multiple explicitly mapped packages. Each affected member still owns its own documents and continuity records.
+
+The member source must be a verified projection:
+
+```text
+<member>/<source>
+  -> <collection>/<repository_root>/<managed_scope>
+```
+
+Rules:
+
+1. The collection root remains non-Git.
+2. The shared Repository Root is a real directory and exact Git worktree, not a link.
+3. `repository_root` and `managed_scope` must both be explicit and safe relative paths.
+4. The projection must resolve exactly to that scope.
+5. Unix uses a relative symlink; Windows uses a final-path junction.
+6. Agent exports point directly to the true package, not through the projection.
+7. Updating the shared checkout does not authorize wrapper/index/link changes.
+8. Private or local-only members outside that checkout remain independent.
+
+## Collection-control responsibilities
+
+The control project may own:
+
+- canonical member index;
+- generated root member view;
+- explicit Skill export allowlist;
+- known Agent path candidates;
+- scan-first link utilities;
+- deterministic public-repository root overlay tools that read the shared checkout directly;
+- collection-level plans, reviews, decisions, conversation, and memory.
+
+It must not own member package source, member-specific research, another member's Git history, or Agent runtime state.
+
+For a fresh shared Skills collection, use `scripts/initialize_skills_control_project.py`. It creates the complete control project, wrapper, projection, and routing overlay after the shared checkout is validated. Do not run `initialize_project_collection.py` first and do not handwrite a reduced control project.
+
+For a generic non-shared collection, `scripts/initialize_project_collection.py` creates the three-file root overlay only. Existing control and member roots are added or migrated separately.
+
+## Skill exports and links
+
+`src/config/skill-exports.tsv` is an allowlist:
+
+```text
+skill_name	source	consumers
+project-conventions	GitHub/project-conventions	all
+```
+
+The source is collection-relative and must resolve inside the collection to a package containing `SKILL.md`. Link tools:
+
+- default to read-only scan;
+- require an exact Agent/target and Skill for apply;
+- never create target parents;
+- never replace real paths, wrong links, or dangling links;
+- reject apply-to-all;
+- read back every created link/junction.
+
+Initialization creates no Agent link. A successful link is not proof of runtime discovery.
+
+## Workspace indexing
+
+A Projects Workspace indexes the collection once in its structural collection index and expands this member index. It does not duplicate each member into workspace category tables.
+
+The inspector must cover:
+
+- collection and member paths;
+- declared Repository Roots, including shared ones;
+- Git remote/VCS agreement;
+- projection type and exact managed-scope target;
+- missing or dangling paths;
+- duplicate member keys/paths;
+- exactly one collection-control role.
+
+Run it before and after changing collection membership, paths, repository mappings, categories, remotes, or Skill-link delegation.
+
+## Validation checklist
+
+- collection root has no `.git`;
+- exactly one control Project Root;
+- canonical index exists and root mirror agrees;
+- every active member path exists;
+- `source`, `repository_root`, and `managed_scope` have distinct meanings;
+- every declared Git root is observed and remote/VCS fields agree;
+- every shared projection has the correct type and exact target;
+- exports use true sources and stay inside the collection;
+- no user-home absolute path appears in portable files;
+- no Agent links were created as an initialization side effect.

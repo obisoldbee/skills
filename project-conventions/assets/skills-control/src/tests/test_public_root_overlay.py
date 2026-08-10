@@ -14,7 +14,7 @@ from pathlib import Path
 
 CONTROL_ROOT = Path(__file__).resolve().parents[2]
 BUILDER = CONTROL_ROOT / "src" / "scripts" / "build_public_root_overlay.py"
-PUBLIC_ROOT = CONTROL_ROOT / "src" / "public-repo"
+SHARED_REPOSITORY_ROOT = CONTROL_ROOT.parent / "GitHub"
 ROOT_MANIFEST = "ROOT-MANIFEST.sha256"
 ROOT_MANAGED_ENTRIES = {
     ".gitattributes",
@@ -29,7 +29,7 @@ ROOT_MANAGED_ENTRIES = {
 
 class PublicRootOverlayTests(unittest.TestCase):
     def test_control_source_has_complete_portable_shape(self) -> None:
-        expected = {"README.md", "config", "public-repo", "scripts", "tests"}
+        expected = {"README.md", "config", "scripts", "tests"}
         self.assertEqual({path.name for path in (CONTROL_ROOT / "src").iterdir()}, expected)
         self.assertTrue((CONTROL_ROOT / "src" / "config" / "agent-paths.tsv").is_file())
         self.assertTrue((CONTROL_ROOT / "src" / "config" / "skill-exports.tsv").is_file())
@@ -95,10 +95,13 @@ class PublicRootOverlayTests(unittest.TestCase):
         self.assertIn("target-inside-project-collection", windows)
         self.assertIn("exit 4", windows)
 
-    def test_public_source_contains_no_manifest_or_member_package(self) -> None:
-        self.assertFalse((PUBLIC_ROOT / ROOT_MANIFEST).exists())
-        self.assertFalse((PUBLIC_ROOT / "project-conventions").exists())
-        self.assertEqual(list(PUBLIC_ROOT.rglob("SKILL.md")), [])
+    def test_builder_reads_the_shared_checkout_not_a_control_copy(self) -> None:
+        self.assertTrue(
+            (SHARED_REPOSITORY_ROOT / "project-conventions" / "SKILL.md").is_file()
+        )
+        self.assertFalse((CONTROL_ROOT / "src" / "public-repo").exists())
+        builder = BUILDER.read_text(encoding="utf-8")
+        self.assertIn('CONTROL_ROOT.parent / "GitHub"', builder)
 
     def test_verifier_rejects_personal_windows_path(self) -> None:
         with tempfile.TemporaryDirectory(dir=CONTROL_ROOT / "release") as raw:

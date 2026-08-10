@@ -41,6 +41,7 @@ jobs:
       - name: Verify project-conventions package behavior
         shell: bash
         run: |
+          python -B project-conventions/scripts/validate_package.py project-conventions
           python -B project-conventions/scripts/test_inspect_projects_workspace.py
           python -B project-conventions/scripts/test_lifecycle_workflows.py
 

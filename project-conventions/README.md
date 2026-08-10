@@ -1,48 +1,61 @@
 # project-conventions
 
-`project-conventions` first separates two operational lifecycles:
+Filesystem-governance Skill with strict lifecycle boundaries and deterministic support for a one-checkout Skills Project Collection.
 
-- **full initialization** can clone the latest distribution inside an explicitly named current Project Root, initialize one target, migrate named existing roots, and then guide one scoped final-path Skill consumer link;
-- **update-only** refreshes one existing checkout, validates it, and stops without restructuring, cataloging, records, or link work.
+## Lifecycle routing
 
-For initialization and maintenance, it then distinguishes three filesystem-governance layers:
+| Lifecycle | Behavior |
+|---|---|
+| Full initialization | Clone once to the final shared Repository Root, materialize complete wrappers/control files, verify projections, then optionally install exact Agent consumers |
+| Update-only | Safely fast-forward the resolved checkout, validate the named package, and stop |
+| Governance maintenance | Audit or migrate only exact authorized paths and mappings |
+| Bootstrap-only | Clone, validate, and stop |
 
-- a **Projects Workspace** that indexes independent local projects;
-- a **Project Collection** that groups related Project Roots;
-- a **Project Root** that owns one project's source, documents, decisions, and memory.
+Update-only never initializes directories, rewrites indexes, scans siblings, or relinks consumers.
 
-It is designed for requests such as Skill bootstrap, Skill-version updates, project initialization, directory migration, repository mapping, collection maintenance, document placement, and file naming.
-
-## Package contents
+## Shared Skills collection
 
 ```text
-project-conventions/
-├── SKILL.md
-├── agents/
-├── references/
-├── scripts/
-└── assets/skills-control/
+<collection>/GitHub/project-conventions                  # true source
+<collection>/project-conventions/src/project-conventions # stable projection
+<collection>/skills                                      # local control project
+<agent-root>/project-conventions                         # direct consumer link
 ```
 
-The package includes a read-only Projects Workspace inspector, a fail-closed three-file Project Collection initializer, a second deterministic initializer for a complete fresh Skills collection-control Project Root, portable control templates, and deterministic tests. It provides execution rules but does not perform work merely by being installed.
+The member index separates:
 
-## Install
+- `source`: wrapper-relative entry;
+- `repository_root`: collection-relative Git worktree;
+- `managed_scope`: repository-relative package.
 
-When using this package from the `obisoldbee/skills` repository, follow the repository root README. For a `project-conventions` wrapper, clone the repository directly as `src/`; the package entry must therefore be `src/project-conventions/SKILL.md`, never `src/skills/project-conventions/SKILL.md`. For clone-only, validate and stop. For an explicitly named complete chain, initialize the target with `scripts/initialize_project_collection.py` and read back its three root files. Move any named existing control Project Root whole. If no control project exists, run `scripts/initialize_skills_control_project.py` after the member checkout reaches its final path; it creates the complete portable `src/config/`, `src/public-repo/`, `src/scripts/`, and `src/tests/` shape and finalizes the indexes. Never replace that step with a hand-written README-and-config skeleton. Defer consumer linking until the final source path exists. A fresh task is needed only when bootstrap stops for later runtime discovery.
+This prevents a package name from being mistaken for another checkout directory and prevents update requests from triggering collection initialization.
 
-You may also copy this directory as a complete unit into a Skill root supported by your agent. Keep `SKILL.md`, `agents/`, `references/`, `scripts/`, and `assets/` together.
+## Deterministic tools
+
+| Tool | Purpose |
+|---|---|
+| `scripts/initialize_skills_control_project.py` | Dry-run/apply fresh shared collection initializer; creates no Git root, source copy, or Agent link |
+| `scripts/update_shared_checkout.py` | Clean fast-forward-only updater for one named package |
+| `scripts/validate_package.py` | Offline package shape and portability validator |
+| `scripts/inspect_projects_workspace.py` | Read-only Projects Workspace and collection-mapping inspector |
+| `scripts/initialize_project_collection.py` | Generic non-shared three-file collection overlay initializer |
+
+The shared initializer creates a complete `skills/` control project, a stable member wrapper, and a relative Unix symlink or Windows junction. Control exports point directly to the true Git package so Agent consumers never form a link chain.
 
 ## Validate
 
-From this directory:
+From this package:
 
 ```bash
+python3 -B scripts/validate_package.py .
 python3 -B scripts/test_inspect_projects_workspace.py
 python3 -B scripts/test_lifecycle_workflows.py
 ```
 
-The `-B` flag prevents validation itself from writing `__pycache__` into the publishable package.
+From the distribution checkout, also run:
 
-Skill discovery and successful test execution are separate states. After installing or linking the package, start a fresh agent session and verify discovery there.
+```bash
+python3 -B scripts/verify_release.py .
+```
 
-Updating an existing checkout is a separate update-only lifecycle: fast-forward and validate the checkout, then stop. A healthy existing link follows the updated content and must not be recreated.
+The root verifier and package validator have different scopes. Skill discovery and execution are separate runtime states and must be tested in a fresh Agent task after linking.

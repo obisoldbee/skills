@@ -72,6 +72,8 @@ project-root/                 # SOP wrapper (NOT pushed to upstream)
 
 **Key principle**: this Project Root has one fork repository mapping. Put that Repository Root at `src/<repo-name>/` and record it in `AGENTS.md`. Do not add an unrelated second fork to the same Project Root.
 
+This ordinary fork rule does not override the explicit shared-repository Skills collection profile. In that profile, the collection-local Repository Root and each member's managed scope are declared separately; read `shared-repository.md`.
+
 ## Setup Methods
 
 ### Method A: `gh repo fork --remote` (Recommended)
