@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Conventions"
-  short_description: "Initialize exact paths with strict lifecycle boundaries"
-  default_prompt: "Use $project-conventions to select full initialization or update-only, initialize only the named target, run initialize_skills_control_project.py when no control project exists, and stop updates after validating the exact checkout."
+  short_description: "Initialize one shared source or update one Skill safely"
+  default_prompt: "Use $project-conventions to select full initialization, update-only, or governance maintenance. For a shared Skills collection, keep one GitHub checkout, create stable member projections with the deterministic initializer, link Agents directly to the true package, and never let update-only trigger initialization or relinking."

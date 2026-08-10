@@ -53,7 +53,7 @@ When working in this workspace, follow the `project-conventions` skill:
 
 ## Quick Reminders
 
-- Explicit repository/Skill update? Use update-only: fast-forward and validate the checkout, then stop without restructuring, records, or link work
+- Explicit repository/Skill update? Use update-only: fast-forward and validate the requested project or named package, then stop without restructuring, records, or link work
 - Significant decision or direction change? Create a `conversation/NN-topic.md` file (scan for next number)
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
 - Done working? Append a note to `memory/YYYY-MM-DD.md`
@@ -63,6 +63,18 @@ When working in this workspace, follow the `project-conventions` skill:
 ```
 
 The Source Mapping is required for every Git-backed Project Root. Keep one mapping per Project Root. If the source is a subdirectory of a larger GitHub repository, record the repository's clone URL and put the subtree in `Managed scope`; never use a `/tree/...` page as the clone URL.
+
+For the explicit shared-repository Project Collection profile, the member wrapper uses this extended mapping instead:
+
+```markdown
+| Stable source entry | `src/<package-name>` |
+| Repository Root | `../GitHub` |
+| Clone URL / remote | `https://github.com/<owner>/<repository>.git` |
+| Default ref | `main` |
+| Managed scope | `<package-name>/` |
+```
+
+The member index records the same Repository Root collection-relatively as `GitHub`. The stable source entry must be a verified symlink/junction projection to that managed scope. Read `shared-repository.md`; an arbitrary linked `src/` path is not sufficient authority.
 
 ## Worked Example (OB Dim Project)
 

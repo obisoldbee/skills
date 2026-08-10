@@ -220,6 +220,7 @@ project-root/
 **Notes**:
 - **One Project Root, one source-repository mapping by default.** Record it in `AGENTS.md`. If unrelated repositories are needed, create sibling Project Roots instead of hiding them in one wrapper.
 - The Repository Root may be `src/` itself or one named child such as `src/<repo-name>/`. Verify it with `git rev-parse --show-toplevel`.
+- **Explicit shared-repository exception**: inside a Project Collection, `src/<package-name>` may be a verified projection to `<collection>/<repository_root>/<managed_scope>`. The canonical member index must record `source`, collection-relative `repository_root`, and repository-relative `managed_scope` separately. Read `shared-repository.md`; do not infer this exception from a symlink alone.
 - Keep the Project Root wrapper outside the source repository unless the user explicitly chooses a repository that includes the wrapper.
 - When migrating an existing Git worktree into `src/`, preserve its `.git` data atomically; do not re-init, commit, reset, or rewrite history. See `migration-guide.md`.
 - Tests typically live under `src/tests/` or alongside source per ecosystem convention.
@@ -237,6 +238,7 @@ Every Git-backed Project Root's `AGENTS.md` must identify:
 |---|---|
 | Project Root | The wrapper path governed by this convention |
 | Repository Root | Relative path under the wrapper, normally `src` or `src/<repo-name>` |
+| Shared Repository Root | For the explicit collection profile only, a collection-relative path such as `GitHub`; never a user-home absolute path |
 | Clone URL / remote | Credential-free URL or repository identity; write `local only` when no remote exists |
 | Default ref | Observed default branch/ref, or `unknown` |
 | Managed scope | `whole repository` or an explicit monorepo subpath |

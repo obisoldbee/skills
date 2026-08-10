@@ -1,154 +1,183 @@
 # Lifecycle Workflows
 
-Use this reference before the filesystem-governance references whenever a request mentions initialization, clone, download, install, sync, pull, or update.
+Use this reference before filesystem-governance references whenever a request mentions initialization, clone, download, install, sync, pull, or update.
 
 ## Decision table
 
-| Observed request | Select | Do not do |
+| Request | Lifecycle | Immediate scope |
 |---|---|---|
-| “从零初始化这个目录，并把仓库和 Skill 配好” | Full initialization | Do not omit repository or consumer readback |
-| “先把最新版 Skill 克隆到当前 A，再初始化 B，并把明确列出的 C/D 迁进去” | Full initialization, named bootstrap-and-migrate chain | Do not invent another checkout root, inspect unnamed siblings, or link before moving the source |
-| “先把最新版 Skill 克隆下来，到这里停止；我稍后另开会话初始化 X” | Full initialization, bootstrap stage only | Do not inspect or initialize X; do not inspect old workspaces or consumers |
-| “更新这个 Skill / 拉取最新版代码” and the checkout exists | Update-only | Do not restructure, catalog, record, or relink |
-| “整理 / 迁移 / 审计这个现有目录” | Governance maintenance | Do not clone or update unrelated repositories |
+| “从零初始化这个目标，并把最新版 Skill 和目录配好” | Full initialization | Exact target, approved repository, deterministic local wrapper/control files, optional exact consumers |
+| “先 clone，到这里停止” | Bootstrap-only | Exact checkout and its validation |
+| “更新这个 Skill / 拉取最新版” | Update-only | One resolved checkout and one named package |
+| “迁移旧目录到新结构” | Governance maintenance | Exact old/new paths and affected current mappings |
 
-The verb `clone` does not by itself authorize governance of the clone's parent, siblings, or eventual target. Conversely, an end-to-end request that names the current bootstrap root, final target, and migration sources authorizes inspection of those exact paths; do not erase that scope with a blanket sibling prohibition. The presence of an `AGENTS.md` in a parent directory never expands the named scope.
+`clone` does not authorize sibling scans or Agent installation. `update` does not authorize initialization. An explicit end-to-end request naming the target, repository, migration inputs, and consumers authorizes those exact stages without making the user reconfirm the same map.
 
-## Full initialization lifecycle
+## Full initialization: shared Skills collection
 
-### Stage A — bootstrap the Skill
-
-Use this stage when the required Skill is not already available from an approved source.
-
-1. Confirm the exact distribution clone URL, current bootstrap Project Root, Repository Root inside it, and Skill package subpath. Do not substitute a conventional global directory for a path the user supplied.
-2. Refuse a provider `/tree/<ref>/<subpath>` page as a clone URL. Clone the repository URL and address the Skill by its managed subpath.
-3. The Repository Root may be `src/` itself. For a `project-conventions` Project Root that manages the `project-conventions/` subpath of `obisoldbee/skills`, the required mapping is Repository Root `src/`, managed package `src/project-conventions/`. Do not derive `src/skills/` merely from the remote repository name.
-4. If the exact Repository Root is absent, clone there. If it exists, verify its identity and apply the update-only Git safety gates to that checkout; do not clone over it or reduce the overall full-initialization request to update-only. If clean fast-forward is impossible because the attached local default branch is ahead/diverged, stop unless the user explicitly authorized this full-chain recovery: rename the current branch to a collision-free `<branch>-preserved-<short-head>`, create the original default branch anew tracking the fetched remote default, verify the preserved ref still equals the old HEAD and the active ref equals the remote, then continue. This recovery is forbidden for update-only, dirty/detached worktrees, unknown remotes/default refs, or branch-name collisions; never rebase, reset, delete, or push the preserved branch automatically.
-5. Reject `src/skills/project-conventions/SKILL.md` as an obsolete nested layout. Use that package's `scripts/repair_project_conventions_checkout_layout.py` dry run and explicit apply to flatten it only when `src/` contains exactly one child named `skills`, that child is the verified clean intended checkout, and no destination collision exists. The script snapshots HEAD/ref/remotes/status/stashes, moves the complete checkout through one collision-free staging name so it becomes `src/`, removes only the read-back-empty staging directory, then verifies the same Git observations and `src/project-conventions/SKILL.md`. Otherwise stop without copying, deleting content, or cloning a duplicate.
-6. Validate both the distribution manifest and requested Skill package at the exact mapped path.
-7. If the user requested clone/download only, report the checkout and validation and stop. Do not inspect the target, siblings, consumer roots, or links.
-8. For an explicitly requested end-to-end chain, read the checked-out Skill and routed references directly and continue. Runtime auto-discovery is not required merely to follow an explicitly named local `SKILL.md`.
-9. If the bootstrap Project Root or checkout will move later in this lifecycle, do not create a link or junction yet. A link to the temporary source path would become stale.
-
-A fresh task is required after bootstrap-only when later runtime discovery is desired. It is not an automatic stop inside an explicit same-task bootstrap-and-migrate chain.
-
-The distribution checkout remains a Repository Root/tool source. The enclosing current directory may separately be a named Project Root and migration source.
-
-### Stage B — initialize the target
-
-Run this stage in a fresh task after bootstrap-only discovery, immediately when the Skill was already loaded, or in the same task after direct-loading the checked-out Skill for an explicit full chain.
-
-1. Inspect the exact target, the minimum parent state needed to detect collisions, and only the explicitly named migration sources.
-2. Select Projects Workspace, Project Collection, or Project Root mode from current evidence.
-3. Before the first write, read `migration-guide.md`; perform only a bounded top-level collision check plus Git root/status/remote/ref/lock checks for the named sources. Do not recursively enumerate or hash complete repositories merely to initialize the target.
-4. State the exact create/edit/clone/move map. A user request that already names every source and destination is explicit migration approval. Ask again only when an observed collision, Git risk, or workspace lock requires a different map; do not present unrelated keep/archive/delete choices.
-5. For a Project Collection, run the package's deterministic initializer as the first write, with the incoming member names reserved. Immediately read back `AGENTS.md`, `README.md`, and `MEMBERS.md` and report the checkpoint. The command must not create the reserved member directories. Continue with deeper migration inventory only after this checkpoint.
-6. If the running task is rooted inside a source to move, change execution to the minimum safe parent before the move. If the host keeps the workspace locked, stop only for a reopen-at-parent handoff and resume from the recorded move map. Do not emulate an atomic directory move with copy-and-delete.
-7. Move every approved source directory as a whole. Preserve hidden entries, Git metadata, worktree state, and file counts.
-8. Update current source mappings, active references, collection indexes, and generated views from observed disk state. Keep historical narrative and migration before/after records unchanged. If an existing collection-control Project Root was named, move it whole. If none exists for a fresh Skills collection, create the complete portable control project with `scripts/initialize_skills_control_project.py` only after the member checkout reaches its final path. Do not handwrite a reduced control project with only wrapper files or `src/config/`.
-9. After the final Skill source path exists, scan one named Agent consumer and one named Skill. Show the exact final-path link or junction, apply only with explicit approval, and read it back from disk.
-10. Verify old paths are absent, final paths exist, repository identity/status is unchanged, package/manifest/tests pass, indexes match disk, and any applied link resolves to the final package.
-
-Do not automatically initialize an entire collection merely because one member Skill was cloned. Do not treat the distribution repository as a mirror of a device's local Project Collection.
-
-### Worked Windows path map: bootstrap source is migrated
-
-Use this relationship when these are the paths the user named; do not replace them with another storage convention:
-
-```powershell
-$ProjectParent = Join-Path $env:USERPROFILE 'Documents\project'
-$BootstrapRoot = Join-Path $ProjectParent 'project-conventions'
-$RepositoryRoot = Join-Path $BootstrapRoot 'src'
-$PackageRoot = Join-Path $RepositoryRoot 'project-conventions'
-$LegacyControl = Join-Path $ProjectParent 'skills'
-$TargetCollection = Join-Path $ProjectParent 'obisoldbee-skills'
-
-git clone https://github.com/obisoldbee/skills.git "$RepositoryRoot"
-python -B (Join-Path $RepositoryRoot 'scripts\verify_release.py') $RepositoryRoot
-if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot 'SKILL.md') -PathType Leaf)) {
-    throw "Skill package is not at the required path: $PackageRoot"
-}
-```
-
-After validation, read `$PackageRoot\SKILL.md` directly. The invalid shape `$BootstrapRoot\src\skills\project-conventions\SKILL.md` must never be reported as successful.
-
-If an earlier version created exactly that obsolete shape, and `$BootstrapRoot\src` contains no entry except the clean verified `skills` checkout, repair it without copying:
-
-```powershell
-$OldPackageRoot = Join-Path $BootstrapRoot 'src\skills\project-conventions'
-$LayoutRepair = Join-Path $OldPackageRoot 'scripts\repair_project_conventions_checkout_layout.py'
-python -B $LayoutRepair $BootstrapRoot
-python -B $LayoutRepair $BootstrapRoot --apply
-```
-
-The dry run must identify the old and new Repository Roots. Apply is allowed only for this explicitly authorized correction; it refuses a dirty/wrong repository, extra `src` entries, a staging collision, or a missing package. It performs directory renames rather than copy-and-delete and attempts rollback if an intermediate rename fails.
-
-Initialize `$TargetCollection` as a Project Collection with the package initializer. This is the first bounded target write and must happen before a long recursive inventory:
-
-```powershell
-$Initializer = Join-Path $PackageRoot 'scripts\initialize_project_collection.py'
-python -B $Initializer $TargetCollection `
-  --control-project skills `
-  --reserve skills `
-  --reserve project-conventions `
-  --apply
-Get-Item (Join-Path $TargetCollection 'AGENTS.md'), `
-  (Join-Path $TargetCollection 'README.md'), `
-  (Join-Path $TargetCollection 'MEMBERS.md')
-```
-
-The initializer creates only those three root files and does not create paths that collide with the two incoming members. Then continue with this already-approved exact move map:
+Read `shared-repository.md`. Freeze these roles before writing:
 
 ```text
-<project-parent>\skills               -> <project-parent>\obisoldbee-skills\skills
-<project-parent>\project-conventions  -> <project-parent>\obisoldbee-skills\project-conventions
+Collection Root        = <user-selected target>
+Shared Repository Root = <collection>/GitHub
+True package           = <collection>/GitHub/project-conventions
+Member Project Root    = <collection>/project-conventions
+Member projection      = <collection>/project-conventions/src/project-conventions
+Control Project Root   = <collection>/skills
+Consumer               = zero or more explicitly authorized existing Agent Skill roots
 ```
 
-The final package source is:
+### Stage 1: final-path clone
+
+If the collection is new, create only that directory. Clone the distribution directly into the final shared Repository Root:
 
 ```text
-<project-parent>\obisoldbee-skills\project-conventions\src\project-conventions
+git clone https://github.com/obisoldbee/skills.git <collection>/GitHub
 ```
 
-### Fresh control project when no legacy `skills/` exists
+Do not derive a nested destination from the repository name. In particular, do not create `project-conventions/src/skills`, `project-conventions/src/project-conventions` as a checkout, or any application-data source.
 
-The two-source move above is correct only when the named legacy control Project Root actually exists. If the user instead requested a fresh collection and no incoming `skills/` Project Root exists, do not invent a minimal replacement. After the final `project-conventions` checkout is on clean `main` tracking `origin/main`, run the deterministic control initializer from that checkout:
+If `GitHub` already exists, inspect that exact path. A non-Git snapshot, wrong repository, dirty worktree, detached ref, local-ahead branch, divergence, or operation lock is a blocker. Never clone over, delete, reset, stash, rebase, or merge it automatically.
 
-```powershell
-$FinalRepositoryRoot = Join-Path $TargetCollection 'project-conventions\src'
-$FinalPackageRoot = Join-Path $FinalRepositoryRoot 'project-conventions'
-$ControlInitializer = Join-Path $FinalPackageRoot 'scripts\initialize_skills_control_project.py'
+Require:
 
-python -B $ControlInitializer $TargetCollection `
-  --distribution-root $FinalRepositoryRoot
-python -B $ControlInitializer $TargetCollection `
-  --distribution-root $FinalRepositoryRoot `
-  --apply
-python -B (Join-Path $TargetCollection 'skills\src\tests\test_public_root_overlay.py')
+```text
+worktree root = <collection>/GitHub
+origin identity = obisoldbee/skills
+branch = main
+upstream = origin/main
+status = clean, including untracked
+HEAD = origin/main
 ```
 
-The dry run must name every file and directory before apply. Apply creates the complete portable `skills/` Project Root, including `docs/`, `conversation/`, `memory/`, `release/`, `runtime/`, and the exact `src/` children `config/`, `public-repo/`, `scripts/`, and `tests/`. It copies no member source, creates no Git root, creates no link, and finalizes the collection root index from the verified member checkout. **Do not handwrite a reduced control project.** Device histories and generated release/runtime contents remain empty on a new computer; structural parity does not mean copying another device's records.
+Run repository-root and named-package validation separately:
 
-Only after both moves and final-path validation may a consumer junction be proposed for that package. If the Repository Root already exists at `$RepositoryRoot`, verify and safely fast-forward that exact checkout instead of cloning a duplicate. For a known clean local-ahead/diverged default branch, continue only when the user's full-chain request explicitly authorizes the preserved-branch recovery above; otherwise stop without changing refs.
+```text
+python -B <collection>/GitHub/scripts/verify_release.py <collection>/GitHub
+python -B <collection>/GitHub/project-conventions/scripts/validate_package.py \
+  <collection>/GitHub/project-conventions
+```
 
-## Update-only workflow
+The first command is intentionally `repository-root-only`; it does not replace the second.
 
-Update-only is complete when the exact existing checkout is safely refreshed and validated.
+### Stage 2: deterministic collection materialization
 
-1. Resolve the path with `git -C <path> rev-parse --show-toplevel`; stop if it is not the intended checkout.
-2. Capture the current commit, branch/ref, upstream, remote URL, and porcelain status.
-3. Fetch the tracked remote.
-4. Compute ahead/behind state. Continue only when the worktree is clean, the branch is not detached, local ahead is zero, and the remote can be reached by fast-forward.
-5. Use fast-forward-only pull or merge. Never use automatic rebase, reset, stash, conflict resolution, or commit transplantation.
-6. Capture the resulting commit and rerun the package/manifest validation supplied by that checkout.
-7. Stop and report the exact before/after commits and validation result.
+Run the checked-out initializer dry-run and apply:
+
+```text
+python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py \
+  <collection> --distribution-root <collection>/GitHub
+python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py \
+  <collection> --distribution-root <collection>/GitHub --apply
+```
+
+The initializer accepts only the exact fresh layout. It creates:
+
+- collection `AGENTS.md`, `README.md`, and `MEMBERS.md`;
+- a complete `skills/` collection-control Project Root;
+- a complete `project-conventions/` wrapper;
+- one relative symlink on Unix or junction on Windows from the member source entry to the true package;
+- an index that separates `source`, `repository_root`, and `managed_scope`;
+- direct export source `GitHub/project-conventions`.
+
+It creates no Git root and no Agent consumer link. Read back every result, then rerun with `--apply` and require `already_initialized`.
+
+### Stage 3: optional consumers
+
+Only if the user explicitly authorized Agent installation:
+
+1. Scan configured existing parents.
+2. Report `would-link`, `healthy-link`, missing parent, real-path conflict, wrong link, and dangling link separately.
+3. Never create a missing Agent parent.
+4. Preserve conflicts under collision-free backups only with explicit replacement authority.
+5. Apply each exact Agent target independently.
+6. Require every consumer to resolve directly to `<collection>/GitHub/project-conventions`.
+
+After links are read back, report linked state separately from runtime discovery. A fresh Agent task is required to prove discovery.
+
+## Bootstrap-only
+
+When the user requests clone/download only:
+
+1. Clone to the exact named destination.
+2. Verify Git identity and clean current state.
+3. Verify the repository-root manifest and named package.
+4. Report commit and stop.
+
+Do not inspect an eventual collection target, old workspaces, siblings, Agent roots, or links.
+
+## Update-only
+
+Use the requested package's deterministic updater:
+
+```text
+python -B <package>/scripts/update_shared_checkout.py <package>
+```
+
+It resolves the worktree from the package, so it works from either:
+
+- `<collection>/GitHub/project-conventions`; or
+- `<collection>/project-conventions/src/project-conventions` when that projection is healthy.
+
+The safety gate is:
+
+1. exact package entry and managed subpath;
+2. exact Git worktree readback;
+3. expected branch, upstream, and remote;
+4. clean tracked and untracked state;
+5. no Git operation or lock;
+6. fetch succeeds;
+7. ahead count is zero;
+8. local `HEAD` is an ancestor of upstream;
+9. fast-forward only when behind;
+10. named-package validation passes.
+
+Dirty, ahead, detached, diverged, wrong-remote, wrong-upstream, or locked states stop without changing local commits or files. A fetch may update remote-tracking refs before a divergence is known; report that fact precisely.
 
 Forbidden side effects in update-only:
 
-- choosing or changing a governance layer;
+- selecting or initializing a governance layer;
 - creating or revising wrapper `AGENTS.md`, `README.md`, indexes, `docs/`, `conversation/`, or `memory/`;
-- scanning sibling projects, historical workspaces, every Agent root, or every exported Skill;
-- creating, repairing, replacing, or reapplying links or junctions;
-- initializing another target or migrating local commits.
+- inspecting sibling projects or old workspaces;
+- creating, repairing, replacing, or reapplying links;
+- moving a checkout or preserving/renaming a local branch;
+- auto-stash, merge, rebase, reset, cherry-pick, or delete.
 
-If the user wants any forbidden side effect, finish the update-only task first and handle the new scope as a separate request.
+After validation, report before/after commit and stop. A healthy projection or consumer automatically sees new bytes and does not require relinking.
+
+## Governance maintenance and migration
+
+Read `migration-guide.md`; for the shared layout also read `shared-repository.md`.
+
+1. Run the Projects Workspace inspector before changing a registered path, index mapping, remote declaration, or link delegation.
+2. Inspect only exact named sources, destinations, and affected mappings.
+3. Snapshot hidden entries, Git roots, raw link text, and relevant index/export files.
+4. Present the exact move/backup/projection map.
+5. If both ends were already explicitly named by the user, that map is authorized; ask again only if an observed collision, Git risk, or host lock changes it.
+6. Switch command execution out of any directory being moved.
+7. Prefer same-filesystem atomic moves. Never replace a move with copy-and-delete because the host holds a workspace lock.
+8. Preserve old real package or snapshot trees under collision-free rollback paths before replacing them with projections.
+9. Update only current routing/index/export references. Preserve historical before/after records unchanged.
+10. Validate and run the Projects Workspace inspector after the change.
+
+Migration is not update-only. It may alter wrapper/index/link state only because the user explicitly requested that structural change.
+
+## Generic non-shared initialization
+
+For an ordinary Projects Workspace, Project Collection, or Project Root that does not use the shared profile, route to its governance reference and use its initializer. A normal Git-backed Project Root usually keeps its Repository Root under `src/`.
+
+Do not apply the shared exception merely because two projects use the same hosting provider. It requires an explicit collection-relative `repository_root` plus a repository-relative `managed_scope`.
+
+## Stop and report
+
+Every lifecycle report includes:
+
+- selected lifecycle;
+- exact paths and roles;
+- observed Git and link facts;
+- writes actually executed;
+- validators and their result;
+- state labels: source, Git-backed, projected, linked, discovered, executed;
+- stop boundary and unresolved blockers.
+
+Never report “installed” from a clone, “discovered” from a link, or “executed” from a passing static validator.

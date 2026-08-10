@@ -206,7 +206,13 @@ inspect current workspace
 | `collection_member_path_link` | A declared member path is a link/junction | Report and skip that member until a human confirms the boundary |
 | `collection_member_source_missing` | A member's declared source path is absent | Report; never create or clone it automatically |
 | `collection_member_source_invalid` | A source path is absolute, escapes, or otherwise unsafe | Block that source claim |
-| `collection_member_source_link` | A declared member source is a link/junction | Report; do not treat it as a verified source boundary |
+| `collection_member_source_link` | A declared member source is linked without a valid shared `repository_root` + `managed_scope` mapping | Report; do not infer authority |
+| `collection_member_projection_invalid` | A declared shared source is dangling or cannot be resolved safely | Report; do not follow or repair it |
+| `collection_member_projection_mismatch` | A declared shared source resolves somewhere other than its exact managed scope | Report the member; do not replace it |
+| `collection_repository_root_missing` | A shared Repository Root declaration has no real directory | Report the declared path |
+| `collection_repository_root_link` | A shared Repository Root is itself a link/junction | Report; the Git worktree boundary must be real |
+| `collection_repository_root_invalid` | A declared Repository Root is absolute, escapes, or otherwise unsafe | Block that Repository Root claim |
+| `collection_managed_scope_invalid` | A shared Repository Root has a missing, absolute, escaping, or otherwise unsafe managed scope | Block the shared mapping; do not follow the projection |
 | `collection_member_status_invalid` | A member status is not `active`, `inactive`, `observed`, or `archived` | Report; do not treat the row as live coverage |
 | `collection_control_role_invalid` | The member index has zero or multiple control projects | Report; do not guess the controller |
 | `repository_root_mismatch` | Observed Git root differs from the member's declared source | Report a separate history-preserving migration; do not move it automatically |

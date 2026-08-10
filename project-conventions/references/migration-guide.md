@@ -67,6 +67,8 @@ When the current Agent task is opened inside the Project Root that will move:
 4. If the host locks the workspace even after command execution moved to the parent, stop for one reopen-at-parent handoff. Resume the same recorded map; do not re-plan unrelated directories.
 5. After the move, resolve the new Project Root and every nested Repository Root from disk before editing indexes, references, or links.
 
+For migration to a shared Skills checkout, read `shared-repository.md`. Treat the collection-local `GitHub` worktree, member wrapper, member projection, canonical index, direct export, and Agent consumers as separate objects. Preserve any existing non-Git snapshot and real package directory under collision-free rollback paths before creating the worktree or projection. Byte equality supports the decision but never authorizes deletion.
+
 If a Skill consumer points inside the Project Root, create or retarget it only after the final path exists. Never intentionally create a new link to a source path known to be temporary.
 
 ### 2.1 Moving a Code Directory with Its Own `.git/`

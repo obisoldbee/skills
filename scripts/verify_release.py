@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -48,17 +50,60 @@ FORBIDDEN_MARKERS = {
 }
 
 
+def is_windows_junction(path: Path) -> bool:
+    native = getattr(os.path, "isjunction", None)
+    if native is not None:
+        try:
+            return bool(native(path))
+        except OSError:
+            return False
+    if os.name != "nt":
+        return False
+    try:
+        observed = os.lstat(path)
+    except OSError:
+        return False
+    return getattr(observed, "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003
+    )
+
+
+def is_link_or_junction(path: Path) -> bool:
+    return path.is_symlink() or is_windows_junction(path)
+
+
+def iter_tree_without_following_links(root: Path):
+    """Yield descendants while treating links and junctions as leaf entries."""
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as scan:
+            entries = sorted(scan, key=lambda item: item.name, reverse=True)
+        for entry in entries:
+            path = Path(entry.path)
+            yield path
+            if not is_link_or_junction(path) and entry.is_dir(follow_symlinks=False):
+                pending.append(path)
+
+
+def resolve_real_root(root: Path) -> Path:
+    raw_root = root.expanduser().absolute()
+    if is_link_or_junction(raw_root) or not raw_root.is_dir():
+        raise ValueError(f"repository root is missing or linked: {raw_root}")
+    return raw_root.resolve()
+
+
 def root_managed_files(root: Path) -> dict[str, Path]:
     for relative in sorted(REQUIRED_ROOT_DIRECTORIES):
         required = root / relative
-        if required.is_symlink():
-            raise ValueError(f"required root directory must not be a symlink: {relative}")
+        if is_link_or_junction(required):
+            raise ValueError(f"required root directory must not be linked: {relative}")
         if not required.is_dir():
             raise ValueError(f"required root directory missing or wrong type: {relative}")
     for relative in sorted(REQUIRED_ROOT_FILES):
         required = root / relative
-        if required.is_symlink():
-            raise ValueError(f"required root file must not be a symlink: {relative}")
+        if is_link_or_junction(required):
+            raise ValueError(f"required root file must not be linked: {relative}")
         if not required.is_file():
             raise ValueError(f"required root file missing or wrong type: {relative}")
 
@@ -67,17 +112,23 @@ def root_managed_files(root: Path) -> dict[str, Path]:
         entry = root / entry_name
         if not entry.exists():
             continue
-        paths = [entry] if entry.is_file() else sorted(entry.rglob("*"))
+        paths = (
+            [entry]
+            if entry.is_file()
+            else sorted(iter_tree_without_following_links(entry))
+        )
         for path in paths:
             relative = path.relative_to(root).as_posix()
-            if path.is_symlink():
-                raise ValueError(f"symlink is not publishable: {relative}")
+            if is_link_or_junction(path):
+                raise ValueError(f"link or junction is not publishable: {relative}")
             if path.is_dir() and relative not in REQUIRED_ROOT_DIRECTORIES:
                 raise ValueError(f"unlisted root-managed directory: {relative}")
             if path.name in FORBIDDEN_NAMES or path.suffix in FORBIDDEN_SUFFIXES:
                 raise ValueError(f"transient path is not publishable: {relative}")
             if path.is_file():
                 files[relative] = path
+            elif not path.is_dir():
+                raise ValueError(f"unsupported root-managed path type: {relative}")
     if set(files) != REQUIRED_ROOT_FILES:
         missing = sorted(REQUIRED_ROOT_FILES - set(files))
         extra = sorted(set(files) - REQUIRED_ROOT_FILES)
@@ -96,12 +147,12 @@ def validate_portability(files: dict[str, Path]) -> None:
 
 
 def rebuild_manifest(root: Path) -> dict[str, object]:
-    root = root.expanduser().resolve()
+    root = resolve_real_root(root)
     manifest_path = root / ROOT_MANIFEST
     if not manifest_path.is_file():
         raise ValueError(f"root manifest missing: {manifest_path}")
-    if manifest_path.is_symlink():
-        raise ValueError(f"root manifest must not be a symlink: {manifest_path}")
+    if is_link_or_junction(manifest_path):
+        raise ValueError(f"root manifest must not be linked: {manifest_path}")
 
     files = root_managed_files(root)
     validate_portability(files)
@@ -134,12 +185,12 @@ def rebuild_manifest(root: Path) -> dict[str, object]:
 
 
 def verify(root: Path) -> dict[str, object]:
-    root = root.expanduser().resolve()
+    root = resolve_real_root(root)
     manifest_path = root / ROOT_MANIFEST
     if not manifest_path.is_file():
         raise ValueError(f"root manifest missing: {manifest_path}")
-    if manifest_path.is_symlink():
-        raise ValueError(f"root manifest must not be a symlink: {manifest_path}")
+    if is_link_or_junction(manifest_path):
+        raise ValueError(f"root manifest must not be linked: {manifest_path}")
 
     expected = root_managed_files(root)
     listed: dict[str, str] = {}
