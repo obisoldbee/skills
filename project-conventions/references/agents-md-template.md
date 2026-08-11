@@ -76,6 +76,22 @@ For the explicit shared-repository Project Collection profile, the member wrappe
 
 The member index records the same Repository Root collection-relatively as `GitHub`. The stable source entry must be a verified symlink/junction projection to that managed scope. Read `shared-repository.md`; an arbitrary linked `src/` path is not sufficient authority.
 
+For a device- or network-bound Skill, add a concise routing summary and keep the executable contract in the source package's `SKILL.md`:
+
+```markdown
+## Runtime Boundary
+
+| Field | Value |
+|---|---|
+| Availability | `device-bound`, `network-bound`, or `device-and-network-bound` |
+| Allowed devices | Stable non-secret labels, `any`, or `unknown` |
+| Required network | Stable non-secret profile label, `any`, or `unknown` |
+| Verification | Safe check or routed Skill section |
+| Stop rule | On mismatch or unknown, do not execute or change the environment |
+```
+
+Device alternatives are OR, network-profile alternatives are OR, and constrained device plus network axes are AND. Do not put credentials, SSIDs, private keys, tokens, cookies, or secret endpoints in this table.
+
 ## Worked Example (OB Dim Project)
 
 ```markdown

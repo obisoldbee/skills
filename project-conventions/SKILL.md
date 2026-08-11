@@ -1,6 +1,6 @@
 ---
 name: project-conventions
-description: "Initialize, organize, migrate, or update project filesystems without confusing a workspace, collection, project wrapper, Git checkout, or Agent Skill root. Supports a shared-repository Skills collection with one collection-local GitHub checkout, stable member projections, complete control files, scoped Agent links, and a strict update-only path. Use for 项目目录初始化, obisoldbee-skills 初始化, 克隆最新版技能, 更新某个 Skill, 多设备同步, 项目合集, 项目根目录, AGENTS.md, README.md, repository mapping, symlink or junction, and directory migration."
+description: "Initialize, organize, migrate, or update project filesystems without confusing a workspace, collection, project wrapper, Git checkout, or Agent Skill root. Supports owned public and private Skill distributions, third-party checkout pools, stable member projections, device/network runtime boundaries, complete control files, scoped Agent links, and a strict update-only path. Use for 项目目录初始化, obisoldbee-skills 初始化, 克隆最新版技能, 更新某个 Skill, 多设备同步, 私有 Skill 仓库, GitHub-private, GitHub-others, 设备或网络限定 Skill, 项目合集, 项目根目录, AGENTS.md, README.md, repository mapping, symlink or junction, and directory migration."
 ---
 
 # Project Conventions
@@ -50,6 +50,19 @@ Six path roles are distinct:
 6. **Agent consumer**: an existing Agent-specific Skill root; it links directly to the true source, never through the member projection.
 
 `GitHub` is a collection-local infrastructure name. Never replace an exact user-selected collection with an application-data or user-global source directory.
+
+### Optional repository infrastructure
+
+The standard initializer above owns only the public `obisoldbee/skills` distribution at `<collection>/GitHub`. A collection may additionally declare, through governance maintenance:
+
+- an **owned private distribution Repository Root**, such as `GitHub-private`, with one Skill package per top-level directory; or
+- a **third-party checkout pool**, such as `GitHub-others`, whose container has no `.git/` and whose named children are independent upstream Repository Roots.
+
+Multiple owned distribution roots are valid only when every member mapping names one exact collection-relative `repository_root`, one normalized remote identity, and one `managed_scope`. Keep at most one checkout of each normalized remote identity in the collection. Never infer a remote, ownership, privacy, or export authority from a directory name.
+
+An owned private repository is not a secret store. Keep credentials and raw sensitive data outside Git. Treat source publication class and runtime availability as independent: a private or local Skill may be portable, device-bound, network-bound, or device-and-network-bound. When device and network restrictions both exist, both must match; unknown evidence means do not execute the integration.
+
+The public initializer must not create, clone, index, or link optional private distributions or third-party pools. Provisioning either is a separately scoped governance-maintenance or bootstrap action.
 
 ### Fresh initialization
 
@@ -138,8 +151,10 @@ Read `references/project-collection.md` completely.
 2. Designate exactly one collection-control Project Root.
 3. Keep each member's documents, conversation, and memory in its wrapper.
 4. Record `source` separately from `repository_root` and `managed_scope`.
-5. A shared Repository Root is collection infrastructure and may serve multiple explicitly mapped packages; it does not absorb member governance.
+5. Each shared Repository Root is collection infrastructure and may serve multiple explicitly mapped packages; multiple roots are allowed only with explicit mappings and one checkout per remote identity.
 6. Export Skills from true package sources, not copies or link chains.
+7. Keep third-party checkout pools non-Git at the container root and preserve each child's upstream ownership and history.
+8. Record environment-bound execution constraints in the named Skill's runtime boundary; do not mistake a clone or link for runtime eligibility.
 
 ## Project Root mode
 

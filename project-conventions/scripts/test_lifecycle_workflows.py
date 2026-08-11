@@ -157,6 +157,28 @@ class LifecycleWorkflowTests(unittest.TestCase):
         self.assertNotIn("App" + "Data", combined)
         self.assertNotIn("src/skills/project-conventions", combined)
 
+    def test_contract_distinguishes_optional_repository_infrastructure(self) -> None:
+        combined = "\n".join(
+            (self.skill, self.lifecycle, self.shared, self.collection, self.metadata)
+        )
+        for text in (
+            "Multiple owned distributions",
+            "GitHub-private",
+            "third-party checkout pool",
+            "one checkout per remote identity",
+            "device-and-network-bound",
+            "both must match",
+        ):
+            self.assertIn(text, combined)
+        self.assertIn(
+            "The standard public initializer never creates or clones an additional private root",
+            self.shared,
+        )
+        self.assertIn(
+            "Require the pool root to be a real non-Git directory",
+            self.lifecycle,
+        )
+
     def test_fresh_shared_collection_is_complete_and_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             collection, checkout, _remote = self.create_shared_fixture(Path(raw))

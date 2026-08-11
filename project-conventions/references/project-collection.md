@@ -59,7 +59,7 @@ Record that Repository Root relative to the member and verify it with `git rev-p
 
 Read `shared-repository.md` before using this exception.
 
-A collection may hold one shared Repository Root as infrastructure when a single distribution repository is the physical source for multiple explicitly mapped packages. Each affected member still owns its own documents and continuity records.
+A collection may hold one or more shared Repository Roots as infrastructure when owned distribution repositories are the physical source for explicitly mapped packages. Each affected member still owns its own documents and continuity records. Every normalized remote identity may have only one checkout in the collection.
 
 The member source must be a verified projection:
 
@@ -78,6 +78,21 @@ Rules:
 6. Agent exports point directly to the true package, not through the projection.
 7. Updating the shared checkout does not authorize wrapper/index/link changes.
 8. Private or local-only members outside that checkout remain independent.
+
+An optional owned private distribution follows the same explicit `repository_root` plus `managed_scope` mapping, but its remote identity and private visibility must be verified before push or export. The standard public initializer does not create it.
+
+A third-party checkout pool is different: the pool root has no `.git/`, every named child is an independent upstream Repository Root, and mere presence never authorizes export or adoption.
+
+## Publication class and runtime boundary
+
+`category` records source ownership and publication policy; it does not say where a Skill can execute. For an environment-bound Skill, keep a concise runtime boundary in its `SKILL.md` and route to it from the member wrapper:
+
+- `availability`: `portable`, `device-bound`, `network-bound`, `device-and-network-bound`, or `unverified`;
+- `allowed devices`: `any`, stable non-secret device labels, or `unknown`;
+- `required network`: `any`, a stable non-secret profile label, or `unknown`;
+- external dependencies, safe verification method, and mismatch stop rule.
+
+Multiple allowed devices are alternatives, as are multiple allowed network profiles. The device axis and network axis are conjunctive when both are constrained. A matching device on the wrong network is unavailable. Do not record credentials, SSIDs, private keys, tokens, cookies, or secret endpoints in the runtime boundary.
 
 ## Collection-control responsibilities
 
@@ -142,6 +157,10 @@ Run it before and after changing collection membership, paths, repository mappin
 - `source`, `repository_root`, and `managed_scope` have distinct meanings;
 - every declared Git root is observed and remote/VCS fields agree;
 - every shared projection has the correct type and exact target;
+- every remote identity has at most one collection-local checkout;
+- optional private distributions have verified private visibility before publication or export;
+- third-party pool roots are non-Git and child repositories preserve upstream provenance;
 - exports use true sources and stay inside the collection;
+- environment-bound Skills declare device/network eligibility and a stop rule without secret values;
 - no user-home absolute path appears in portable files;
 - no Agent links were created as an initialization side effect.

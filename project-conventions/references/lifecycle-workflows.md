@@ -27,6 +27,8 @@ Control Project Root   = <collection>/skills
 Consumer               = zero or more explicitly authorized existing Agent Skill roots
 ```
 
+This standard lifecycle materializes only the public `obisoldbee/skills` distribution. Optional owned private distributions and third-party checkout pools are separate governance-maintenance or bootstrap stages, even when one explicit end-to-end user request authorizes those exact stages.
+
 ### Stage 1: final-path clone
 
 If the collection is new, create only that directory. Clone the distribution directly into the final shared Repository Root:
@@ -161,6 +163,27 @@ Read `migration-guide.md`; for the shared layout also read `shared-repository.md
 10. Validate and run the Projects Workspace inspector after the change.
 
 Migration is not update-only. It may alter wrapper/index/link state only because the user explicitly requested that structural change.
+
+### Optional private distribution
+
+For an explicitly named owned private Skill repository:
+
+1. Freeze the exact collection-relative Repository Root, normalized remote identity, expected private visibility, and write set.
+2. Treat an existing empty directory as a scaffold, not as Git evidence. If the remote exists, clone or attach only through an explicitly approved conflict-free workflow; if remote creation is authorized, create it as private before the first push.
+3. Read back the exact worktree root, remote identity, default ref, clean status, and remote visibility. Stop if visibility is public or unknown.
+4. Keep one Skill package per top-level directory and no nested package Git roots.
+5. Reject credentials, cookies, private keys, raw sensitive data, and machine-secret configuration even in private Git.
+6. Add member wrappers, mappings, exports, or consumers only when those exact paths are separately authorized.
+
+### Third-party checkout pool
+
+For an explicitly named upstream pool:
+
+1. Require the pool root to be a real non-Git directory.
+2. Scope work to one named child or one observed-only registry row; siblings remain read-only.
+3. Every cloned child keeps its own exact Git root, upstream identity, license, and history.
+4. A studied but un-cloned upstream gets no fabricated local checkout path.
+5. Clone, update, fork, adopt, install, and execute are separate states and permissions.
 
 ## Generic non-shared initialization
 

@@ -18,6 +18,21 @@ Never make the collection root a Git repository. Never copy a package into the c
 
 The control project's root-overlay builder reads allowlisted files directly from `<collection>/GitHub`; it must not maintain an editable `src/public-repo` copy.
 
+## Multiple owned distributions
+
+The public `GitHub` checkout is the standard distribution initialized by this package, not a claim that the collection can contain no other Git Repository Root. A collection may map packages from multiple explicitly named owned distributions, for example a public root and a separately provisioned private root, when all of the following hold:
+
+- every root is a real exact Git worktree, not a link or container;
+- every member row names its collection-relative `repository_root`, remote identity, and `managed_scope`;
+- each normalized remote identity has only one checkout in the collection;
+- private visibility is read back before the first push or private export;
+- public root overlays continue to read only the public distribution;
+- initialization, update, publication, and consumer links stay repository- and package-scoped.
+
+The standard public initializer never creates or clones an additional private root. Add it only through an explicitly scoped governance-maintenance or bootstrap workflow.
+
+A third-party checkout pool is not a shared Repository Root. Its container has no `.git/`; each cloned child is a separate upstream-owned worktree and is not exportable merely because it exists.
+
 ## Canonical mapping
 
 The member index must keep these fields separate:
@@ -122,3 +137,5 @@ Do not touch other collection members or their Git roots. A shared distribution 
 The repository and index contain only relative collection mappings. Device-specific absolute paths exist only in live filesystem link metadata and local receipts. On another device, clone to that device's user-selected collection, rerun the deterministic initializer, and separately install that device's Agent links.
 
 Do not sync symlink/junction metadata as though it were portable configuration. Recreate and read it back on each device.
+
+Source portability and runtime eligibility are separate. An environment-bound Skill must declare non-secret device and network labels plus a verification and stop rule. If both axes are constrained, both must match. A healthy checkout, projection, or Agent consumer link does not prove that the current device or network can execute the Skill.

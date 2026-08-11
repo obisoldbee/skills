@@ -1,6 +1,6 @@
 # project-conventions
 
-Filesystem-governance Skill with strict lifecycle boundaries and deterministic support for a one-checkout Skills Project Collection.
+Filesystem-governance Skill with strict lifecycle boundaries and deterministic support for explicitly mapped public, private, local-only, and third-party Skill sources.
 
 ## Lifecycle routing
 
@@ -29,6 +29,10 @@ The member index separates:
 - `managed_scope`: repository-relative package.
 
 This prevents a package name from being mistaken for another checkout directory and prevents update requests from triggering collection initialization.
+
+The standard initializer creates one public `obisoldbee/skills` checkout. Governance maintenance may add another explicitly mapped owned distribution, with at most one checkout per remote identity, or a non-Git third-party checkout pool whose children keep independent upstream histories. It never creates those optional roots as a side effect of public initialization.
+
+Publication class and runtime eligibility are independent. Environment-bound Skills declare non-secret device and network labels, a verification method, and a mismatch stop rule; when both axes are constrained, both must match.
 
 ## Deterministic tools
 

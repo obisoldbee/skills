@@ -408,6 +408,83 @@ class InspectorCollectionTests(unittest.TestCase):
             self.assertEqual(member["repository_root"], "skill-collection/GitHub")
             self.assertEqual(member["managed_scope"], "project-conventions/")
 
+    def test_multiple_shared_repository_roots_are_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            collection = root / "skill-collection"
+            members = collection / "skills" / "docs" / "indexes"
+            members.mkdir(parents=True)
+
+            public_root = collection / "GitHub"
+            private_root = collection / "GitHub-private"
+            self.init_git(public_root, "https://github.com/obisoldbee/skills.git")
+            self.init_git(private_root, "https://github.com/obisoldbee/private.git")
+            public_package = public_root / "project-conventions"
+            private_package = private_root / "private-skill"
+            public_package.mkdir()
+            private_package.mkdir()
+            (public_package / "SKILL.md").write_text("public\n", encoding="utf-8")
+            (private_package / "SKILL.md").write_text("private\n", encoding="utf-8")
+
+            public_source = collection / "project-conventions" / "src"
+            private_source = collection / "private-skill" / "src"
+            public_source.mkdir(parents=True)
+            private_source.mkdir(parents=True)
+            self.create_directory_projection(
+                public_source / "project-conventions", public_package
+            )
+            if os.name == "nt":
+                self.create_directory_link(
+                    private_source / "private-skill", private_package
+                )
+            else:
+                (private_source / "private-skill").symlink_to(
+                    "../../GitHub-private/private-skill",
+                    target_is_directory=True,
+                )
+
+            (indexes / "00-collections.md").write_text(
+                "| key | name | path | kind | members_index | purpose | tags |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| skills | Skills | skill-collection | collection | "
+                "skills/docs/indexes/members.md | Test | skill |\n",
+                encoding="utf-8",
+            )
+            (members / "members.md").write_text(
+                "| key | name | path | role | source | repository_root | vcs | remote | managed_scope | category | status | tags |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+                "| manager | Manager | skills | collection-control | src | - | none | - | local control files | local-only | active | control |\n"
+                "| project-conventions | Project Conventions | project-conventions | member | src/project-conventions | GitHub | git | obisoldbee/skills | project-conventions/ | personal-open | active | skill |\n"
+                "| private-skill | Private Skill | private-skill | member | src/private-skill | GitHub-private | git | obisoldbee/private | private-skill/ | personal-private | active | skill |\n",
+                encoding="utf-8",
+            )
+
+            report = self.run_inspector(root)
+            finding_types = {finding["type"] for finding in report["findings"]}
+            for forbidden in {
+                "collection_member_source_link",
+                "collection_member_projection_invalid",
+                "collection_member_projection_mismatch",
+                "repository_root_mismatch",
+                "vcs_state_mismatch",
+                "unindexed_git_root",
+            }:
+                self.assertNotIn(forbidden, finding_types)
+            repository_roots = {
+                entry["key"]: entry["repository_root"]
+                for entry in report["index_entries"]
+                if entry["key"] in {"skills/project-conventions", "skills/private-skill"}
+            }
+            self.assertEqual(
+                repository_roots,
+                {
+                    "skills/project-conventions": "skill-collection/GitHub",
+                    "skills/private-skill": "skill-collection/GitHub-private",
+                },
+            )
+
     def test_shared_repository_real_source_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
