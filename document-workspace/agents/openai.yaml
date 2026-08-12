@@ -1,0 +1,4 @@
+interface:
+  display_name: "文书工作区（Document Workspace）"
+  short_description: "管理文书工作区的来源、版本、过程记录与证据边界（本地优先）"
+  default_prompt: "Use $document-workspace to govern one exact local document workspace, preserve source and provenance boundaries, and manage drafts, approved outputs, archives, conversation, and memory."
