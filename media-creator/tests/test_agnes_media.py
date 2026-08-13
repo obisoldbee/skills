@@ -49,7 +49,12 @@ class AgnesMediaTests(unittest.TestCase):
 
     def test_video_text_image_and_keyframe_payloads(self) -> None:
         text = agnes_media.parse_args(["video", "--prompt", "Move slowly"])
-        self.assertNotIn("image", agnes_media.build_video_payload(text))
+        text_payload = agnes_media.build_video_payload(text)
+        self.assertNotIn("image", text_payload)
+        self.assertEqual(text_payload["frame_rate"], 24)
+
+        text.frame_rate = 23.5
+        self.assertEqual(agnes_media.build_video_payload(text)["frame_rate"], 23.5)
 
         image = agnes_media.parse_args(
             ["video", "--prompt", "Move slowly", "--image", "https://example.com/start.png"]

@@ -52,14 +52,19 @@ def file_metadata(path: Path, display_path: str) -> dict[str, Any]:
             "owner_matches_process": None,
         }
 
-    private_permissions = file_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0
+    getuid = getattr(os, "getuid", None)
+    private_permissions = None
+    owner_matches_process = None
+    if getuid is not None:
+        private_permissions = file_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0
+        owner_matches_process = file_stat.st_uid == getuid()
     return {
         "path": display_path,
         "exists": True,
         "is_file": path.is_file(),
         "is_symlink": path.is_symlink(),
         "private_permissions": private_permissions,
-        "owner_matches_process": file_stat.st_uid == os.getuid(),
+        "owner_matches_process": owner_matches_process,
     }
 
 

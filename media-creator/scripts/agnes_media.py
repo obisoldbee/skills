@@ -146,7 +146,7 @@ def build_image_payload(args: argparse.Namespace, *, execute: bool) -> dict[str,
 
 def build_video_payload(args: argparse.Namespace) -> dict[str, Any]:
     frame_rate: int | float = args.frame_rate
-    if frame_rate.is_integer():
+    if frame_rate == int(frame_rate):
         frame_rate = int(frame_rate)
     payload: dict[str, Any] = {
         "model": VIDEO_MODEL,

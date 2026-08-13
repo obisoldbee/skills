@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -7,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,10 @@ ROUTES = ROOT / "config" / "routes.json"
 CHECKER = ROOT / "scripts" / "check_routes.py"
 VALIDATOR = ROOT / "scripts" / "validate_skill.py"
 LOCAL_SKILL_AUDIT = ROOT / "references" / "local-skill-audit.md"
+CHECKER_SPEC = importlib.util.spec_from_file_location("media_creator_route_checker", CHECKER)
+assert CHECKER_SPEC and CHECKER_SPEC.loader
+route_checker = importlib.util.module_from_spec(CHECKER_SPEC)
+CHECKER_SPEC.loader.exec_module(route_checker)
 
 
 def route_by_id(registry: dict, route_id: str) -> dict:
@@ -113,8 +119,22 @@ class RoutingContractTests(unittest.TestCase):
             self.assertFalse(report["executors"]["ego_browser"]["invoked"])
             self.assertFalse(report["executors"]["mmx"]["invoked"])
             self.assertTrue(report["agnes_env"]["exists"])
-            self.assertTrue(report["agnes_env"]["private_permissions"])
+            if os.name == "nt":
+                self.assertIsNone(report["agnes_env"]["private_permissions"])
+                self.assertIsNone(report["agnes_env"]["owner_matches_process"])
+            else:
+                self.assertTrue(report["agnes_env"]["private_permissions"])
+                self.assertTrue(report["agnes_env"]["owner_matches_process"])
             self.assertEqual(report["agnes_env"]["path"], "~/.codex/secrets/agnes.env")
+
+    def test_missing_posix_identity_reports_unverified_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "agnes.env"
+            path.write_text("AGNES_API_KEY=placeholder\n", encoding="utf-8")
+            with mock.patch.object(route_checker.os, "getuid", None, create=True):
+                report = route_checker.file_metadata(path, "agnes.env")
+            self.assertIsNone(report["private_permissions"])
+            self.assertIsNone(report["owner_matches_process"])
 
     def test_static_validator_accepts_package(self) -> None:
         result = subprocess.run(
