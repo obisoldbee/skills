@@ -37,6 +37,7 @@ def tree_snapshot(root: Path) -> dict[str, tuple[str, str | int]]:
     return result
 
 
+@unittest.skipIf(os.name == "nt", "version 1 intentionally refuses apply on Windows")
 class WorkspaceCLITest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -998,6 +999,41 @@ class WorkspaceCLITest(unittest.TestCase):
         )
         self.assertFalse((self.workspace / "archive/versions/v001").exists())
         self.assertEqual((self.workspace / "control/current.json").read_bytes(), external)
+
+
+@unittest.skipUnless(
+    os.name == "nt" and hasattr(Path, "is_junction"),
+    "requires Windows Python 3.12 or newer",
+)
+class WindowsReadOnlyRuntimeTest(unittest.TestCase):
+    def test_initialize_plans_but_apply_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "workspace"
+            workspace.mkdir()
+            command = [
+                sys.executable,
+                "-B",
+                os.fspath(CLI),
+                "initialize",
+                os.fspath(workspace),
+                "--timestamp",
+                TIME,
+            ]
+            planned = subprocess.run(command, text=True, capture_output=True, check=False)
+            self.assertEqual(planned.returncode, 0, planned.stdout + planned.stderr)
+            plan = json.loads(planned.stdout)
+            self.assertEqual(plan["status"], "would_initialize")
+
+            applied = subprocess.run(
+                [*command, "--apply", "--plan-token", str(plan["plan_token"])],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(applied.returncode, 2, applied.stdout + applied.stderr)
+            refusal = json.loads(applied.stdout)
+            self.assertEqual(refusal["error"], "unsupported_mutation_runtime")
+            self.assertEqual(list(workspace.iterdir()), [])
 
 
 if __name__ == "__main__":

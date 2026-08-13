@@ -51,6 +51,8 @@ python3 -B <collection>/GitHub/document-workspace/scripts/validate_package.py \
   <collection>/GitHub/document-workspace
 ```
 
+`document-workspace` needs Python 3.12 or newer for fail-closed junction detection on Windows. Version 1 supports inventory, dry-run planning, and validation there, but intentionally refuses apply; its full mutation lifecycle is supported only on macOS/Linux with the guarded filesystem primitives described by the package.
+
 Then preview and materialize the local collection:
 
 ```bash

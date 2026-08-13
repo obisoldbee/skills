@@ -78,10 +78,26 @@ jobs:
           python -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 
       - name: Verify document-workspace package behavior
+        if: runner.os != 'Windows' || matrix.python != '3.11'
         shell: bash
         run: |
           python -B document-workspace/scripts/validate_package.py document-workspace
           python -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
+
+      - name: Verify document-workspace rejects unsupported Windows Python
+        if: runner.os == 'Windows' && matrix.python == '3.11'
+        shell: bash
+        run: |
+          set +e
+          output="$(python -B document-workspace/scripts/validate_package.py document-workspace 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$status" -eq 1
+          case "$output" in
+            *"Windows requires Python 3.12 or newer for fail-closed junction detection"*) ;;
+            *) exit 1 ;;
+          esac
 
       - name: Exercise scoped Unix link workflow
         if: runner.os != 'Windows'
