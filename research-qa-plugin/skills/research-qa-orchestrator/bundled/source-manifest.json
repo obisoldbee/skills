@@ -1,0 +1,105 @@
+{
+  "schema": "research-qa-orchestrator/bundled-source-manifest/v1",
+  "portable": true,
+  "absolute_source_paths_persisted": false,
+  "symlinks_allowed": false,
+  "payload_excludes": [
+    ".DS_Store",
+    ".git",
+    "__pycache__",
+    "*.pyc"
+  ],
+  "tree_hash_algorithm": "sha256(concat(sorted_utf8(relative_path) + NUL + sha256(content)_hex + LF))",
+  "components": [
+    {
+      "id": "persona-01",
+      "source_scope": "minimax-user-skills",
+      "source_name": "Nick Norwitz",
+      "target": "personas/Nick Norwitz",
+      "file_count": 23,
+      "total_bytes": 558277,
+      "skill_md_sha256": "6d9059eb081ec4de74b62d92a1dfa21dd5acdad2e7f7eb43fa4417501947e525",
+      "tree_sha256": "793664103654a4724ec07115df71dbd70ff00257992c9a19935379b3f07a634e"
+    },
+    {
+      "id": "persona-02",
+      "source_scope": "minimax-user-skills",
+      "source_name": "Anthony Chaffee",
+      "target": "personas/Anthony Chaffee",
+      "file_count": 8,
+      "total_bytes": 895776,
+      "skill_md_sha256": "e019e23acf1ae56dc5f7be29f54f0638ec2e15c4173ea0eeed6bb74f0a90a6b6",
+      "tree_sha256": "a490a1e8d941f66f5e74f000aba1650e86666a51c7644c3989bacf5782bca957"
+    },
+    {
+      "id": "persona-03",
+      "source_scope": "minimax-user-skills",
+      "source_name": "PeterAttia",
+      "target": "personas/PeterAttia",
+      "file_count": 12,
+      "total_bytes": 1160489,
+      "skill_md_sha256": "10e5c3fb11c804b98578740c60743a5c08fba112870766517778f4ecd5a4d5ad",
+      "tree_sha256": "18e3f6a4f956953c34e3fe5379cadb5e459d289c8285300209f239ca07716361"
+    },
+    {
+      "id": "persona-04",
+      "source_scope": "minimax-user-skills",
+      "source_name": "Dr Eric Berg",
+      "target": "personas/Dr Eric Berg",
+      "file_count": 8,
+      "total_bytes": 10615420,
+      "skill_md_sha256": "97be98099e5205a779106499f2c93f9540acd453d5059c49183920cac51e0d78",
+      "tree_sha256": "21a12186d037777d888aae3fb8ad6f4cc7b3f6091b01b9e166c38aa8cdb0b8c6"
+    },
+    {
+      "id": "persona-05",
+      "source_scope": "minimax-user-skills",
+      "source_name": "Steak and Butter Gal",
+      "target": "personas/Steak and Butter Gal",
+      "file_count": 8,
+      "total_bytes": 682559,
+      "skill_md_sha256": "9e7f87bc5b7b798e5326fc835005483c3de35af691c4a385d73311658e44b0b6",
+      "tree_sha256": "ecad66a4126b8ea85b32c403fd58bc8741ee0a2059f5c407676d0540f2762c03"
+    },
+    {
+      "id": "persona-06",
+      "source_scope": "minimax-user-skills",
+      "source_name": "Dr Stan Ekberg",
+      "target": "personas/Dr Stan Ekberg",
+      "file_count": 58,
+      "total_bytes": 924125,
+      "skill_md_sha256": "6a8e6556d1f41224de7aa9ba9e533be0030ef67c63685449b9d1203b089f4158",
+      "tree_sha256": "67b46f85520211067378282e6338f4c7f1e1d6d3c225698dd27457df01a79881"
+    },
+    {
+      "id": "persona-07",
+      "source_scope": "minimax-user-skills",
+      "source_name": "Dr Robert",
+      "target": "personas/Dr Robert",
+      "file_count": 8,
+      "total_bytes": 930230,
+      "skill_md_sha256": "3ce81a21d03483dff86c585c27ba3867db338aec18da85ade70ce36a7400bb06",
+      "tree_sha256": "cfa5657df771c884c51f8d59c7d2e1bbb4d791abbb89f53332422ecb1306034d"
+    },
+    {
+      "id": "persona-08",
+      "source_scope": "minimax-user-skills",
+      "source_name": "ShawnBaker",
+      "target": "personas/ShawnBaker",
+      "file_count": 11,
+      "total_bytes": 2063438,
+      "skill_md_sha256": "3a95b7707438ad4e5dcaf0996d7e7464f157732a49b14e879d3961fcd0620d8e",
+      "tree_sha256": "37da794932f73ae259c6a97d6d1275b00382c37c7c7963cb2898c16898f0b090"
+    },
+    {
+      "id": "fuxi-skill",
+      "source_scope": "claude-user-skills",
+      "source_name": "fuxi-skill",
+      "target": "fuxi-skill",
+      "file_count": 5,
+      "total_bytes": 67809,
+      "skill_md_sha256": "2d9047a6883422e391f430aa401d7cbf963cebf1e59320ac3bb44ab920756b68",
+      "tree_sha256": "3caa4923b5f91dda60577ff552c47d1b640eb0048e3f8f99595da9584c6976f7"
+    }
+  ]
+}

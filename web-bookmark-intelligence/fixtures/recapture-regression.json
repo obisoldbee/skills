@@ -1,0 +1,186 @@
+{
+  "schema": "web-bookmark-intelligence/recapture-regression/v2",
+  "purpose": "Compact, offline regression fixture for five real WorkBuddy v1.5.1 capture receipts; it does not request new network execution.",
+  "source_package": "12-agent-submissions/2026/07/30/20260730001-codex",
+  "source_execution_receipts": "payload/capture-evidence/execution-receipts.json",
+  "receipt_path_binding": {
+    "mode": "source_package_relative_with_legacy_package_id_rebase",
+    "legacy_package_id": "20260730001-codex"
+  },
+  "workbuddy": {
+    "implementation": "workbuddy_wechat_article_archive",
+    "baseline_version": "v1.5.1",
+    "script_sha256": "bb6f11eab11de44882b6563b012424ddd6b631197be4874fc1c4b7c0e29737df"
+  },
+  "global_guards": {
+    "network_calls": 0,
+    "tls_verification_disabled": false,
+    "meta_description_as_body_is_never_allowed": true,
+    "final_states": [
+      "full_body",
+      "full_body_with_media_supplement",
+      "needs_image_supplement",
+      "failed"
+    ]
+  },
+  "cases": [
+    {
+      "id": 2,
+      "public_url": "https://mp.weixin.qq.com/s/nR0WWS03CJIgvYh2-A3_Mg",
+      "execution_receipt": "payload/capture-evidence/case-02/execution-receipt.json",
+      "final_status_source": "payload/capture-evidence/case-02/reconciliation-receipt.json",
+      "dom_evidence_source": "payload/capture-evidence/case-02/reconciliation-receipt.json",
+      "expected_final_status": "full_body",
+      "expected_dom": {
+        "meaningful_chars": 527,
+        "image_count": 22,
+        "meta_description_marker": false,
+        "noise_or_placeholder": false
+      },
+      "first_execution": {
+        "observed_completion_at": "2026-07-30T08:16:01.060477+00:00",
+        "mode_duration_seconds": 20.64,
+        "returncode": 0,
+        "successful_attempt_index": 2,
+        "prior_tls_failure_preserved": true,
+        "stderr_sha256": "84fc995552b7c03b53d91c45a0f9314dbff93d6e1272728a67bf1c78b0dd0359",
+        "article_sha256": "6ff62a966996df18eff7fac8b25d6607c80aa64ff03ddd33df1494e52ebb8d4a"
+      },
+      "expected_route_boundary": "substantive_dom_can_be_full_body; raw_image_count_only_requires_inventory"
+    },
+    {
+      "id": 5,
+      "public_url": "https://mp.weixin.qq.com/s/nmf4vm9yrZsPpa6uIVutRg",
+      "execution_receipt": "payload/capture-evidence/case-05/execution-receipt.json",
+      "final_status_source": "payload/capture-evidence/case-05/final-status.json",
+      "dom_evidence_source": "payload/capture-evidence/case-05/reconciliation-receipt.json",
+      "media_result": "payload/capture-evidence/case-05/media-understanding/media-understanding-result.json",
+      "expected_final_status": "full_body_with_media_supplement",
+      "expected_dom": {
+        "meaningful_chars": 496,
+        "image_count": 16,
+        "meta_description_marker": false,
+        "noise_or_placeholder": false
+      },
+      "first_execution": {
+        "observed_completion_at": "2026-07-30T08:16:11.970868+00:00",
+        "mode_duration_seconds": 10.6,
+        "returncode": 0,
+        "successful_attempt_index": 2,
+        "prior_tls_failure_preserved": true,
+        "stderr_sha256": "2b7489fb07e9ecb339d828b190b75b425b5daa2b22698157fc63deb947536985",
+        "article_sha256": "121794bbd5ae5793daa97c79920566504b385de93835cb03842a963e79c91829"
+      },
+      "expected_media": {
+        "status": "success",
+        "images_sent_to_ocr": 15,
+        "tracking_pixels_not_sent": 1,
+        "claim": "ten_distinct_projects_confirmed_by_image_evidence"
+      },
+      "image_level_evidence": [
+        {
+          "path": "payload/capture-evidence/case-05/project-completeness.md",
+          "sha256": "a8ab8c98f78ed9b92860adeb9a2f4b2a01a976d1b1670fff056bb81aeb230f87",
+          "required_phrase": "exactly ten distinct project names"
+        },
+        {
+          "path": "payload/capture-evidence/case-05/media-understanding/visual-understanding.md",
+          "sha256": "49bdbc0cd8ab5de15467308ddecf2d59a65991dc1e239d6d2c5cee0f8216a5cd",
+          "required_phrase": "deduplicated visual set contains ten project cards"
+        }
+      ],
+      "expected_route_boundary": "substantive_dom_plus_project_cards_requires_image_level_supplement"
+    },
+    {
+      "id": 8,
+      "public_url": "https://mp.weixin.qq.com/s/3Jak7IF89eIbJCNP__HBxQ",
+      "execution_receipt": "payload/capture-evidence/case-08/execution-receipt.json",
+      "final_status_source": "payload/capture-evidence/case-08/final-status.json",
+      "dom_evidence_source": "payload/capture-evidence/case-08/reconciliation-receipt.json",
+      "media_result": "payload/capture-evidence/case-08/media-understanding/media-understanding-result.json",
+      "expected_final_status": "needs_image_supplement",
+      "expected_dom": {
+        "meaningful_chars": 45,
+        "image_count": 3,
+        "meta_description_marker": false,
+        "noise_or_placeholder": true
+      },
+      "first_execution": {
+        "observed_completion_at": "2026-07-30T08:16:13.462798+00:00",
+        "mode_duration_seconds": 1.41,
+        "returncode": 0,
+        "successful_attempt_index": 1,
+        "prior_tls_failure_preserved": false,
+        "stderr_sha256": "4ce5d345de0503744c20dff910c9296eebdb2d0a89f58613bd17efd87d341350",
+        "article_sha256": "39cac09d4e233ec7bbe760715092d51da64c836dcc3edbbb32401a04266efc8b"
+      },
+      "expected_media": {
+        "status": "success",
+        "images_sent_to_ocr": 2,
+        "tracking_pixels_not_sent": 1,
+        "claim": "slide_workflow_is_image_derived_not_full_html_body"
+      },
+      "image_level_evidence": [
+        {
+          "path": "payload/capture-evidence/case-08/media-understanding/visual-understanding.md",
+          "sha256": "83f433621bf28cb53372fa48564e1225c27fa77a390d8ed60fe95e97b0d62a48",
+          "required_phrase": "four steps"
+        },
+        {
+          "path": "payload/capture-evidence/case-08/media-understanding/readable-supplement.md",
+          "sha256": "7ba4a37e3017427ba280d39d9c663cea4b6287c0da87dcc4cd6358ae20281f65",
+          "required_phrase": "page-purpose evidence because the DOM capture returned only placeholder/noise text"
+        }
+      ],
+      "expected_route_boundary": "placeholder_dom_must_not_fail_closed_when_substantive_image_evidence_exists"
+    },
+    {
+      "id": 14,
+      "public_url": "https://mp.weixin.qq.com/s/328I29cuaN7piDMPOoG0-g",
+      "execution_receipt": "payload/capture-evidence/case-14/execution-receipt.json",
+      "final_status_source": "payload/capture-evidence/case-14/reconciliation-receipt.json",
+      "dom_evidence_source": "payload/capture-evidence/case-14/reconciliation-receipt.json",
+      "expected_final_status": "full_body",
+      "expected_dom": {
+        "meaningful_chars": 658,
+        "image_count": 16,
+        "meta_description_marker": false,
+        "noise_or_placeholder": false
+      },
+      "first_execution": {
+        "observed_completion_at": "2026-07-30T08:16:23.003927+00:00",
+        "mode_duration_seconds": 9.45,
+        "returncode": 0,
+        "successful_attempt_index": 1,
+        "prior_tls_failure_preserved": false,
+        "stderr_sha256": "29626f43715d400786f7e7a6ae08ac69e4a5cf153b00eda2c1915cd77e27f87f",
+        "article_sha256": "2b04dddcbf017f6c5f5be091c2b2b8c264c9b351c9f6fb5d16a69a72fe0250df"
+      },
+      "expected_route_boundary": "substantive_dom_does_not_become_media_required_merely_from_repeated_assets"
+    },
+    {
+      "id": 15,
+      "public_url": "https://mp.weixin.qq.com/s/LB7AIwZT26khMnOXCM6ptw",
+      "execution_receipt": "payload/capture-evidence/case-15/execution-receipt.json",
+      "final_status_source": "payload/capture-evidence/case-15/reconciliation-receipt.json",
+      "dom_evidence_source": "payload/capture-evidence/case-15/reconciliation-receipt.json",
+      "expected_final_status": "full_body",
+      "expected_dom": {
+        "meaningful_chars": 698,
+        "image_count": 8,
+        "meta_description_marker": false,
+        "noise_or_placeholder": false
+      },
+      "first_execution": {
+        "observed_completion_at": "2026-07-30T08:16:32.037879+00:00",
+        "mode_duration_seconds": 8.88,
+        "returncode": 0,
+        "successful_attempt_index": 1,
+        "prior_tls_failure_preserved": false,
+        "stderr_sha256": "5bbddb5aed0d2e8a7a354a2f3ff2fdfcdc8a4d61e8cdc8f29e9060f5f101cef3",
+        "article_sha256": "2e9d44fa2d2b96b1f125767858fec8d23e32fbcc7a07aac048c63f9c5b2c5c5d"
+      },
+      "expected_route_boundary": "substantive_dom_and_image_inventory_can_remain_full_body"
+    }
+  ]
+}

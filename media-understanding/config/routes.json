@@ -1,0 +1,309 @@
+{
+  "schema_version": 1,
+  "credential_policy": {
+    "repository_env_files": false,
+    "default_root": "~/.codex/secrets",
+    "never_copy_or_print_secrets": true
+  },
+  "routes": [
+    {
+      "id": "codex-native-image",
+      "status": "active",
+      "media": ["image"],
+      "tasks": ["description", "rough_text", "direct_qa"],
+      "provider": "codex_native",
+      "model": null,
+      "authorization": "session_native",
+      "credentials": null,
+      "executor": {"kind": "native"}
+    },
+    {
+      "id": "minimax-mmx-image",
+      "status": "active_if_configured",
+      "media": ["image"],
+      "tasks": ["holistic", "image_qa", "ocr_assist"],
+      "provider": "minimax",
+      "model": null,
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/minimax.env",
+        "required_env": ["MINIMAX_API_KEY"],
+        "optional_env": ["MINIMAX_BASE_URL"]
+      },
+      "executor": {
+        "kind": "cli",
+        "command": "mmx",
+        "args": ["vision", "describe"],
+        "skill": "~/.agents/skills/mmx-cli/SKILL.md"
+      },
+      "notes": "mmx 1.0.19 calls the Coding Plan VLM endpoint but does not expose or accept a model id; do not label the underlying model MiniMax-VL-01."
+    },
+    {
+      "id": "minimax-m3-image",
+      "status": "external_configuration",
+      "media": ["image"],
+      "tasks": ["holistic", "image_qa", "structured_vision"],
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "interface": {
+        "default": "anthropic_messages",
+        "base_url": "https://api.minimaxi.com/anthropic",
+        "endpoint": "https://api.minimaxi.com/anthropic/v1/messages",
+        "openai_compatible_fallback": "https://api.minimaxi.com/v1/chat/completions",
+        "openai_fallback_policy": "only for a project already bound to the OpenAI SDK"
+      },
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/minimax.env",
+        "required_env": ["MINIMAX_API_KEY"],
+        "optional_env": ["MINIMAX_BASE_URL"]
+      },
+      "executor": {"kind": "none"},
+      "runtime_state": "not_run/unverified_capability",
+      "notes": "Default direct MiniMax-M3 image contract. Bind an Anthropic Messages adapter explicitly; OpenAI-compatible remains a supported but non-default SDK compatibility fallback."
+    },
+    {
+      "id": "minimax-m3-course-video",
+      "status": "active_if_configured",
+      "media": ["video"],
+      "tasks": ["course_screen_visual", "video_semantics"],
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "interface": {
+        "default": "anthropic_messages",
+        "base_url": "https://api.minimaxi.com/anthropic",
+        "endpoint": "https://api.minimaxi.com/anthropic/v1/messages",
+        "openai_compatible_fallback": "https://api.minimaxi.com/v1/chat/completions",
+        "openai_fallback_policy": "only for a project already bound to the OpenAI SDK"
+      },
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/minimax.env",
+        "required_env": ["MINIMAX_API_KEY"],
+        "optional_env": ["MINIMAX_BASE_URL"]
+      },
+      "executor": {"kind": "script", "path": "scripts/providers/minimax_m3_course_video.py"}
+    },
+    {
+      "id": "minimax-m3-course-audio-via-video-experimental",
+      "status": "active_if_configured",
+      "media": ["audio", "video"],
+      "tasks": ["course_audio_semantics"],
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "experimental": true,
+      "interface": {
+        "default": "anthropic_messages",
+        "base_url": "https://api.minimaxi.com/anthropic",
+        "endpoint": "https://api.minimaxi.com/anthropic/v1/messages",
+        "openai_compatible_fallback": "https://api.minimaxi.com/v1/chat/completions",
+        "openai_fallback_policy": "only for a project already bound to the OpenAI SDK"
+      },
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/minimax.env",
+        "required_env": ["MINIMAX_API_KEY"],
+        "optional_env": ["MINIMAX_BASE_URL"]
+      },
+      "executor": {"kind": "script", "path": "scripts/providers/minimax_m3_course_audio.py"},
+      "notes": "Compatibility experiment: wraps audio in a real low-resolution MP4. MiniMax does not document standalone M3 audio input; use only with explicit experimental authorization."
+    },
+    {
+      "id": "minimax-m3-transcript-semantics",
+      "status": "external_configuration",
+      "media": ["audio", "video"],
+      "tasks": ["course_audio_semantics", "meeting_semantics"],
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "interface": {
+        "default": "anthropic_messages",
+        "base_url": "https://api.minimaxi.com/anthropic",
+        "endpoint": "https://api.minimaxi.com/anthropic/v1/messages",
+        "openai_compatible_fallback": "https://api.minimaxi.com/v1/chat/completions",
+        "openai_fallback_policy": "only for a project already bound to the OpenAI SDK"
+      },
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/minimax.env",
+        "required_env": ["MINIMAX_API_KEY"],
+        "optional_env": ["MINIMAX_BASE_URL"]
+      },
+      "executor": {"kind": "none"},
+      "notes": "Preferred audio semantics path: authorized ASR/transcription first, then send text to MiniMax-M3. Bind the transcription and text-request executors explicitly."
+    },
+    {
+      "id": "agnes-image",
+      "status": "active_if_configured",
+      "media": ["image"],
+      "tasks": ["holistic", "image_qa", "provider_comparison"],
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/agnes.env",
+        "required_env": ["AGNES_API_KEY", "AGNES_MODEL"],
+        "optional_env": ["AGNES_BASE_URL"],
+        "expected_values": {"AGNES_MODEL": "agnes-2.5-flash"},
+        "safe_report_env": ["AGNES_MODEL"]
+      },
+      "executor": {"kind": "script", "path": "scripts/providers/agnes_vision.py"}
+    },
+    {
+      "id": "volcengine-platform-responses-files",
+      "status": "external_configuration",
+      "media": ["image", "document", "video", "audio", "mixed"],
+      "tasks": ["description", "grounding", "gui", "document", "video_summary", "video_qa", "audio_visual", "asr", "subtitles", "speakers", "translation", "meeting_minutes"],
+      "provider": "volcengine_ark_platform",
+      "model": null,
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/volcengine-ark.env",
+        "required_env": ["VOLCENGINE_ARK_API_KEY", "VOLCENGINE_ARK_BASE_URL", "VOLCENGINE_ARK_MODELS", "VOLCENGINE_ARK_DEFAULT_MODEL"],
+        "optional_env": [],
+        "expected_values": {"VOLCENGINE_ARK_BASE_URL": "https://ark.cn-beijing.volces.com/api/v3"},
+        "safe_report_env": ["VOLCENGINE_ARK_BASE_URL", "VOLCENGINE_ARK_MODELS", "VOLCENGINE_ARK_DEFAULT_MODEL"]
+      },
+      "executor": {"kind": "none"},
+      "notes": "Preferred production contract is regular Ark Platform Responses API plus Files API. A Plan URL in the generic slot is a configuration mismatch, not a usable Platform route."
+    },
+    {
+      "id": "volcengine-agent-plan-profile",
+      "status": "external_configuration",
+      "media": ["image", "video", "audio", "document"],
+      "tasks": ["supported_tool_integration"],
+      "provider": "volcengine_agent_plan",
+      "model": null,
+      "plan": "agent",
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/volcengine-ark.env",
+        "required_env": ["VOLCENGINE_AGENT_PLAN_API_KEY", "VOLCENGINE_AGENT_PLAN_MODELS", "VOLCENGINE_AGENT_PLAN_DEFAULT_MODEL"],
+        "optional_env": ["VOLCENGINE_AGENT_PLAN_BASE_URL"],
+        "safe_report_env": ["VOLCENGINE_AGENT_PLAN_MODELS", "VOLCENGINE_AGENT_PLAN_DEFAULT_MODEL"]
+      },
+      "executor": {"kind": "none"},
+      "notes": "Plan entitlement is for supported AI tools. Do not send custom Python Chat/Responses requests as ordinary API usage. Bind an officially supported tool and verify the exact media-model contract first."
+    },
+    {
+      "id": "volcengine-coding-plan-profile",
+      "status": "external_configuration",
+      "media": ["image", "video", "audio", "document"],
+      "tasks": ["supported_tool_integration"],
+      "provider": "volcengine_coding_plan",
+      "model": null,
+      "plan": "coding",
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/volcengine-ark.env",
+        "required_env": ["VOLCENGINE_CODING_PLAN_API_KEY", "VOLCENGINE_CODING_PLAN_MODELS", "VOLCENGINE_CODING_PLAN_DEFAULT_MODEL"],
+        "optional_env": ["VOLCENGINE_CODING_PLAN_BASE_URL"],
+        "safe_report_env": ["VOLCENGINE_CODING_PLAN_MODELS", "VOLCENGINE_CODING_PLAN_DEFAULT_MODEL"]
+      },
+      "executor": {"kind": "none"},
+      "notes": "Coding Plan quota is limited to supported coding tools. It is not the regular Ark Platform API and must not be an implicit fallback."
+    },
+    {
+      "id": "volcengine-arkcli-understand",
+      "status": "external_configuration",
+      "media": ["image", "document", "video", "audio", "mixed"],
+      "tasks": ["description", "grounding", "gui", "document", "video_summary", "video_qa", "audio_visual", "asr", "subtitles", "speakers", "translation", "meeting_minutes"],
+      "provider": "volcengine_arkcli",
+      "model": null,
+      "authorization": "explicit_external_provider",
+      "credentials": null,
+      "executor": {
+        "kind": "cli",
+        "command": "arkcli",
+        "args": ["+understand"]
+      },
+      "notes": "Ark CLI owns its own authenticated runtime state. Do not reuse Agent Plan or Coding Plan env files implicitly."
+    },
+    {
+      "id": "local-ocr-document",
+      "status": "external_configuration",
+      "media": ["image", "document"],
+      "tasks": ["exact_ocr", "document_structure", "layout_evidence"],
+      "provider": "local_ocr",
+      "model": null,
+      "authorization": "explicit_local_endpoint",
+      "credentials": null,
+      "executor": {"kind": "none"},
+      "notes": "Bind an explicitly selected local OCR or document endpoint at task time; no portable endpoint is embedded in this package."
+    },
+    {
+      "id": "local-timed-transcription",
+      "status": "discovery_required",
+      "media": ["audio", "video"],
+      "tasks": ["asr", "timestamps", "srt", "vtt"],
+      "provider": "local_asr",
+      "model": null,
+      "authorization": "local_only",
+      "credentials": null,
+      "executor": {"kind": "skill_name", "name": "timed-transcription"},
+      "notes": "Use only when the Skill is actually discovered; source presence alone is not execution readiness."
+    },
+    {
+      "id": "mimo-v2.5-image",
+      "status": "disabled",
+      "media": ["image"],
+      "tasks": ["holistic", "image_qa"],
+      "provider": "mimo",
+      "model": "mimo-v2.5",
+      "authorization": "explicit_external_provider",
+      "credentials": {
+        "file": "~/.codex/secrets/mimo.env",
+        "required_env": ["MIMO_API_KEY"],
+        "optional_env": ["MIMO_BASE_URL"]
+      },
+      "executor": {"kind": "none"},
+      "runtime_state": "not_run/unverified_capability",
+      "stop_reason": "local_route_not_ready: adapter_absent; credential_binding_unverified; provider_call_not_run",
+      "input_contract": {
+        "api_key_role": "authentication_only",
+        "public_url": true,
+        "local_image": "client_reads_and_embeds_base64; do not send a local path, file:// URL, file object, or separate upload reference",
+        "openai": "image_url.url=data:{MIME_TYPE};base64,...",
+        "anthropic": "source.type=base64 with media_type and data",
+        "limits": "URL file <=50MB; encoded Base64 string <=50MB"
+      },
+      "reenable_gate": [
+        "current official image contract rechecked",
+        "billing profile selected without key or base URL mixing",
+        "local credential file exists with private permissions",
+        "media-specific adapter installed and statically validated",
+        "one user-authorized image URL or data URL smoke test succeeds"
+      ],
+      "official_docs": ["https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/multimodal-understanding/image-understanding"]
+    },
+    {
+      "id": "mimo-v2.5-audio",
+      "status": "disabled",
+      "media": ["audio"],
+      "tasks": ["audio_semantics", "audio_qa"],
+      "provider": "mimo",
+      "model": "mimo-v2.5",
+      "authorization": "explicit_external_provider",
+      "credentials": {"file": "~/.codex/secrets/mimo.env", "required_env": ["MIMO_API_KEY"], "optional_env": ["MIMO_BASE_URL"]},
+      "executor": {"kind": "none"},
+      "runtime_state": "not_run/unverified_capability",
+      "stop_reason": "local_route_not_ready: adapter_absent; credential_binding_unverified; provider_call_not_run",
+      "reenable_gate": ["current official audio contract rechecked", "billing profile selected without key or base URL mixing", "local credential file exists with private permissions", "audio adapter installed and statically validated", "one user-authorized audio URL or data URL smoke test succeeds"],
+      "official_docs": ["https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/multimodal-understanding/audio-understanding"]
+    },
+    {
+      "id": "mimo-v2.5-video",
+      "status": "disabled",
+      "media": ["video"],
+      "tasks": ["video_semantics", "video_qa"],
+      "provider": "mimo",
+      "model": "mimo-v2.5",
+      "authorization": "explicit_external_provider",
+      "credentials": {"file": "~/.codex/secrets/mimo.env", "required_env": ["MIMO_API_KEY"], "optional_env": ["MIMO_BASE_URL"]},
+      "executor": {"kind": "none"},
+      "runtime_state": "not_run/unverified_capability",
+      "stop_reason": "local_route_not_ready: adapter_absent; credential_binding_unverified; provider_call_not_run",
+      "reenable_gate": ["current official video contract rechecked", "billing profile selected without key or base URL mixing", "local credential file exists with private permissions", "video adapter installed and statically validated", "one user-authorized video URL or data URL smoke test succeeds"],
+      "official_docs": ["https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/multimodal-understanding/video-understanding"]
+    }
+  ]
+}

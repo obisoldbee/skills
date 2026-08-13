@@ -9,12 +9,24 @@ Use one checkout per device and keep local project governance outside Git:
 ```text
 <collection>/
 ├── GitHub/                                  # clone of this repository
-│   └── project-conventions/                 # true Skill source
+│   ├── project-conventions/                 # true Skill source
+│   ├── web-bookmark-intelligence/           # true Skill source
+│   ├── media-understanding/                  # true Skill source
+│   ├── research-qa-plugin/                   # true Agent Plugins package source
+│   └── media-creator/                        # true cross-Agent media generation router
 ├── project-conventions/                     # stable local Project Root
 │   ├── docs/
 │   ├── conversation/
 │   ├── memory/
 │   └── src/project-conventions              # projection to GitHub package
+├── web-bookmark-intelligence/               # stable local Project Root
+│   └── src/web-bookmark-intelligence        # projection to GitHub package
+├── media-understanding/                      # stable local Project Root
+│   └── src/media-understanding               # projection to GitHub package
+├── research-qa-plugin/                       # stable local Project Root
+│   └── src/research-qa-plugin                # projection to GitHub package
+├── media-creator/                            # stable local Project Root
+│   └── src/media-creator                     # projection to GitHub package
 └── skills/                                  # local collection-control project
 ```
 
@@ -30,6 +42,10 @@ git clone https://github.com/obisoldbee/skills.git <collection>/GitHub
 python3 -B <collection>/GitHub/scripts/verify_release.py <collection>/GitHub
 python3 -B <collection>/GitHub/project-conventions/scripts/validate_package.py \
   <collection>/GitHub/project-conventions
+python3 -B <collection>/GitHub/web-bookmark-intelligence/scripts/validate_skill.py
+python3 -B <collection>/GitHub/media-understanding/scripts/validate_skill.py
+python3 -B <collection>/GitHub/research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
+python3 -B <collection>/GitHub/media-creator/scripts/validate_skill.py
 ```
 
 Then preview and materialize the local collection:
@@ -41,7 +57,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/initialize_skills_con
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent.
+The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional published packages such as `web-bookmark-intelligence`, `media-understanding`, and `research-qa-plugin` require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members.
 
 On macOS/Linux the projection is the relative link:
 
@@ -68,6 +84,8 @@ Git advances the repository as one commit, so bytes in other published packages 
 
 Agent installation is a separate explicit action. Exports are declared in [`config/skill-exports.tsv`](config/skill-exports.tsv), and target candidates are declared in [`config/agent-paths.tsv`](config/agent-paths.tsv).
 
+Cross-Agent packages can be scoped to the shared `agents` consumer so runtimes that already scan `~/.agents/skills` do not receive duplicate same-name brand-root links.
+
 Scan one exact Agent and Skill first:
 
 ```bash
@@ -89,7 +107,35 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.p
   -Apply -Agent codex -Skill project-conventions
 ```
 
-The repository scripts derive their source from the current checkout, so consumers point directly to `GitHub/project-conventions` when run from the recommended layout. They never create missing target parents or replace conflicts.
+The repository scripts derive each exported source from the current checkout, so consumers point directly to the declared path inside the matching `GitHub/<package>` scope when run from the recommended layout. They never create missing target parents or replace conflicts.
+
+For the cross-Agent web package, use the shared consumer id:
+
+```bash
+./scripts/link-macos.sh --agent agents --skill web-bookmark-intelligence
+./scripts/link-macos.sh --apply --agent agents --skill web-bookmark-intelligence
+```
+
+The multimodal router is scoped to the Codex consumer:
+
+```bash
+./scripts/link-macos.sh --agent codex --skill media-understanding
+./scripts/link-macos.sh --apply --agent codex --skill media-understanding
+```
+
+The research QA plugin exposes one first-level Skill for the Codex consumer:
+
+```bash
+./scripts/link-macos.sh --agent codex --skill research-qa-orchestrator
+./scripts/link-macos.sh --apply --agent codex --skill research-qa-orchestrator
+```
+
+The non-native media generation router is exported to every declared consumer. Codex-native generic image generation remains owned by the built-in `imagegen` Skill and bypasses this router:
+
+```bash
+./scripts/link-macos.sh --agent agents --skill media-creator
+./scripts/link-macos.sh --apply --agent agents --skill media-creator
+```
 
 ## Validation boundaries
 
@@ -105,6 +151,15 @@ Named package:
 python3 -B project-conventions/scripts/validate_package.py project-conventions
 python3 -B project-conventions/scripts/test_inspect_projects_workspace.py
 python3 -B project-conventions/scripts/test_lifecycle_workflows.py
+python3 -B web-bookmark-intelligence/scripts/validate_skill.py
+python3 -B -m unittest discover -s web-bookmark-intelligence/tests -p 'test_*.py'
+python3 -B media-understanding/scripts/validate_skill.py
+python3 -B -m unittest discover -s media-understanding/tests -p 'test_*.py'
+python3 -B research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
+python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchestrator/tests -p 'test_*.py'
+python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
+python3 -B media-creator/scripts/validate_skill.py
+python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 ```
 
 `ROOT-MANIFEST.sha256` intentionally lists only root-owned files. Root verification does not validate package contents. A filesystem link also does not prove that an Agent discovered, loaded, or executed a Skill; verify that in a fresh Agent task.
@@ -119,10 +174,33 @@ python3 -B project-conventions/scripts/test_lifecycle_workflows.py
 ├── ROOT-MANIFEST.sha256
 ├── config/
 ├── scripts/
-└── project-conventions/
+├── project-conventions/
     ├── SKILL.md
     ├── agents/
     ├── assets/
     ├── references/
     └── scripts/
+├── web-bookmark-intelligence/
+    ├── SKILL.md
+    ├── fixtures/
+    ├── references/
+    ├── scripts/
+    └── tests/
+├── media-understanding/
+    ├── SKILL.md
+    ├── config/
+    ├── references/
+    ├── scripts/
+    └── tests/
+├── research-qa-plugin/
+    ├── plugin.json
+    ├── README.md
+    └── skills/research-qa-orchestrator/
+└── media-creator/
+    ├── SKILL.md
+    ├── agents/
+    ├── config/
+    ├── references/
+    ├── scripts/
+    └── tests/
 ```

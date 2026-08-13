@@ -50,6 +50,33 @@ jobs:
           python -B project-conventions/scripts/test_inspect_projects_workspace.py
           python -B project-conventions/scripts/test_lifecycle_workflows.py
 
+      - name: Verify web-bookmark-intelligence package behavior
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check certifi
+          python -B web-bookmark-intelligence/scripts/validate_skill.py
+          python -B -m unittest discover -s web-bookmark-intelligence/tests -p 'test_*.py'
+
+      - name: Verify media-understanding package behavior
+        shell: bash
+        run: |
+          python -B media-understanding/scripts/validate_skill.py
+          python -B -m unittest discover -s media-understanding/tests -p 'test_*.py'
+
+      - name: Verify research-qa-plugin package behavior
+        shell: bash
+        run: |
+          python -B research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
+          python -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchestrator/tests -p 'test_*.py'
+          python -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
+
+      - name: Verify media-creator package behavior
+        shell: bash
+        run: |
+          python -B media-creator/scripts/validate_skill.py
+          python -B -m unittest discover -s media-creator/tests -p 'test_*.py'
+
       - name: Exercise scoped Unix link workflow
         if: runner.os != 'Windows'
         shell: bash
@@ -62,6 +89,9 @@ jobs:
           bash scripts/link-macos.sh --target "$target" --skill project-conventions
           test -L "$target/project-conventions"
           test "$(readlink "$target/project-conventions")" = "$(cd project-conventions && pwd -P)"
+          bash scripts/link-macos.sh --target "$target" --skill web-bookmark-intelligence
+          bash scripts/link-macos.sh --target "$target" --skill research-qa-orchestrator
+          bash scripts/link-macos.sh --target "$target" --skill media-creator
 
           if bash scripts/link-macos.sh; then
             echo "unscoped invocation unexpectedly succeeded" >&2
@@ -110,6 +140,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "apply failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
           if ($LASTEXITCODE -ne 0) { throw "readback scan failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill web-bookmark-intelligence
+          if ($LASTEXITCODE -ne 0) { throw "web-bookmark-intelligence scan failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill research-qa-orchestrator
+          if ($LASTEXITCODE -ne 0) { throw "research-qa-orchestrator scan failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill media-creator
+          if ($LASTEXITCODE -ne 0) { throw "media-creator scan failed: $LASTEXITCODE" }
 
           $created = Get-Item -LiteralPath (Join-Path $healthy 'project-conventions') -Force
           if (-not [bool]($created.Attributes -band [IO.FileAttributes]::ReparsePoint)) {

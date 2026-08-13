@@ -1,0 +1,22 @@
+{
+  "schema": "web-bookmark-intelligence/historical-fixtures/v1",
+  "source_package": "12-agent-submissions/2026/07/27/20260727001-codex",
+  "archive_root": "12-agent-submissions/2026/07/27/20260727001-codex/payload/legacy-backup/wechat_archive_playwright",
+  "cases": [
+    {"id": 1, "title": "Codex skills guide", "relative_article": "Codex 不限时了，我先删掉了一堆 Skills｜附 GPT-5.6 官方指南/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 1000, "expects_meta_description_marker": false},
+    {"id": 2, "title": "UI dirty work", "relative_article": "把UI脏活交给AI后，我的设计工作流更清爽了/article.md", "expected_route": "capture_evidence_conflict_requires_recapture", "minimum_meaningful_chars": 800, "expects_meta_description_marker": true},
+    {"id": 3, "title": "WorkBuddy", "relative_article": "实战 WorkBuddy+反爬+爬虫固化 Skill，6大能力搞定浏览器自动化/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 1000, "expects_meta_description_marker": false},
+    {"id": 4, "title": "UI UX Pro Max", "relative_article": "我把 UI_UX Pro Max 的 84 种 UI 风格，全部做成了打开即逛的 HTML 页面/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 800, "expects_meta_description_marker": false},
+    {"id": 5, "title": "ten webpage capture projects", "relative_article": "10 个网页数据采集开源项目，建议收藏/article.md", "expected_route": "playwright_then_media_ocr", "minimum_meaningful_chars": 300, "expects_meta_description_marker": true},
+    {"id": 6, "title": "seventeen GitHub projects", "relative_article": "盘点 17 个 6 月份牛牛牛的 GitHub 开源项目。/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 1000, "expects_meta_description_marker": false},
+    {"id": 7, "title": "Guizang PPT update", "relative_article": "未命名文章/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 1000, "expects_meta_description_marker": false},
+    {"id": 8, "title": "PPT Skills and Pencil", "relative_article": "藏师傅 PPT Skills 加 Pencil 无敌了!/article.md", "expected_route": "capture_evidence_conflict_requires_recapture", "minimum_meaningful_chars": 200, "expects_meta_description_marker": true},
+    {"id": 9, "title": "HTML video", "relative_article": "HTML版剪映来了！Open Design 团队最新开源力作，3天时间，写了3万行代码！/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 1000, "expects_meta_description_marker": false},
+    {"id": 10, "title": "video download skill", "relative_article": "我把视频下载做成了一个 Skill，很万能，不小心开源了/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 700, "expects_meta_description_marker": false},
+    {"id": 11, "title": "Karpathy Claude md", "relative_article": "Karpathy内部Claude.md泄露！亲手终结提示词时代/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 1000, "expects_meta_description_marker": false},
+    {"id": 12, "title": "weekly GitHub projects", "relative_article": "10 个本周 yyds 的 GitHub 开源项目，推荐给你。/article.md", "expected_route": "playwright_dom", "minimum_meaningful_chars": 1000, "expects_meta_description_marker": false},
+    {"id": 13, "title": "OpenAI prompting guide", "relative_article": "OpenAI's new prompting guide tells users to stop overthinking and start with the/article.md", "expected_route": "generic_dom", "minimum_meaningful_chars": 900, "expects_meta_description_marker": false},
+    {"id": 14, "title": "HyOCR", "relative_article": "腾讯混元 HyOCR-1.5端到端 OCR 大模型开源/article.md", "expected_route": "capture_evidence_conflict_requires_recapture", "minimum_meaningful_chars": 700, "expects_meta_description_marker": true},
+    {"id": 15, "title": "NoMac", "relative_article": "NoMac.app — Agent 帮你上架 App Store/article.md", "expected_route": "capture_evidence_conflict_requires_recapture", "minimum_meaningful_chars": 700, "expects_meta_description_marker": true}
+  ]
+}

@@ -1,0 +1,229 @@
+{
+  "schema": "media-creator-routes/v1",
+  "scope": {
+    "kind": "non_native_media_generation",
+    "codex_ordinary_image_generation": {
+      "action": "exclude",
+      "owner": "imagegen",
+      "operations": [
+        "text_to_image",
+        "image_to_image",
+        "multi_image"
+      ],
+      "reason": "Preserve Codex's built-in image-generation trigger and execution path."
+    }
+  },
+  "policies": {
+    "non_codex_text_to_image": {
+      "primary": "chatgpt-web-image",
+      "primary_preconditions": {
+        "platform": "Darwin",
+        "ego_browser": "present",
+        "chatgpt_login": "required_at_runtime"
+      },
+      "pre_submission_fallback": "minimax-mmx-image",
+      "fallback_phase": "before_submission_only",
+      "fallback_when": [
+        "platform_is_not_Darwin",
+        "ego_browser_missing",
+        "chatgpt_login_not_confirmed",
+        "browser_preflight_failed"
+      ],
+      "agnes_selection": "explicit_or_user_confirmed",
+      "post_submission_cross_provider_fallback": "ask_user"
+    },
+    "image_to_image": {
+      "never_route_to": [
+        "minimax-mmx-image"
+      ],
+      "agnes_selection": "explicit_or_user_confirmed",
+      "reason": "MMX subject reference is not general image-to-image or multi-image editing."
+    },
+    "minimax_video_quota": {
+      "check_before_default_mmx": true,
+      "probe": {
+        "kind": "external_cli",
+        "command": [
+          "mmx",
+          "quota",
+          "show",
+          "--output",
+          "json",
+          "--quiet",
+          "--non-interactive"
+        ],
+        "invoked_by_local_check": false
+      },
+      "states": {
+        "known_positive": "continue_mmx",
+        "known_exhausted": "ask_user_mmx_or_agnes",
+        "unknown": "ask_user_mmx_or_agnes"
+      },
+      "h3_quota_authoritative": false,
+      "h3_note": "The Token Plan quota result is not authoritative for pay-as-you-go H3 usage."
+    }
+  },
+  "routes": [
+    {
+      "id": "chatgpt-web-image",
+      "provider": "chatgpt_web",
+      "status": "active_if_available",
+      "selection": "non_codex_default_when_preconditions_hold",
+      "executor": {
+        "kind": "external_browser_cli",
+        "command": "ego-browser",
+        "vendored": false
+      },
+      "runtime_preconditions": {
+        "platform": "Darwin",
+        "ego_browser": true,
+        "chatgpt_login": true,
+        "login_check": "runtime_only"
+      },
+      "alternative_executor": {
+        "kind": "harness_builtin_browser",
+        "status": "capability_probe_required",
+        "requirements": [
+          "authenticated_ChatGPT_session",
+          "stable_semantic_controls",
+          "authenticated_image_download"
+        ]
+      },
+      "capabilities": {
+        "image": {
+          "text_to_image": true,
+          "image_to_image": "runtime_verification_required",
+          "multi_image": "runtime_verification_required"
+        }
+      }
+    },
+    {
+      "id": "minimax-mmx-image",
+      "provider": "minimax",
+      "status": "active_if_available",
+      "selection": "non_codex_text_to_image_pre_submission_fallback",
+      "executor": {
+        "kind": "external_cli",
+        "command": "mmx",
+        "vendored": false,
+        "upgrade_owner": "mmx-cli"
+      },
+      "capabilities": {
+        "image": {
+          "text_to_image": true,
+          "subject_reference": true,
+          "image_to_image": false,
+          "multi_image": false
+        }
+      }
+    },
+    {
+      "id": "agnes-image",
+      "provider": "agnes",
+      "model": "agnes-image-2.1-flash",
+      "status": "active_if_configured",
+      "selection": "explicit_or_user_confirmed",
+      "credential_binding": {
+        "file": "~/.codex/secrets/agnes.env",
+        "inspection": "metadata_only"
+      },
+      "executor": {
+        "kind": "package_script",
+        "path": "scripts/agnes_media.py"
+      },
+      "capabilities": {
+        "image": {
+          "text_to_image": true,
+          "image_to_image": true,
+          "multi_image": true
+        }
+      }
+    },
+    {
+      "id": "minimax-mmx-video",
+      "provider": "minimax",
+      "model_family": "MiniMax-H3",
+      "status": "active_if_available",
+      "selection": "default_after_quota_policy",
+      "executor": {
+        "kind": "external_cli",
+        "command": "mmx",
+        "vendored": false,
+        "upgrade_owner": "mmx-cli"
+      },
+      "capabilities": {
+        "video": {
+          "text_to_video": true,
+          "image_to_video": true,
+          "first_last_frame": true,
+          "reference_image": true,
+          "reference_video": true,
+          "reference_audio": true,
+          "precise_video_edit": false
+        }
+      }
+    },
+    {
+      "id": "agnes-video",
+      "provider": "agnes",
+      "model": "agnes-video-v2.0",
+      "status": "active_if_configured",
+      "selection": "explicit_or_user_confirmed_or_mmx_quota_choice",
+      "credential_binding": {
+        "file": "~/.codex/secrets/agnes.env",
+        "inspection": "metadata_only"
+      },
+      "executor": {
+        "kind": "package_script",
+        "path": "scripts/agnes_media.py"
+      },
+      "capabilities": {
+        "video": {
+          "text_to_video": true,
+          "image_to_video": true,
+          "keyframes": true,
+          "video_to_video": false,
+          "precise_video_edit": false
+        }
+      }
+    },
+    {
+      "id": "minimax-mmx-speech",
+      "provider": "minimax",
+      "status": "active_if_available",
+      "selection": "default_for_speech",
+      "executor": {
+        "kind": "external_cli",
+        "command": "mmx",
+        "vendored": false,
+        "upgrade_owner": "mmx-cli"
+      },
+      "capabilities": {
+        "audio": {
+          "text_to_speech": true,
+          "subtitles": true
+        }
+      }
+    },
+    {
+      "id": "minimax-mmx-music",
+      "provider": "minimax",
+      "status": "active_if_available",
+      "selection": "default_for_music",
+      "executor": {
+        "kind": "external_cli",
+        "command": "mmx",
+        "vendored": false,
+        "upgrade_owner": "mmx-cli"
+      },
+      "capabilities": {
+        "audio": {
+          "text_to_music": true,
+          "instrumental": true,
+          "lyrics": true,
+          "music_cover": true
+        }
+      }
+    }
+  ]
+}

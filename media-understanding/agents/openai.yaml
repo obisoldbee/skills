@@ -1,0 +1,4 @@
+interface:
+  display_name: "媒体理解与模型路由"
+  short_description: "为 OCR、音视频、批量、外部模型与评测任务选择可追溯路线"
+  default_prompt: "使用 $media-understanding 为精确 OCR/文档、音视频、批量、外部 provider 或 benchmark 任务选择路线；普通单张图片或截图的直接问答请使用 Codex 原生视觉，不要调用本 Skill。"

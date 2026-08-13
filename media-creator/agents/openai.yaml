@@ -1,0 +1,6 @@
+interface:
+  display_name: "Media Creator"
+  short_description: "Route non-native image, video, speech, and music generation"
+  default_prompt: "Use $media-creator to generate media with the appropriate non-native provider while preserving native image generation."
+policy:
+  allow_implicit_invocation: true

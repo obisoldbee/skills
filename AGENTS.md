@@ -6,7 +6,7 @@ This is the portable Git source for published Skill packages. In the standard lo
 Materials:
 - `<checkout-root>` is the Git worktree containing this file.
 - Root-owned publication files are `.gitattributes`, `.github/workflows/verify.yml`, `.gitignore`, `AGENTS.md`, `README.md`, `ROOT-MANIFEST.sha256`, `config/`, and `scripts/`.
-- Each top-level Skill package, such as `project-conventions/`, is an independently validated managed scope.
+- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, or `media-creator/`, is an independently validated managed scope.
 - A local collection wrapper, control project, member records, and Agent links live outside this repository.
 
 Constraints:
@@ -36,9 +36,25 @@ Shared collection invariants:
 <collection>/GitHub/project-conventions                  # true source
 <collection>/project-conventions/src/project-conventions # member projection
 <agent-root>/project-conventions                         # direct consumer link to true source
+
+<collection>/GitHub/web-bookmark-intelligence                  # true source
+<collection>/web-bookmark-intelligence/src/web-bookmark-intelligence # member projection
+<agent-root>/web-bookmark-intelligence                         # direct consumer link to true source
+
+<collection>/GitHub/media-understanding                        # true source
+<collection>/media-understanding/src/media-understanding       # member projection
+<agent-root>/media-understanding                               # direct consumer link to true source
+
+<collection>/GitHub/research-qa-plugin                         # true package source
+<collection>/research-qa-plugin/src/research-qa-plugin         # member projection
+<agent-root>/research-qa-orchestrator                           # direct link to first-level Skill
+
+<collection>/GitHub/media-creator                               # true source
+<collection>/media-creator/src/media-creator                    # member projection
+<agent-root>/media-creator                                      # direct consumer link to true source
 ```
 
-- Unix member projection: relative symlink `../../GitHub/project-conventions`.
+- Unix member projection: relative symlink `../../GitHub/<package>`.
 - Windows member projection: junction to the final absolute package path.
 - Agent consumer links point directly to the true source, not through the member projection.
 - A link proves filesystem state only, not runtime discovery or execution.
@@ -50,6 +66,15 @@ python3 -B scripts/verify_release.py <checkout-root>
 python3 -B project-conventions/scripts/validate_package.py <checkout-root>/project-conventions
 python3 -B project-conventions/scripts/test_inspect_projects_workspace.py
 python3 -B project-conventions/scripts/test_lifecycle_workflows.py
+python3 -B web-bookmark-intelligence/scripts/validate_skill.py
+python3 -B -m unittest discover -s web-bookmark-intelligence/tests -p 'test_*.py'
+python3 -B media-understanding/scripts/validate_skill.py
+python3 -B -m unittest discover -s media-understanding/tests -p 'test_*.py'
+python3 -B research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
+python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchestrator/tests -p 'test_*.py'
+python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
+python3 -B media-creator/scripts/validate_skill.py
+python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 ```
 
 For an authorized repository-root edit, use `--rebuild-root-manifest` and then verify again. For a package edit, do not rebuild the root manifest unless root-owned files also changed.
@@ -67,3 +92,8 @@ Entry points:
 | `scripts/link-macos.sh` | Scoped Unix Agent consumer link tool |
 | `scripts/link-windows.ps1` | Scoped Windows Agent consumer junction tool |
 | `project-conventions/SKILL.md` | Lifecycle and filesystem-governance package |
+| `web-bookmark-intelligence/SKILL.md` | Receipted public-web and bookmark evidence package |
+| `media-understanding/SKILL.md` | Multimodal task router and provider-binding package |
+| `research-qa-plugin/plugin.json` | Agent Plugins v1 research QA package manifest |
+| `research-qa-plugin/skills/research-qa-orchestrator/SKILL.md` | Audited five-stage research QA entry point |
+| `media-creator/SKILL.md` | Non-native cross-Agent image and video generation router |
