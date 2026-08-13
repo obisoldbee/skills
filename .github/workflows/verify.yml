@@ -77,6 +77,12 @@ jobs:
           python -B media-creator/scripts/validate_skill.py
           python -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 
+      - name: Verify document-workspace package behavior
+        shell: bash
+        run: |
+          python -B document-workspace/scripts/validate_package.py document-workspace
+          python -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
+
       - name: Exercise scoped Unix link workflow
         if: runner.os != 'Windows'
         shell: bash
@@ -90,6 +96,7 @@ jobs:
           test -L "$target/project-conventions"
           test "$(readlink "$target/project-conventions")" = "$(cd project-conventions && pwd -P)"
           bash scripts/link-macos.sh --target "$target" --skill web-bookmark-intelligence
+          bash scripts/link-macos.sh --target "$target" --skill media-understanding
           bash scripts/link-macos.sh --target "$target" --skill research-qa-orchestrator
           bash scripts/link-macos.sh --target "$target" --skill media-creator
 
@@ -142,6 +149,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "readback scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill web-bookmark-intelligence
           if ($LASTEXITCODE -ne 0) { throw "web-bookmark-intelligence scan failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill media-understanding
+          if ($LASTEXITCODE -ne 0) { throw "media-understanding scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill research-qa-orchestrator
           if ($LASTEXITCODE -ne 0) { throw "research-qa-orchestrator scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill media-creator

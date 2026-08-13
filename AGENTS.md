@@ -6,7 +6,7 @@ This is the portable Git source for published Skill packages. In the standard lo
 Materials:
 - `<checkout-root>` is the Git worktree containing this file.
 - Root-owned publication files are `.gitattributes`, `.github/workflows/verify.yml`, `.gitignore`, `AGENTS.md`, `README.md`, `ROOT-MANIFEST.sha256`, `config/`, and `scripts/`.
-- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, or `media-creator/`, is an independently validated managed scope.
+- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, `media-creator/`, or `document-workspace/`, is an independently validated managed scope.
 - A local collection wrapper, control project, member records, and Agent links live outside this repository.
 
 Constraints:
@@ -58,6 +58,7 @@ Shared collection invariants:
 - Windows member projection: junction to the final absolute package path.
 - Agent consumer links point directly to the true source, not through the member projection.
 - A link proves filesystem state only, not runtime discovery or execution.
+- `document-workspace/` is currently a published package without a collection wrapper or Agent export declaration. Do not invent either during unrelated maintenance.
 
 Validation:
 
@@ -75,6 +76,8 @@ python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchest
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
 python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
+python3 -B document-workspace/scripts/validate_package.py document-workspace
+python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ```
 
 For an authorized repository-root edit, use `--rebuild-root-manifest` and then verify again. For a package edit, do not rebuild the root manifest unless root-owned files also changed.
@@ -97,3 +100,4 @@ Entry points:
 | `research-qa-plugin/plugin.json` | Agent Plugins v1 research QA package manifest |
 | `research-qa-plugin/skills/research-qa-orchestrator/SKILL.md` | Audited five-stage research QA entry point |
 | `media-creator/SKILL.md` | Non-native cross-Agent image and video generation router |
+| `document-workspace/SKILL.md` | Local-first document workspace lifecycle and evidence package |

@@ -13,7 +13,8 @@ Use one checkout per device and keep local project governance outside Git:
 │   ├── web-bookmark-intelligence/           # true Skill source
 │   ├── media-understanding/                  # true Skill source
 │   ├── research-qa-plugin/                   # true Agent Plugins package source
-│   └── media-creator/                        # true cross-Agent media generation router
+│   ├── media-creator/                        # true cross-Agent media generation router
+│   └── document-workspace/                   # true file-based document governance source
 ├── project-conventions/                     # stable local Project Root
 │   ├── docs/
 │   ├── conversation/
@@ -46,6 +47,8 @@ python3 -B <collection>/GitHub/web-bookmark-intelligence/scripts/validate_skill.
 python3 -B <collection>/GitHub/media-understanding/scripts/validate_skill.py
 python3 -B <collection>/GitHub/research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
 python3 -B <collection>/GitHub/media-creator/scripts/validate_skill.py
+python3 -B <collection>/GitHub/document-workspace/scripts/validate_package.py \
+  <collection>/GitHub/document-workspace
 ```
 
 Then preview and materialize the local collection:
@@ -57,7 +60,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/initialize_skills_con
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional published packages such as `web-bookmark-intelligence`, `media-understanding`, and `research-qa-plugin` require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members.
+The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional published packages such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `media-creator`, and `document-workspace` require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members.
 
 On macOS/Linux the projection is the relative link:
 
@@ -83,6 +86,8 @@ Git advances the repository as one commit, so bytes in other published packages 
 ## Agent installation
 
 Agent installation is a separate explicit action. Exports are declared in [`config/skill-exports.tsv`](config/skill-exports.tsv), and target candidates are declared in [`config/agent-paths.tsv`](config/agent-paths.tsv).
+
+Publication does not imply Agent exposure. For example, `document-workspace` is published and validated here but is not currently declared in `config/skill-exports.tsv`; adding a consumer link requires a separate explicit decision.
 
 Cross-Agent packages can be scoped to the shared `agents` consumer so runtimes that already scan `~/.agents/skills` do not receive duplicate same-name brand-root links.
 
@@ -160,6 +165,8 @@ python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchest
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
 python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
+python3 -B document-workspace/scripts/validate_package.py document-workspace
+python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ```
 
 `ROOT-MANIFEST.sha256` intentionally lists only root-owned files. Root verification does not validate package contents. A filesystem link also does not prove that an Agent discovered, loaded, or executed a Skill; verify that in a fresh Agent task.
@@ -175,31 +182,37 @@ python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 ├── config/
 ├── scripts/
 ├── project-conventions/
-    ├── SKILL.md
-    ├── agents/
-    ├── assets/
-    ├── references/
-    └── scripts/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
+│   ├── references/
+│   └── scripts/
 ├── web-bookmark-intelligence/
-    ├── SKILL.md
-    ├── fixtures/
-    ├── references/
-    ├── scripts/
-    └── tests/
+│   ├── SKILL.md
+│   ├── fixtures/
+│   ├── references/
+│   ├── scripts/
+│   └── tests/
 ├── media-understanding/
-    ├── SKILL.md
-    ├── config/
-    ├── references/
-    ├── scripts/
-    └── tests/
+│   ├── SKILL.md
+│   ├── config/
+│   ├── references/
+│   ├── scripts/
+│   └── tests/
 ├── research-qa-plugin/
-    ├── plugin.json
-    ├── README.md
-    └── skills/research-qa-orchestrator/
-└── media-creator/
+│   ├── plugin.json
+│   ├── README.md
+│   └── skills/research-qa-orchestrator/
+├── media-creator/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── config/
+│   ├── references/
+│   ├── scripts/
+│   └── tests/
+└── document-workspace/
     ├── SKILL.md
     ├── agents/
-    ├── config/
     ├── references/
     ├── scripts/
     └── tests/
