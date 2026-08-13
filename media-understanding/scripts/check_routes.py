@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import stat
 from pathlib import Path
@@ -51,6 +52,8 @@ def dotenv_values(path: Path) -> dict[str, str]:
 
 def private_permissions(path: Path) -> bool | None:
     if not path.exists():
+        return None
+    if os.name == "nt":
         return None
     return path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0
 

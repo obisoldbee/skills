@@ -26,6 +26,7 @@ def load_module(name: str, relative: str):
 AGNES = load_module("media_understanding_agnes", "scripts/providers/agnes_vision.py")
 AUDIO = load_module("media_understanding_m3_audio", "scripts/providers/minimax_m3_course_audio.py")
 VIDEO = load_module("media_understanding_m3_video", "scripts/providers/minimax_m3_course_video.py")
+ROUTES = load_module("media_understanding_routes", "scripts/check_routes.py")
 
 
 class ProviderHelperTests(unittest.TestCase):
@@ -42,6 +43,13 @@ class ProviderHelperTests(unittest.TestCase):
             self.assertEqual(module.resolve_endpoint(self.endpoint_args("https://api.minimaxi.com")), expected)
             self.assertEqual(module.resolve_endpoint(self.endpoint_args("https://api.minimaxi.com/anthropic")), expected)
             self.assertEqual(module.resolve_endpoint(self.endpoint_args(expected)), expected)
+
+    def test_windows_posix_permissions_are_unverified(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "secret.env"
+            path.write_text("KEY=placeholder\n", encoding="utf-8")
+            with mock.patch.object(ROUTES.os, "name", "nt"):
+                self.assertIsNone(ROUTES.private_permissions(path))
 
     def test_minimax_base64_limit_is_checked_before_read(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

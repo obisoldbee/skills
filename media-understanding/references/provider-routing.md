@@ -37,15 +37,16 @@
 | Readiness | 含义 |
 |---|---|
 | `native_ready` | 当前原生执行器可用 |
-| `configured_not_called` | 执行器、env 文件、必需变量名和私有权限存在；没有调用 provider |
+| `configured_not_called` | 执行器、env 文件和必需变量名存在；POSIX 系统上的私有权限检查通过；没有调用 provider |
 | `missing_credentials` | env 文件或必需变量缺失 |
-| `unsafe_credential_permissions` | key 文件对 group/other 开放 |
+| `unsafe_credential_permissions` | POSIX 系统上的 key 文件对 group/other 开放 |
 | `configuration_mismatch` | 安全白名单配置（如模型 ID）与 route 合同不一致 |
 | `missing_executor` | CLI、包内脚本、Skill 或 helper 缺失 |
 | `needs_explicit_binding` | 需要在当前任务绑定本地 endpoint/Skill |
 | `disabled` | 路线保留但禁止执行 |
 
 不要把 `configured_not_called` 写成远端可用、余额充足、模型已接受或任务成功。
+Windows 不提供等价的 POSIX group/other mode 证据，因此 `private_permissions` 报告 `null`，而不是把 Windows ACL 推断为安全或不安全。
 
 ## 火山隔离
 
