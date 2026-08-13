@@ -95,8 +95,9 @@ class RoutingContractTests(unittest.TestCase):
             env_path.chmod(0o600)
             bin_dir.mkdir()
             for command in ("ego-browser", "mmx"):
-                executable = bin_dir / command
-                executable.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+                executable = bin_dir / (f"{command}.cmd" if os.name == "nt" else command)
+                placeholder = "@exit /b 99\r\n" if os.name == "nt" else "#!/bin/sh\nexit 99\n"
+                executable.write_text(placeholder, encoding="utf-8")
                 executable.chmod(0o755)
 
             environment = os.environ.copy()
