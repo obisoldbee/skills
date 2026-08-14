@@ -77,9 +77,9 @@
       "source_name": "Dr Robert",
       "target": "personas/Dr Robert",
       "file_count": 8,
-      "total_bytes": 930230,
+      "total_bytes": 930242,
       "skill_md_sha256": "3ce81a21d03483dff86c585c27ba3867db338aec18da85ade70ce36a7400bb06",
-      "tree_sha256": "cfa5657df771c884c51f8d59c7d2e1bbb4d791abbb89f53332422ecb1306034d"
+      "tree_sha256": "a85015df45c72333f2ad2b2039c3c868cc8fcade5bc2aded68581e2d6fc8f61f"
     },
     {
       "id": "persona-08",
