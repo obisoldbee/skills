@@ -919,11 +919,11 @@ R4 的 "Rob's Rant" 元幽默标签在 R5 没有延续（v3.0 重跑确认 0 命
 20230828001 (Ep:??? "FATTY LIVER DISEASE: SIMPLE CAUSE, SIMPLE CURE") 自动字幕开头是：
 > "Good day. This is Dr. Robert Zannis. Today we are going to discuss..."
 
-但同一文件 [00:51:41] 出现 "I am the carb addiction doc"（Cywes 标准签名），[01:20:09] 出现 "Had to throw that in there because I am the carb addiction doc"，[01:20:23] 出现 "my Instagram account, or through email at robert@jackchildren.com"（Cywes 的 JACK 诊所邮箱）
+但同一文件 [00:51:41] 出现 "I am the carb addiction doc"（Cywes 标准签名），[01:20:09] 出现 "Had to throw that in there because I am the carb addiction doc"，[01:20:23] 出现 "my Instagram account, or through email at [公开联系邮箱已脱敏]"（Cywes 的 JACK 诊所邮箱）
 
 **事实校正**：这是 YouTube auto-caption 把 "Robert Cywes" 错读成 "Robert Zannis"。本文件是 Cywes 的独白讲课（不是访谈），标题 frontmatter 与内容一致。
 
-**对 v3.0 的影响**：所有 R5 grep 必须结合上下文验证 speaker，不能仅看 auto-caption 第一句话。"Robert Zannis" / "cvis" / "Cyrus" / "CIS" 都是同一人（Cywes 的自动字幕变形）。**robert@jackchildren.com** 是 R5 中 R4 已有（"Jack & Friends Pediatric / Adolescent" / "JACK Children"）的延续。
+**对 v3.0 的影响**：所有 R5 grep 必须结合上下文验证 speaker，不能仅看 auto-caption 第一句话。"Robert Zannis" / "cvis" / "Cyrus" / "CIS" 都是同一人（Cywes 的自动字幕变形）。**[公开联系邮箱已脱敏]** 是 R5 中 R4 已有（"Jack & Friends Pediatric / Adolescent" / "JACK Children"）的延续。
 
 #### 发现 11（补充）："伤口外科医生"叙事在 R5 嘉宾对话中**传染扩散**（一手 + 我推断）
 
