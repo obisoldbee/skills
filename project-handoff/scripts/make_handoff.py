@@ -3,6 +3,7 @@ import argparse
 import datetime as dt
 import os
 import subprocess
+import sys
 
 
 def run(cmd, cwd):
@@ -22,6 +23,9 @@ def run(cmd, cwd):
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(
         description="Print a complete portable project handoff scaffold."
     )

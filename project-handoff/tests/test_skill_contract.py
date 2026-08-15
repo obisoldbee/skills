@@ -475,6 +475,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-B", str(script), "--cwd", str(WORKSPACE_ROOT)],
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=True,
             timeout=10,
