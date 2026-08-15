@@ -96,6 +96,13 @@ jobs:
           python -B media-creator/scripts/validate_skill.py
           python -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 
+      - name: Verify project-handoff package behavior
+        shell: bash
+        run: |
+          python -B project-handoff/scripts/validate_package.py project-handoff
+          python -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
+          bash -n project-handoff/scripts/run-spark-cli.sh
+
       - name: Verify document-workspace package behavior
         if: runner.os != 'Windows' || matrix.python != '3.11'
         shell: bash
@@ -134,6 +141,7 @@ jobs:
           bash scripts/link-macos.sh --target "$target" --skill media-understanding
           bash scripts/link-macos.sh --target "$target" --skill research-qa-orchestrator
           bash scripts/link-macos.sh --target "$target" --skill media-creator
+          bash scripts/link-macos.sh --target "$target" --skill project-handoff
 
           if bash scripts/link-macos.sh; then
             echo "unscoped invocation unexpectedly succeeded" >&2
@@ -190,6 +198,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "research-qa-orchestrator scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill media-creator
           if ($LASTEXITCODE -ne 0) { throw "media-creator scan failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-handoff
+          if ($LASTEXITCODE -ne 0) { throw "project-handoff scan failed: $LASTEXITCODE" }
 
           $created = Get-Item -LiteralPath (Join-Path $healthy 'project-conventions') -Force
           if (-not [bool]($created.Attributes -band [IO.FileAttributes]::ReparsePoint)) {

@@ -1,0 +1,355 @@
+[
+  {
+    "id": "parallel-independent-readers",
+    "plan": {
+      "run_id": "parallel-independent-readers",
+      "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "inventory",
+          "goal": "Inventory the frozen inputs.",
+          "depends_on": [],
+          "read_paths": ["inputs/frozen"],
+          "write_paths": ["reports/inventory.md"],
+          "mutable_resources": [],
+          "expected_outputs": ["reports/inventory.md"],
+          "validation": "test -s reports/inventory.md",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        },
+        {
+          "id": "evidence-review",
+          "goal": "Review evidence in the same frozen inputs.",
+          "depends_on": [],
+          "read_paths": ["inputs/frozen"],
+          "write_paths": ["reports/evidence.md"],
+          "mutable_resources": [],
+          "expected_outputs": ["reports/evidence.md"],
+          "validation": "test -s reports/evidence.md",
+          "route": {
+            "requested_route": "luna-max",
+            "model": "gpt-5.6-luna",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "ready_groups": [
+        ["inventory", "evidence-review"]
+      ]
+    }
+  },
+  {
+    "id": "serial-design-build",
+    "plan": {
+      "run_id": "serial-design-build",
+      "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "design",
+          "goal": "Create and validate the design artifact.",
+          "depends_on": [],
+          "read_paths": ["docs/requirements.md"],
+          "write_paths": ["docs/specs/design.md"],
+          "mutable_resources": [],
+          "expected_outputs": ["docs/specs/design.md"],
+          "validation": "test -s docs/specs/design.md",
+          "route": {
+            "requested_route": "sol-max",
+            "model": "gpt-5.6-sol",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "explicit_user",
+            "reasoning_basis": "explicit_user"
+          }
+        },
+        {
+          "id": "build",
+          "goal": "Implement the accepted design.",
+          "depends_on": ["design"],
+          "read_paths": ["docs/specs/design.md"],
+          "write_paths": ["src/feature.py"],
+          "mutable_resources": [],
+          "expected_outputs": ["src/feature.py"],
+          "validation": "python3 -m unittest",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "ready_groups": [
+        ["design"],
+        ["build"]
+      ]
+    }
+  },
+  {
+    "id": "unordered-same-file-writers",
+    "plan": {
+      "run_id": "unordered-same-file-writers",
+      "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "worker-a",
+          "goal": "Edit the application entry point.",
+          "depends_on": [],
+          "read_paths": ["src/app.py"],
+          "write_paths": ["src/app.py"],
+          "mutable_resources": [],
+          "expected_outputs": ["src/app.py"],
+          "validation": "python3 -m unittest",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_requested",
+            "reasoning_basis": "auto_requested"
+          }
+        },
+        {
+          "id": "worker-b",
+          "goal": "Refactor the application entry point.",
+          "depends_on": [],
+          "read_paths": ["src/app.py"],
+          "write_paths": ["src/app.py"],
+          "mutable_resources": [],
+          "expected_outputs": ["src/app.py"],
+          "validation": "python3 -m unittest",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_requested",
+            "reasoning_basis": "auto_requested"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "unordered write/write conflict"
+    }
+  },
+  {
+    "id": "unordered-shared-service",
+    "plan": {
+      "run_id": "unordered-shared-service",
+      "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "api-test",
+          "goal": "Test the API against the local test database.",
+          "depends_on": [],
+          "read_paths": ["src/api"],
+          "write_paths": ["reports/api-test.md"],
+          "mutable_resources": ["test-db"],
+          "expected_outputs": ["reports/api-test.md"],
+          "validation": "test -s reports/api-test.md",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        },
+        {
+          "id": "migration-test",
+          "goal": "Test migrations against the local test database.",
+          "depends_on": [],
+          "read_paths": ["src/migrations"],
+          "write_paths": ["reports/migration-test.md"],
+          "mutable_resources": ["test-db"],
+          "expected_outputs": ["reports/migration-test.md"],
+          "validation": "test -s reports/migration-test.md",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "unordered mutable_resource conflict"
+    }
+  },
+  {
+    "id": "unordered-windows-parent-child-writers",
+    "plan": {
+      "run_id": "unordered-windows-parent-child-writers",
+      "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "windows-tree-writer",
+          "goal": "Edit a Windows source tree.",
+          "depends_on": [],
+          "read_paths": [],
+          "write_paths": ["C:\\repo\\src"],
+          "mutable_resources": [],
+          "expected_outputs": ["C:\\repo\\src"],
+          "validation": "Run the project tests",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        },
+        {
+          "id": "windows-file-writer",
+          "goal": "Edit a child file in the same Windows source tree.",
+          "depends_on": [],
+          "read_paths": [],
+          "write_paths": ["C:\\repo\\src\\app.py"],
+          "mutable_resources": [],
+          "expected_outputs": ["C:\\repo\\src\\app.py"],
+          "validation": "Run the project tests",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "unordered write/write conflict"
+    }
+  },
+  {
+    "id": "final-integration-lane",
+    "plan": {
+      "run_id": "final-integration-lane",
+      "integration_owner": "integrate",
+      "lanes": [
+        {
+          "id": "docs",
+          "goal": "Prepare the user documentation.",
+          "depends_on": [],
+          "read_paths": ["docs/requirements.md"],
+          "write_paths": ["docs/guide.md"],
+          "mutable_resources": [],
+          "expected_outputs": ["docs/guide.md"],
+          "validation": "test -s docs/guide.md",
+          "route": {
+            "requested_route": "gpt-5.6-terra",
+            "model": "gpt-5.6-terra",
+            "reasoning": "high",
+            "surface": "visible_thread",
+            "model_basis": "explicit_user",
+            "reasoning_basis": "auto_unspecified"
+          }
+        },
+        {
+          "id": "code",
+          "goal": "Implement the accepted feature.",
+          "depends_on": [],
+          "read_paths": ["docs/requirements.md"],
+          "write_paths": ["src/feature.py"],
+          "mutable_resources": [],
+          "expected_outputs": ["src/feature.py"],
+          "validation": "python3 -m unittest tests.test_feature",
+          "route": {
+            "requested_route": "terra-max",
+            "model": "gpt-5.6-terra",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        },
+        {
+          "id": "integrate",
+          "goal": "Reconcile both outputs and close the full validation gate.",
+          "depends_on": ["docs", "code"],
+          "read_paths": ["docs/guide.md", "src/feature.py"],
+          "write_paths": ["reports/integration.md"],
+          "mutable_resources": [],
+          "expected_outputs": ["reports/integration.md"],
+          "validation": "python3 -m unittest",
+          "route": {
+            "requested_route": "sol-max",
+            "model": "gpt-5.6-sol",
+            "reasoning": "max",
+            "surface": "visible_thread",
+            "model_basis": "auto_unspecified",
+            "reasoning_basis": "auto_unspecified"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "ready_groups": [
+        ["docs", "code"],
+        ["integrate"]
+      ]
+    }
+  },
+  {
+    "id": "valid-spark-cli-lane",
+    "plan": {
+      "run_id": "valid-spark-cli-lane",
+      "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "manifest-audit",
+          "goal": "Perform a bounded read-only manifest audit.",
+          "depends_on": [],
+          "read_paths": ["manifests"],
+          "write_paths": [],
+          "mutable_resources": [],
+          "expected_outputs": ["response-only findings"],
+          "validation": "Controller reviews the complete response",
+          "route": {
+            "requested_route": "spark",
+            "model": "gpt-5.3-codex-spark",
+            "reasoning": "xhigh",
+            "surface": "bundled_cli",
+            "model_basis": "explicit_user",
+            "reasoning_basis": "explicit_user"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "ready_groups": [
+        ["manifest-audit"]
+      ]
+    }
+  }
+]

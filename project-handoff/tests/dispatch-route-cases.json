@@ -1,0 +1,425 @@
+[
+  {
+    "id": "spark-initial-cli-only",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "run_bundled_spark_cli",
+      "tool": "scripts/run-spark-cli.sh",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "xhigh",
+        "surface": "bundled_cli",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-spark-visible-task",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "xhigh",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "surface=bundled_cli",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-spark-high",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "run_bundled_spark_cli",
+      "tool": "scripts/run-spark-cli.sh",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "high",
+        "surface": "bundled_cli",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "auto_unspecified"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "reasoning=xhigh",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-spark-omitted-default-medium",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "medium",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "auto_unspecified"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "reasoning=xhigh",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "luna-max-initial-visible",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-luna-max-low",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "low",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "alias luna-max requires",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "luna-max-followup-preserved",
+    "attempt": {
+      "operation": "followup",
+      "action": "send_followup",
+      "tool": "codex_app__send_message_to_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-luna-followup-downgrade",
+    "attempt": {
+      "operation": "followup",
+      "action": "send_followup",
+      "tool": "codex_app__send_message_to_thread",
+      "failure_class": "none",
+      "route_changed": true,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "low",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "route_changed requires an explicit user route change",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-unsupported-parameter-as-sync-retry",
+    "attempt": {
+      "operation": "sync_retry",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "unsupported_parameter",
+      "route_changed": true,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "medium",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "auto_unspecified"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "sync_retry requires an eligible synchronization failure",
+      "classification": "wrong_surface_or_request",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "eligible-readback-sync-retry",
+    "attempt": {
+      "operation": "sync_retry",
+      "action": "read_existing_task",
+      "tool": "codex_app__read_thread",
+      "failure_class": "prompt_readback_delay",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "synchronization_delay",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-spark-sync-retry",
+    "attempt": {
+      "operation": "sync_retry",
+      "action": "read_existing_task",
+      "tool": "codex_app__read_thread",
+      "failure_class": "prompt_readback_delay",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "xhigh",
+        "surface": "bundled_cli",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "only for an existing visible_thread",
+      "classification": "synchronization_delay",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "unsupported-parameter-is-wrong-surface-evidence",
+    "attempt": {
+      "operation": "failure_report",
+      "action": "none",
+      "tool": "none",
+      "failure_class": "unsupported_parameter",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "xhigh",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "surface=bundled_cli",
+      "classification": "wrong_surface_or_request",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "correct-cli-provider-model-failure-can-support-unavailable",
+    "attempt": {
+      "operation": "failure_report",
+      "action": "none",
+      "tool": "none",
+      "failure_class": "provider_model",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "xhigh",
+        "surface": "bundled_cli",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "runtime_route_unavailable",
+      "spark_unavailable_supported": true
+    }
+  },
+  {
+    "id": "wrapper-missing-is-executor-unavailable-only",
+    "attempt": {
+      "operation": "failure_report",
+      "action": "none",
+      "tool": "none",
+      "failure_class": "wrapper_missing",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "xhigh",
+        "surface": "bundled_cli",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "executor_unavailable",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "spark-cli-permission-failure-is-terminal",
+    "attempt": {
+      "operation": "failure_report",
+      "action": "none",
+      "tool": "none",
+      "failure_class": "permission",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "spark",
+        "model": "gpt-5.3-codex-spark",
+        "reasoning": "xhigh",
+        "surface": "bundled_cli",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "runtime_access_blocked",
+      "spark_unavailable_supported": false,
+      "terminal": true,
+      "next_action": "stop_spark_lane",
+      "visible_task_allowed": false,
+      "same_lane_retry_allowed": false,
+      "automatic_fallback_allowed": false,
+      "route_change_requires_new_user_request": true
+    }
+  },
+  {
+    "id": "sol-max-initial-visible-create-thread",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "sol-max",
+        "model": "gpt-5.6-sol",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-sol-visible-via-spawn-agent",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "collaboration.spawn_agent",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "sol-max",
+        "model": "gpt-5.6-sol",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "must not use spawn_agent",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  }
+]

@@ -14,6 +14,7 @@ Use one checkout per device and keep local project governance outside Git:
 │   ├── media-understanding/                  # true Skill source
 │   ├── research-qa-plugin/                   # true Agent Plugins package source
 │   ├── media-creator/                        # true cross-Agent media generation router
+│   ├── project-handoff/                      # true handoff/orchestration controller source
 │   └── document-workspace/                   # true file-based document governance source
 ├── project-conventions/                     # stable local Project Root
 │   ├── docs/
@@ -28,6 +29,8 @@ Use one checkout per device and keep local project governance outside Git:
 │   └── src/research-qa-plugin                # projection to GitHub package
 ├── media-creator/                            # stable local Project Root
 │   └── src/media-creator                     # projection to GitHub package
+├── project-handoff/                          # stable local Project Root
+│   └── src/project-handoff                   # projection to GitHub package
 └── skills/                                  # local collection-control project
 ```
 
@@ -47,6 +50,8 @@ python3 -B <collection>/GitHub/web-bookmark-intelligence/scripts/validate_skill.
 python3 -B <collection>/GitHub/media-understanding/scripts/validate_skill.py
 python3 -B <collection>/GitHub/research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
 python3 -B <collection>/GitHub/media-creator/scripts/validate_skill.py
+python3 -B <collection>/GitHub/project-handoff/scripts/validate_package.py \
+  <collection>/GitHub/project-handoff
 python3 -B <collection>/GitHub/document-workspace/scripts/validate_package.py \
   <collection>/GitHub/document-workspace
 ```
@@ -62,7 +67,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/initialize_skills_con
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional published packages such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `media-creator`, and `document-workspace` require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members.
+The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional published packages such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `media-creator`, `document-workspace`, and `project-handoff` require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members.
 
 On macOS/Linux the projection is the relative link:
 
@@ -144,6 +149,13 @@ The non-native media generation router is exported to every declared consumer. C
 ./scripts/link-macos.sh --apply --agent agents --skill media-creator
 ```
 
+The handoff controller is exported only to Codex consumers:
+
+```bash
+./scripts/link-macos.sh --agent codex --skill project-handoff
+./scripts/link-macos.sh --apply --agent codex --skill project-handoff
+```
+
 ## Validation boundaries
 
 Repository root:
@@ -167,6 +179,8 @@ python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchest
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
 python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
+python3 -B project-handoff/scripts/validate_package.py project-handoff
+python3 -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
 python3 -B document-workspace/scripts/validate_package.py document-workspace
 python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ```
@@ -209,6 +223,12 @@ python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 │   ├── SKILL.md
 │   ├── agents/
 │   ├── config/
+│   ├── references/
+│   ├── scripts/
+│   └── tests/
+├── project-handoff/
+│   ├── SKILL.md
+│   ├── agents/
 │   ├── references/
 │   ├── scripts/
 │   └── tests/

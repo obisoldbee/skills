@@ -1,0 +1,81 @@
+[
+  {
+    "id": "architecture-design",
+    "request": "为跨设备 Repo Hub 设计控制面、数据模型与迁移方案。",
+    "expected": {
+      "surface": "visible_thread",
+      "model": "gpt-5.6-sol",
+      "reasoning": "max"
+    }
+  },
+  {
+    "id": "accepted-plan-implementation",
+    "request": "方案已批准，按 docs/specs/api-v2.md 落地开发并完成测试。",
+    "expected": {
+      "surface": "visible_thread",
+      "model": "gpt-5.6-terra",
+      "reasoning": "max"
+    }
+  },
+  {
+    "id": "gated-design-to-build",
+    "request": "先设计同步协议，方案验收后再自动交给开发任务。",
+    "expected": {
+      "surface": "visible_thread_pipeline",
+      "sequence": [
+        {
+          "model": "gpt-5.6-sol",
+          "reasoning": "max"
+        },
+        {
+          "model": "gpt-5.6-terra",
+          "reasoning": "max"
+        }
+      ]
+    }
+  },
+  {
+    "id": "judgmental-audit",
+    "request": "核验三份研究报告的证据是否支持工程结论，并给出风险优先级。",
+    "expected": {
+      "surface": "visible_thread",
+      "model": "gpt-5.6-luna",
+      "reasoning": "max"
+    }
+  },
+  {
+    "id": "mechanical-read-only-audit",
+    "request": "只读检查 80 个 manifest 的 YAML、字段、路径和 SHA，输出异常表，不判断内容价值。",
+    "expected": {
+      "surface": "bundled_cli",
+      "model": "gpt-5.3-codex-spark",
+      "reasoning": "xhigh"
+    }
+  },
+  {
+    "id": "sol-ultra-controller-development",
+    "request": "当前主控是 Sol-ultra，正在编排一个超大型多工作流项目；把已验收方案中的开发 lane 交给新任务，未指定 worker。",
+    "context": {
+      "controller_model": "gpt-5.6-sol",
+      "controller_reasoning": "ultra",
+      "project_scale": "super-large"
+    },
+    "expected": {
+      "surface": "visible_thread",
+      "model": "gpt-5.6-sol",
+      "reasoning": "max"
+    }
+  },
+  {
+    "id": "external-agent-complete-handoff",
+    "request": "给一个没有 create_thread 和 CLI 的外部 Agent 生成完整进度交接，让它能在新对话继续。",
+    "context": {
+      "recipient_create_thread": false,
+      "recipient_cli": false
+    },
+    "expected": {
+      "surface": "portable_prompt_or_file",
+      "mode": "complete_handoff"
+    }
+  }
+]

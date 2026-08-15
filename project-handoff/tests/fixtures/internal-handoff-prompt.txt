@@ -1,0 +1,54 @@
+Background:
+- Source task: local project-handoff controller
+- Run id / lane id: handoff-v3-audit / contract-audit
+- Project: /workspace/project-handoff
+- Current phase: candidate design review
+- Dependencies: none; this lane is ready in the first wave
+- Controller / integration owner: the source task owns routing, writes, and final integration
+- Selected route: no external executor in this fixture; model_basis=auto_unspecified, reasoning_basis=auto_unspecified
+- Verified current state: the candidate skill and specification exist in the local Git repository
+- Volatile facts: live Codex model availability must be checked before task creation
+
+Materials:
+- M1: /workspace/project-handoff/docs/specs/handoff-contract.md — prior behavior baseline
+- M2: /workspace/project-handoff/SKILL.md — skill entry point to review
+- M3: /workspace/project-handoff/tests/orchestration-cases.json — dependency and conflict boundaries
+
+Constraints:
+- Read scope: M1, M2, and M3 only.
+- Write scope: none.
+- Mutable resources: none.
+- Conflicts and order: none; this read-only lane has no shared writes.
+- Do not edit, install, publish, push, create a remote, create a Codex task, or invoke an external model.
+- Cite a file path and section for every finding so the main agent can verify it.
+- Report NEEDS_CONTEXT instead of guessing when a required fact is absent.
+
+Tools:
+- Local file reader: inspect only M1, M2, and M3; do not read unrelated project history.
+- Failure handling: stop after one unreadable required file and report BLOCKED with its path.
+
+Boundary examples:
+- Case 1: two read-only lanes share frozen inputs and write separate reports → valid parallel wave.
+- Case 2: implementation consumes a design artifact → valid only when a dependency serializes the phases.
+- Case 3: two unordered lanes write the same file → invalid even when one Controller is named integration owner.
+
+Task:
+Audit whether the skill preserves complete handoff, validates dependency/conflict declarations, preserves explicit model and reasoning fields, and closes success on artifacts, validation, and integration instead of Agent count.
+
+Output format:
+- Language: Chinese.
+- Fields: status, files_inspected, findings, confidence, risks, recommended_next_step.
+- Required lane status: succeeded_pending_integration, needs_fix, blocked, or failed.
+- Maximum findings: 10.
+
+Success criteria:
+- Each orchestration case is mapped to the expected validity and concurrency wave.
+- Every discrepancy cites an exact project file and section.
+- The result distinguishes a prompt transport envelope from manual prompt copying.
+- Task creation or multi-Agent use alone is not success.
+
+Progress state:
+- Registry/status/log: no files for this fixture; return one lane receipt.
+- Sync: the Controller reconciles the final response and any direct user intervention before integration.
+- Ready when: the audit fields and evidence rules are complete.
+- Stop with DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT, or ABORTED; retry budget is zero.

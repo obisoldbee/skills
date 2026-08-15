@@ -6,7 +6,7 @@ This is the portable Git source for published Skill packages. In the standard lo
 Materials:
 - `<checkout-root>` is the Git worktree containing this file.
 - Root-owned publication files are `.gitattributes`, `.github/workflows/verify.yml`, `.gitignore`, `AGENTS.md`, `README.md`, `ROOT-MANIFEST.sha256`, `config/`, and `scripts/`.
-- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, `media-creator/`, or `document-workspace/`, is an independently validated managed scope.
+- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, `media-creator/`, `project-handoff/`, or `document-workspace/`, is an independently validated managed scope.
 - A local collection wrapper, control project, member records, and Agent links live outside this repository.
 
 Constraints:
@@ -52,6 +52,10 @@ Shared collection invariants:
 <collection>/GitHub/media-creator                               # true source
 <collection>/media-creator/src/media-creator                    # member projection
 <agent-root>/media-creator                                      # direct consumer link to true source
+
+<collection>/GitHub/project-handoff                             # true source
+<collection>/project-handoff/src/project-handoff                # member projection
+<agent-root>/project-handoff                                    # direct consumer link to true source
 ```
 
 - Unix member projection: relative symlink `../../GitHub/<package>`.
@@ -76,6 +80,8 @@ python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchest
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
 python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
+python3 -B project-handoff/scripts/validate_package.py project-handoff
+python3 -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
 python3 -B document-workspace/scripts/validate_package.py document-workspace
 python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ```
@@ -100,4 +106,5 @@ Entry points:
 | `research-qa-plugin/plugin.json` | Agent Plugins v1 research QA package manifest |
 | `research-qa-plugin/skills/research-qa-orchestrator/SKILL.md` | Audited five-stage research QA entry point |
 | `media-creator/SKILL.md` | Non-native cross-Agent image and video generation router |
+| `project-handoff/SKILL.md` | Portable handoff and verified visible-task orchestration controller |
 | `document-workspace/SKILL.md` | Local-first document workspace lifecycle and evidence package |

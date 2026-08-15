@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Handoff Controller"
+  short_description: "Create verified visible-task and portable handoffs"
+  default_prompt: "Use $project-handoff to create a complete portable handoff or dispatch Sol, Terra, and Luna as separate visible Codex tasks through create_thread with validated receipts; never substitute subagents, keep Spark on its isolated bundled read-only CLI route, and stop its lane on any CLI failure without App fallback."

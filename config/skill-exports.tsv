@@ -4,3 +4,4 @@ web-bookmark-intelligence	web-bookmark-intelligence	agents
 media-understanding	media-understanding	codex
 research-qa-orchestrator	research-qa-plugin/skills/research-qa-orchestrator	codex
 media-creator	media-creator	all
+project-handoff	project-handoff	codex

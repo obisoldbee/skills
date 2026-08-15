@@ -1,0 +1,167 @@
+[
+  {
+    "id": "ready-visible-task",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread",
+      "status": "created_confirmed",
+      "surface": "visible_thread",
+      "requested_route": "sol-max",
+      "task_kind": "codex",
+      "thread_id": "thread-demo-0001",
+      "client_thread_id": null,
+      "host_id": "local",
+      "prompt_verified": "readback",
+      "failure": null
+    },
+    "expected": {
+      "valid": true,
+      "classification": "visible_task_receipt",
+      "registerable": true
+    }
+  },
+  {
+    "id": "queued-visible-task",
+    "receipt": {
+      "actual_tool": "create_thread",
+      "status": "queued",
+      "surface": "visible_thread",
+      "requested_route": "terra-max",
+      "task_kind": "codex",
+      "thread_id": null,
+      "client_thread_id": "client-demo-0001",
+      "host_id": null,
+      "prompt_verified": false,
+      "failure": null
+    },
+    "expected": {
+      "valid": true,
+      "classification": "visible_task_receipt",
+      "registerable": true
+    }
+  },
+  {
+    "id": "created-unconfirmed-visible-task",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread",
+      "status": "created_unconfirmed",
+      "surface": "visible_thread",
+      "requested_route": "luna-max",
+      "task_kind": "codex",
+      "thread_id": "thread-demo-0002",
+      "client_thread_id": null,
+      "host_id": "local",
+      "prompt_verified": false,
+      "failure": null
+    },
+    "expected": {
+      "valid": true,
+      "classification": "visible_task_receipt",
+      "registerable": true
+    }
+  },
+  {
+    "id": "reject-subagent-tool",
+    "receipt": {
+      "actual_tool": "collaboration.spawn_agent",
+      "status": "created_confirmed",
+      "surface": "visible_thread",
+      "requested_route": "sol-max",
+      "task_kind": "codex",
+      "thread_id": "thread-demo-0001",
+      "client_thread_id": null,
+      "host_id": "local",
+      "prompt_verified": "readback",
+      "failure": null
+    },
+    "expected": {
+      "valid": false,
+      "classification": "invalid_visible_task_evidence",
+      "registerable": false,
+      "error_contains": "must not use a collaboration or subagent surface"
+    }
+  },
+  {
+    "id": "reject-agent-path-as-task-id",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread",
+      "status": "created_confirmed",
+      "surface": "visible_thread",
+      "requested_route": "sol-max",
+      "task_kind": "codex",
+      "thread_id": "/synthetic/agent-path",
+      "client_thread_id": null,
+      "host_id": "local",
+      "prompt_verified": "readback",
+      "failure": null
+    },
+    "expected": {
+      "valid": false,
+      "classification": "invalid_visible_task_evidence",
+      "registerable": false,
+      "error_contains": "not an agent path"
+    }
+  },
+  {
+    "id": "reject-agent-thread-field",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread",
+      "status": "created_confirmed",
+      "surface": "visible_thread",
+      "requested_route": "sol-max",
+      "task_kind": "codex",
+      "thread_id": "thread-demo-0001",
+      "client_thread_id": null,
+      "host_id": "local",
+      "prompt_verified": "receipt",
+      "failure": null,
+      "agentThreadId": "agent-thread-demo-0001"
+    },
+    "expected": {
+      "valid": false,
+      "classification": "invalid_visible_task_evidence",
+      "registerable": false,
+      "error_contains": "hidden-subagent field"
+    }
+  },
+  {
+    "id": "reject-confirmed-without-thread-id",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread",
+      "status": "created_confirmed",
+      "surface": "visible_thread",
+      "requested_route": "sol-max",
+      "task_kind": "codex",
+      "thread_id": null,
+      "client_thread_id": null,
+      "host_id": "local",
+      "prompt_verified": "receipt",
+      "failure": null
+    },
+    "expected": {
+      "valid": false,
+      "classification": "invalid_visible_task_evidence",
+      "registerable": false,
+      "error_contains": "requires thread_id"
+    }
+  },
+  {
+    "id": "well-formed-creation-failure",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread",
+      "status": "failed",
+      "surface": "visible_thread",
+      "requested_route": "sol-max",
+      "task_kind": "codex",
+      "thread_id": null,
+      "client_thread_id": null,
+      "host_id": null,
+      "prompt_verified": false,
+      "failure": "permission denied"
+    },
+    "expected": {
+      "valid": true,
+      "classification": "creation_failure",
+      "registerable": false
+    }
+  }
+]
