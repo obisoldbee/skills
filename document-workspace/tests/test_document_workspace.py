@@ -209,6 +209,48 @@ class WorkspaceCLITest(unittest.TestCase):
         self.assertEqual(upstream["received_at"], "unknown")
         self.run_cli("validate", self.workspace)
 
+    def test_populated_adoption_keeps_wps_and_unclassified_sources_in_place(self) -> None:
+        wps = self.workspace / "contract.wps"
+        unknown = self.workspace / "evidence.odd"
+        sibling = self.base / "workspace-conflict"
+        wps.write_bytes(b"synthetic WPS received bytes\x00")
+        unknown.write_bytes(b"synthetic unknown received bytes\xff")
+        before = tree_snapshot(self.workspace)
+
+        plan = self.run_cli("initialize", self.workspace, "--timestamp", TIME)
+        self.assertEqual(plan["status"], "would_adopt")
+        self.assertEqual(tree_snapshot(self.workspace), before)
+        self.assertFalse(sibling.exists())
+        records = {
+            record["original_relative_path"]: record
+            for record in plan["source_records"]
+        }
+        self.assertEqual(records["contract.wps"]["type_class"], "document")
+        self.assertEqual(records["evidence.odd"]["type_class"], "unclassified")
+
+        applied = self.run_cli(
+            "initialize",
+            self.workspace,
+            "--timestamp",
+            TIME,
+            "--apply",
+            "--plan-token",
+            str(plan["plan_token"]),
+        )
+        self.assertEqual(applied["status"], "adopted")
+        self.assertEqual(wps.read_bytes(), b"synthetic WPS received bytes\x00")
+        self.assertEqual(unknown.read_bytes(), b"synthetic unknown received bytes\xff")
+        self.assertEqual(
+            (self.workspace / "raw/as-received/adopted/contract.wps").read_bytes(),
+            wps.read_bytes(),
+        )
+        self.assertEqual(
+            (self.workspace / "raw/as-received/adopted/evidence.odd").read_bytes(),
+            unknown.read_bytes(),
+        )
+        self.assertFalse(sibling.exists())
+        self.run_cli("validate", self.workspace)
+
     def test_reserved_collision_refuses_without_clobber(self) -> None:
         collision = self.workspace / "INDEX.md"
         collision.write_text("existing navigation", encoding="utf-8")
@@ -288,34 +330,72 @@ class WorkspaceCLITest(unittest.TestCase):
         self.assertEqual(result["error"], "missing_attachment")
         self.assertEqual(tree_snapshot(self.workspace), before)
 
-    def test_unsupported_and_unreadable_attachments_are_not_preserved(self) -> None:
+    def test_unreadable_attachment_is_not_preserved(self) -> None:
         self.initialize()
-        unsupported = self.base / "synthetic.exe"
-        unsupported.write_bytes(b"synthetic unsupported bytes")
         unreadable = self.base / "synthetic.txt"
         unreadable.write_text("synthetic unreadable bytes", encoding="utf-8")
         unreadable.chmod(0)
         try:
-            for source in (unsupported, unreadable):
-                with self.subTest(source=source.name):
-                    result = self.run_cli(
-                        "preserve",
-                        self.workspace,
-                        "--source",
-                        source,
-                        "--original-path",
-                        f"attachments/{source.name}",
-                        "--source-class",
-                        "direct-receipt",
-                        "--reliability",
-                        "unknown",
-                        "--timestamp",
-                        TIME,
-                        expected=2,
-                    )
-                    self.assertEqual(result["status"], "not_preserved")
+            result = self.run_cli(
+                "preserve",
+                self.workspace,
+                "--source",
+                unreadable,
+                "--original-path",
+                "attachments/synthetic.txt",
+                "--source-class",
+                "direct-receipt",
+                "--reliability",
+                "unknown",
+                "--timestamp",
+                TIME,
+                expected=2,
+            )
+            self.assertEqual(result["status"], "not_preserved")
         finally:
             unreadable.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    def test_unknown_regular_attachment_is_preserved_as_unclassified(self) -> None:
+        self.initialize()
+        attachment = self.base / "received.odd"
+        attachment.write_bytes(b"synthetic unknown attachment bytes")
+        before_source = attachment.read_bytes()
+        plan, applied = self.apply(
+            "preserve",
+            self.workspace,
+            "--source",
+            attachment,
+            "--original-path",
+            "attachments/received.odd",
+            "--source-class",
+            "direct-receipt",
+            "--reliability",
+            "unknown",
+            "--timestamp",
+            TIME,
+        )
+        self.assertEqual(plan["status"], "would_preserve")
+        self.assertEqual(plan["source_record"]["type_class"], "unclassified")
+        self.assertEqual(applied["status"], "preserved")
+        self.assertEqual(applied["type_class"], "unclassified")
+        self.assertEqual(attachment.read_bytes(), before_source)
+        self.assertEqual(
+            (self.workspace / str(applied["current_relative_path"])).read_bytes(),
+            before_source,
+        )
+        self.run_cli("validate", self.workspace)
+
+    def test_later_extension_mapping_does_not_reclassify_historical_raw(self) -> None:
+        source = self.workspace / "historical.odd"
+        source.write_bytes(b"synthetic historical unknown bytes")
+        self.apply("initialize", self.workspace, "--timestamp", TIME)
+        record_path = next((self.workspace / "control/sources").glob("*.json"))
+        before = record_path.read_bytes()
+        with mock.patch.dict(CORE.TYPE_BY_EXTENSION, {".odd": "document"}):
+            validation = CORE.validate_workspace(self.workspace)
+        self.assertEqual(validation["status"], "valid")
+        self.assertEqual(record_path.read_bytes(), before)
+        self.assertEqual(json.loads(before)["type_class"], "unclassified")
 
     def test_explicit_attachment_copy_and_hash_are_preserved(self) -> None:
         self.initialize()
@@ -655,7 +735,7 @@ class WorkspaceCLITest(unittest.TestCase):
             {"derivation_cycle", "record_identity_mismatch", "missing_derivation"},
         )
 
-    def test_links_path_escape_unsupported_and_unreadable_are_refused(self) -> None:
+    def test_links_path_escape_and_unreadable_are_refused(self) -> None:
         outside = self.base / "outside.txt"
         outside.write_text("outside", encoding="utf-8")
         (self.workspace / "linked.txt").symlink_to(outside)
@@ -665,12 +745,6 @@ class WorkspaceCLITest(unittest.TestCase):
         self.assertEqual(tree_snapshot(self.workspace), before)
 
         (self.workspace / "linked.txt").unlink()
-        unsupported = self.workspace / "program.exe"
-        unsupported.write_bytes(b"synthetic executable bytes")
-        result = self.run_cli("initialize", self.workspace, "--timestamp", TIME, expected=2)
-        self.assertEqual(result["error"], "unsupported_file_type")
-        unsupported.unlink()
-
         unreadable = self.workspace / "unreadable.txt"
         unreadable.write_text("synthetic", encoding="utf-8")
         unreadable.chmod(0)
@@ -698,6 +772,26 @@ class WorkspaceCLITest(unittest.TestCase):
             expected=2,
         )
         self.assertEqual(result["error"], "path_escape")
+
+    def test_unclassified_raw_does_not_authorize_unsupported_work_artifact(self) -> None:
+        self.initialize()
+        draft = self.workspace / "work/drafts/deliverable.odd"
+        draft.write_bytes(b"synthetic unsupported work-product bytes")
+        result = self.run_cli(
+            "artifact",
+            self.workspace,
+            "--path",
+            "work/drafts/deliverable.odd",
+            "--kind",
+            "draft",
+            "--timestamp",
+            "2030-01-02T04:10:00Z",
+            "--reliability",
+            "unknown",
+            expected=2,
+        )
+        self.assertEqual(result["error"], "unsupported_file_type")
+        self.assertTrue(draft.exists())
 
     def test_unregistered_draft_is_not_current_then_explicit_approval(self) -> None:
         self.initialize()

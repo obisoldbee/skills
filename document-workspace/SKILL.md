@@ -21,13 +21,28 @@ domain judgment, or dispatch Skills.
 4. Treat a UI-visible chat attachment as a pointer, not durable evidence. Require one real,
    readable regular file and preserve it before depending on it. If unavailable, report exactly
    `not_preserved` and stop downstream use.
-5. Reject links, path escapes, unsupported nodes or file types, unreadable files, collisions,
-   and uncertain write boundaries. Never follow, replace, delete, auto-clean, or silently
-   reclassify a source.
+5. Treat extension recognition as a semantic-routing hint, not receipt authority. Keep every
+   non-transient, portable, readable regular file in place and preserve its bytes in raw. Known
+   `.wps` files are documents; an unknown suffix is `type_class=unclassified` until a separately
+   authorized format route identifies it.
+6. Reject links, path escapes, unsupported nodes, unreadable files, collisions, and uncertain
+   write boundaries. A refusal means stop with zero mutation. Never move a source out of the exact
+   root, create a sibling scope, rename, delete, convert, auto-clean, or silently reclassify it as
+   a workaround. Do not record a proposed workaround as a user correction or decision.
 
 Read [workspace-contract.md](references/workspace-contract.md) before the first initialization,
 adoption, integrity repair, approval, or archive transition. Read
 [operations.md](references/operations.md) before running a mutation command.
+
+## Boundary examples
+
+| Received item | Required result |
+|---|---|
+| Example 1 — readable regular `contract.wps` inside the root | Keep it in place; preserve a raw copy as `document`; do not convert |
+| Example 2 — readable regular `evidence.odd` with an unknown suffix | Keep it in place; preserve a raw copy as `unclassified`; stop semantic use pending an explicit route |
+| Example 3 — link or non-regular node | Refuse without following or moving it; report the exact path |
+| Example 4 — attachment chip without a real readable file | Report `not_preserved`; stop depending on it |
+| Example 5 — edit request names a path under `raw/as-received/` | Treat it only as source evidence; never chmod or edit it; write a versioned file under `work/` |
 
 ## Start with inventory, then dry-run
 
@@ -50,8 +65,9 @@ python3 -B scripts/document_workspace.py initialize <exact-workspace> \
   --timestamp <same-timestamp> --apply --plan-token <reviewed-token>
 ```
 
-For a populated folder, originals stay where they are and byte-identical preserved copies go to
-`raw/as-received/`. Mark each known machine-generated summary with repeated
+For a populated folder, all non-transient, portable, readable original regular files stay where
+they are and byte-identical preserved copies go to `raw/as-received/`, including files whose
+suffix is unclassified. Mark each known machine-generated summary with repeated
 `--upstream-derived <relative-path>` during both plan and apply. The tool records it as
 `source_class=upstream-derived` and `reliability=unverified`; raw never means reliable or true.
 
@@ -65,11 +81,14 @@ Follow this sequence:
 1. **Receive and preserve.** Run `preserve` for each material attachment before analysis. Record
    portable original/current relative paths, type and source class, byte size, SHA-256,
    received/event/import times, reliability, derivation links, and status. Leave unavailable
-   times as `unknown`; never substitute filesystem timestamps.
+   times as `unknown`; never substitute filesystem timestamps. `unclassified` blocks
+   interpretation, not byte preservation.
 2. **Analyze or transform outside raw.** Route OCR, ASR, media interpretation, DOCX/PDF edits,
    and domain work to their owning Skills. Put agent-produced OCR, ASR, analysis,
    transformations, and QA under `work/derived/`; put deliverable drafts under `work/drafts/`.
-   Register each completed work file with `artifact` before downstream use.
+   Register each completed work file with `artifact` before downstream use. Even when the user
+   names a raw path, treat it as source evidence rather than a write target: never `chmod`, edit,
+   or save over raw; create a distinct versioned work path.
 3. **Record the process.** Use `conversation` to preserve the agent's original proposal, user
    corrections, rejection or modification reasons, and final decision. Append dated work facts
    to `memory/daily/`; distill only reusable lessons into `memory/MEMORY.md` without copying
@@ -81,7 +100,8 @@ Follow this sequence:
    `archive --status superseded` only for the exact approved current version; the tool moves that
    managed current copy into its no-clobber archive batch and clears the current record after
    hash verification. Every batch records status, reason, replacement or `unknown`, timestamp,
-   file hashes, and conversation evidence. Never remove an archive version.
+   file hashes, and conversation evidence. Never remove an archive version. This version archive
+   is not a quarantine for received sources; unknown intake belongs in raw.
 6. **Validate.** Run `validate` after each applied transition. Stop if a raw byte, work artifact,
    current output, archive file, or conversation evidence no longer matches its record.
 
