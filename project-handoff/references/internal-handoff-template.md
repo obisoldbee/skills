@@ -10,6 +10,14 @@ Background:
 - Handoff type: dispatch
 - Run id / lane id: <run> / <lane>
 - Project: <absolute project path>
+- Harness: <codex, codex-cli, workbuddy, qoder, trae, or exact other surface>
+- File access: <read_only or write>
+- Workspace mode: <shared_checkout, worktree, or non_git>
+- Worktree source: <existing Repository Root used to create the worktree, or null>
+- Repository Root: <actual lane Git top-level, pending, or null>
+- Workspace path: <absolute execution path or pending managed worktree>
+- Base revision: <full commit for Git, or verified content-state digest for non-Git>
+- Environment receipt: <requested versus actual environment and verification source, or pending>
 - Current phase: <phase>
 - Dependencies: <lane ids and exact verified gates, or none>
 - Controller / integration owner: <task or lane responsible for routing and integration>
@@ -30,7 +38,8 @@ Constraints:
 - Conflicts and order: <shared paths/resources plus dependency that serializes them, or none>
 - Prohibitions: <writes, paths, calls, deployment, publication, or authority not granted>
 - Preserve: <dirty files, user content, immutable inputs>
-- Executor role: <design, implementation, judgmental audit, or mechanical audit>
+- Task-specific responsibility: <free-text responsibility; this does not select isolation>
+- Execution transition: <none, or exact re-plan and environment validation before read_only may become write>
 
 Tools:
 - <tool name>: <purpose>; use when <condition>; do not use when <condition>
@@ -67,3 +76,5 @@ Progress state:
 - Redact credentials, tokens, cookies, private endpoint data, and unnecessary personal information.
 - Include only the current goal for long-running work; store broader progress in the project or Controller record.
 - Give workers disjoint writes whenever possible. If this lane shares a writable path or mutable resource, state the ordering edge and integration owner explicitly.
+- Do not use a fixed role list to decide isolation. Bind the actual harness and side effects for this lane.
+- For an external harness, producing this envelope leaves the lane in `standby` until current workspace and base evidence is received.

@@ -1,6 +1,6 @@
 ---
 name: project-conventions
-description: "Initialize, organize, migrate, or update project filesystems without confusing a workspace, collection, project wrapper, Git checkout, or Agent Skill root. Supports owned public and private Skill distributions, third-party checkout pools, stable member projections, device/network runtime boundaries, complete control files, scoped Agent links, and a strict update-only path. Use for 项目目录初始化, obisoldbee-skills 初始化, 克隆最新版技能, 更新某个 Skill, 多设备同步, 私有 Skill 仓库, GitHub-private, GitHub-others, 设备或网络限定 Skill, 项目合集, 项目根目录, AGENTS.md, README.md, repository mapping, symlink or junction, and directory migration."
+description: "Initialize, organize, migrate, or update project filesystems without confusing a workspace, collection, project wrapper, Git checkout, Agent Skill root, or temporary worktree. Supports owned public and private Skill distributions, third-party checkout pools, stable member projections, device/network runtime boundaries, complete control files, scoped Agent links, a strict update-only path, and safe routing for concurrent Agents or cross-harness work. Use for 项目目录初始化, obisoldbee-skills 初始化, 克隆最新版技能, 更新某个 Skill, 多设备同步, 私有 Skill 仓库, GitHub-private, GitHub-others, 设备或网络限定 Skill, 多 Agent 并发, worktree, 项目合集, 项目根目录, AGENTS.md, README.md, repository mapping, symlink or junction, and directory migration."
 ---
 
 # Project Conventions
@@ -163,18 +163,21 @@ Read `references/directory-layout.md` completely and select the primary delivera
 | Type | Required paths |
 |---|---|
 | Code | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |
-| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, versioned records |
-| Hybrid | Code paths plus relevant document paths |
+| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`, versioned records |
+| Hybrid | Code paths plus relevant document paths; `conversation/` and `memory/` remain required |
 
 Core rules:
 
 1. `AGENTS.md` is a lean routing and authority index; read `references/agents-md-template.md`.
 2. Formal documents live under `docs/`; research stays in `docs/research/`.
-3. Decisions and collaboration history live in `conversation/`; project-owned continuity lives in `memory/`.
+3. For Code, Document, and Hybrid projects alike, decisions and collaboration history live in `conversation/`, while project-owned continuity lives in `memory/`. Harness-owned memory or hidden directories never replace either project record.
 4. Read `references/migration-guide.md` before restructuring an existing Project Root.
 5. Archive superseded project documents rather than silently deleting them.
 6. Verify Repository Roots with Git; do not infer them from folder names.
 7. Keep wrapper metadata and machine paths out of portable/public packages.
+8. Do not create permanent role directories or worktrees during ordinary initialization. When Agents may overlap in time, classify lanes by actual reads, writes, and mutable resources. Route orchestration to `$project-handoff` when available; otherwise serialize all writers.
+9. A Git worktree is a temporary per-lane execution resource, not a Project Root, Repository Root copy, project type, or conversation boundary. It prevents immediate filesystem overwrite but does not remove merge conflicts.
+10. Treat `conversation/`, `memory/`, indexes, status files, and other shared records as single-writer resources. Workers return response-only findings or write preallocated unique artifacts; one integration owner reconciles and writes canonical records.
 
 For a contribution fork, read `references/fork-workflow.md`. For records, use `references/conversation-format.md`, `references/review-naming.md`, and `references/versioned-records.md` as routed.
 

@@ -9,8 +9,8 @@ Three project types, each with different required directories:
 | Type | Primary deliverable | Required dirs | Typical examples |
 |---|---|---|---|
 | **Code** | Source code / software | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` | Web app, CLI tool, mobile app, library |
-| **Document** | Documents, forms, submissions, certifications | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, versioned records (e.g. `提交记录/`) | 申报材料, 合同管理, 报表, 认证材料 |
-| **Hybrid** | Both code and significant document/submission components | Code dirs + document dirs | SaaS with compliance docs, open-source with certifications |
+| **Document** | Documents, forms, submissions, certifications | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`, versioned records (e.g. `提交记录/`) | 申报材料, 合同管理, 报表, 认证材料 |
+| **Hybrid** | Both code and significant document/submission components | Code dirs + relevant document dirs; `conversation/` and `memory/` are required | SaaS with compliance docs, open-source with certifications |
 
 ### What changes by project type
 
@@ -18,8 +18,8 @@ Three project types, each with different required directories:
 |---|---|---|---|
 | `src/` | Required | Not needed | Required |
 | `release/` | On demand | Not needed | On demand |
-| `conversation/` | Required | Optional | Required |
-| `memory/` daily logs | Required | Optional (use versioned records instead) | Required |
+| `conversation/` | Required | Required | Required |
+| `memory/` daily logs | Required | Required | Required |
 | `docs/specs/`, `docs/plans/` | Required | Optional | Required |
 | Versioned records (`vNNN/RECORD.md`) | Not typical | Required | Optional |
 | Review naming (second-precision) | Required | Optional (date-precision OK for single-user) | Required |
@@ -41,7 +41,7 @@ For a Document Project Root, the root `INDEX.md` is the human navigation page. T
 project-root/
 ├── AGENTS.md                # Required. Agent entry point — directory index + rule reference (auto-loaded)
 ├── README.md                # Required. Project overview & directory navigation
-├── conversation/            # Required for Code/Hybrid; optional for Document
+├── conversation/            # Required for every project type
 ├── docs/                    # Required. All formal documents, centralized
 │   ├── specs/               # Spec / design documents
 │   ├── plans/               # Implementation plans, task breakdowns
@@ -56,11 +56,11 @@ project-root/
 ├── src/                     # Required for code projects. Source and normal Repository Root
 │   └── ...                  # Follow language ecosystem conventions; internal docs (e.g. src/docs/qa/) OK
 ├── release/                 # On demand. Final distributable artifacts only (no build intermediates)
-├── memory/                  # Required for Code/Hybrid; optional for Document
+├── memory/                  # Required for every project type
 │   ├── YYYY-MM-DD.md        # Daily work log (append-only)
 │   └── MEMORY.md            # Curated long-term project notes
 └── <agent-system-dir>/      # Agent platform's system directory (e.g. .workbuddy/, .qoderworkcn/) — NOT managed by this skill
-    └── memory/              # Platform auto-maintained memory
+    └── memory/              # Platform auto-maintained; never substitutes for project records
 ```
 
 ## Per-Directory Specification
@@ -104,7 +104,7 @@ project-root/
 
 ---
 
-### `conversation/` (Required for Code/Hybrid; optional for Document)
+### `conversation/` (Required for Code, Document, and Hybrid)
 
 **Purpose**: Capture the collaboration process — agent proposals, user modifications, rationale, and final decisions. This is the "how we got here" record, distinct from formal specs.
 
@@ -120,11 +120,11 @@ project-root/
   - `05-brand-and-naming.md`
 
 **Numbering rule**:
-- Always use the next available number when creating a new file.
-- Scan the directory first; if `05-*.md` is the highest, the next file is `06-*.md`.
+- In a single active task with no overlapping writer, scan the directory and use the next available number. If `05-*.md` is the highest, the next file is `06-*.md`.
+- During concurrent work, workers must not scan for or claim the next number. The integration owner serially allocates it; workers return response-only findings or use an exact preallocated unique artifact path.
 - Never renumber existing files (breaks references).
 
-**Maintained by**: Agents during active collaboration. One file per major topic or phase.
+**Maintained by**: The active Agent in a single-writer task, or the integration owner after concurrent work. One file per major topic or phase.
 
 **Format**: See `conversation-format.md` for the full template.
 
@@ -262,13 +262,17 @@ This mapping prevents future agents from confusing wrapper files with repository
 
 ---
 
-### `memory/` (Required for Code/Hybrid; optional for Document)
+### `memory/` (Required for Code, Document, and Hybrid)
 
-**Purpose**: Agent-maintained project memory, visible to any agent that reads the project. Distinct from the agent platform's system memory directory.
+**Purpose**: Agent-maintained project memory, visible to any agent that reads the project. It is required even when an Agent harness also maintains its own system memory directory.
 
 **Files**:
 - `memory/YYYY-MM-DD.md` — Daily work log. Append-only. One file per calendar day.
 - `memory/MEMORY.md` — Curated long-term project notes. Updated in place. Keep under ~3000 chars.
+
+“Append-only” is a history rule, not a concurrency primitive. Multiple Agents must not perform independent read-modify-write updates to the same daily file.
+
+In a single active task with no overlapping writer, the active Agent may update canonical project memory directly. During concurrent work, workers return response-only findings or exact preallocated artifacts; the integration owner alone reconciles them into the daily log, `MEMORY.md`, conversation record, and indexes.
 
 **When to write**:
 - After completing substantive work (building, fixing, refactoring, generating a deliverable).
@@ -299,7 +303,7 @@ This mapping prevents future agents from confusing wrapper files with repository
 
 **Purpose**: The agent platform's own system directory (e.g. `.workbuddy/`, `.qoderworkcn/`, `.claude/`). Contains platform-managed memory that gets auto-injected into the system prompt.
 
-**Important**: This skill's workflows NEVER write to the agent platform's system memory directory. That location is reserved for the platform itself. Use `memory/` at project root instead.
+**Important**: This skill's workflows NEVER write to the agent platform's system memory directory. That location is reserved for the platform itself, and its existence does not satisfy or replace the required project-root `conversation/` and `memory/` records.
 
 If you need to record something for other agents to discover, write to `memory/` — not the platform's system directory.
 
@@ -317,13 +321,18 @@ If a document genuinely doesn't fit `specs/`, `plans/`, `reviews/`, or `research
 
 ### What if the project has no code (docs-only project)?
 
-Follow the Document row in **Project Types**: require `AGENTS.md`, `README.md`, root `INDEX.md`, `docs/`, and versioned records. Add `conversation/` or `memory/` only when the project needs those patterns.
+Follow the Document row in **Project Types**: require `AGENTS.md`, `README.md`, root `INDEX.md`, `docs/`, `conversation/`, `memory/`, and versioned records. Versioned records preserve deliverable submissions; they do not replace collaboration history or project continuity.
 
 ### What if multiple agents are working concurrently?
 
-- Each agent writes to its own files (review documents include the reviewer name, conversation files use sequential numbers).
-- For `memory/YYYY-MM-DD.md`, use append-only writes. If two agents write simultaneously, both appends are valid — the file is a chronological log.
-- Never overwrite another agent's memory entry; append your own with a timestamp.
+- In a single active task with no overlapping writer, the acting Agent may allocate the next conversation number and update canonical project records directly.
+- Do not initialize fixed role folders or a permanent `work/lanes/` tree. Roles do not determine isolation; actual reads, writes, and mutable resources do.
+- Multiple response-only reviewers may share one frozen input. If a reviewer becomes a fixer, stop and re-plan it as a writer before any edit.
+- Concurrent Git-backed writers use separate temporary worktrees or run serially. A worktree protects physical files only; overlapping logical paths, lockfiles, generated trees, databases, ports, devices, and services still require narrower scopes or serialization.
+- Non-Git and binary-document work has one writer at a time. Independent readers may run concurrently when they do not mutate the source or surrounding state.
+- Do not let workers scan for the next `conversation/NN-*` name or update the same `memory/YYYY-MM-DD.md`, `memory/MEMORY.md`, index, or shared status file concurrently. Preallocate exact unique artifact paths, or have workers return response-only results.
+- One integration owner serially reconciles lane results and writes canonical conversation, memory, indexes, and final review synthesis. Use `$project-handoff` for multi-Agent or cross-harness planning when it is available; otherwise serialize all writers.
+- Harness-owned hidden directories remain opaque. Separate Agent conversations do not imply separate filesystems.
 
 ## File Focus Principle
 

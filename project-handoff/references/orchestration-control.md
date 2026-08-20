@@ -40,11 +40,20 @@ For every lane, declare:
 | `read_paths` | Exact read-only inputs |
 | `write_paths` | Exact writable files or narrow directories |
 | `mutable_resources` | Shared ports, databases, devices, worktrees, services, or build state |
+| `harness` | Actual execution surface, not a fixed worker role |
+| `file_access` | `read_only` or `write`; not a role name |
+| `workspace_mode` | `shared_checkout`, `worktree`, or `non_git` |
+| `worktree_source` | Existing Repository Root used to create a worktree, otherwise `null` |
+| `repository_root` | The lane's actual Git top-level; pending for an uncreated managed worktree, or `null` for non-Git |
+| `workspace_path` | Exact physical execution directory within the actual Repository Root; it may be pending with that root |
+| `base_revision` | Full commit for Git, or a verified content-state digest for non-Git; dependency lanes may stay pending until their upstream gate closes |
 | `expected_outputs` | Artifacts or receipts needed by the gate |
 | `validation` | Exact command or evidence rule |
 | `route` | Requested route, selected model, reasoning, surface, and the basis for each field |
 
 Route each lane after its scope and dependencies are known. Do not select one executor for an entire mixed run merely because the first lane fits it.
+
+All `read_paths` and `write_paths` are normalized paths relative to `workspace_path`; do not mix source-relative and worktree-absolute spellings. Represent any outside file, service, or device as an explicitly named external or mutable resource rather than using `..` or an absolute project path.
 
 Use this machine-checkable shape when a durable plan is useful:
 
@@ -60,6 +69,13 @@ Use this machine-checkable shape when a durable plan is useful:
       "read_paths": ["docs/requirements.md"],
       "write_paths": ["docs/specs/protocol-v2.md"],
       "mutable_resources": [],
+      "harness": "codex",
+      "file_access": "write",
+      "workspace_mode": "shared_checkout",
+      "worktree_source": null,
+      "repository_root": "/workspace/project",
+      "workspace_path": "/workspace/project",
+      "base_revision": "0123456789abcdef0123456789abcdef01234567",
       "expected_outputs": ["docs/specs/protocol-v2.md"],
       "validation": "test -s docs/specs/protocol-v2.md",
       "route": {
@@ -86,10 +102,13 @@ Two lanes are independent only when all of these are true:
 3. Neither reads a path while the other may mutate the same path unless a dependency orders them.
 4. They do not share mutable resources such as one port, test database, device, worktree, lockfile, generated tree, or mutable service.
 5. Each can succeed from a self-contained prompt without learning the other worker's intermediate reasoning.
+6. Every unordered writer in one Git repository has a distinct planned worktree, and every external harness has an actual workspace receipt before it is marked running.
 
 Dispatch every currently ready, conflict-free lane as one concurrency wave, limited only by the user's cap and the live visible-task surface's safe capacity. Do not import a separate hidden-subagent slot limit. Do not wait for one independent lane before creating the next. Keep dependent waves serial and create downstream tasks just in time from freshly verified upstream artifacts.
 
 Read-only access to the same immutable inputs is normally safe in parallel. Shared working directories are not proof of safety: declared file scopes and mutable resources decide.
+
+Read `execution-isolation.md` before scheduling overlapping execution. A job title does not select an environment: three reviewers may all be `read_only`, while one reviewer that begins repairing becomes a new write lane and must be replanned.
 
 ## 4. Write conflicts and integration ownership
 
@@ -102,7 +121,11 @@ Treat the following as conflicts unless an explicit dependency serializes them:
 
 For every conflict, record the affected lanes, paths/resources, chosen order, and integration owner. Resolve it by narrowing scopes, serializing lanes, or using an explicitly authorized isolated worktree/environment. Never assume that naming an integration owner makes concurrent same-file writes safe.
 
+Worktree isolation prevents immediate filesystem overwrite but does not waive declared logical conflicts. This Skill still rejects unordered writes to the same source-relative path, shared lockfile, or generated tree. For disjoint unordered writers within one Git repository, require one verified worktree per lane. Identical relative names in different Repository Roots do not conflict. For non-Git or binary-document work, use dependencies to keep one writer in a physical workspace at a time.
+
 The integration owner is the only actor allowed to reconcile cross-lane changes, resolve collisions, run the full validation surface, and declare the integrated result. When the owner is a worker lane, that lane must depend on every lane whose output it integrates. Otherwise keep the Controller as owner.
+
+`conversation/`, `memory/`, `controller/`, canonical indexes, and member indexes are integration-owner-only write scopes. Workers return response-only results or write exact preallocated non-canonical artifacts.
 
 ## 5. Controller records
 
@@ -114,6 +137,8 @@ For a durable multi-task run, create these files under the user-approved output 
 - `controller/router-log.jsonl` — append-only dispatch, message, retry, user intervention, gate, abort, archive, and integration events.
 
 Normalize the actual `create_thread` result and require `scripts/validate_visible_task_receipt.py` to pass before recording creation. Record the exact `actual_tool`, `thread_id` plus `host_id`, or queued `client_thread_id`; never record `/root/<agent>`, `agentPath`, `agentThreadId`, or subagent activity. Never pass a queued client id to a tool that requires a ready task id.
+
+Also record planned versus actual environment, `worktree_source`, actual Repository Root, workspace path, base revision, clean pre-write status, and verification source. A queued or environment-unverified task may be registered but cannot enter `running` or receive write authority. Update the plan with every actual Repository Root and workspace, then rerun the validator so duplicate worktrees are detected across lanes. An external harness lane has no Codex task id: keep it `standby` after producing its portable handoff and require external launch or disk/Git readback before `running`. Validate the normalized external evidence with `scripts/validate_external_environment_receipt.py --plan`.
 
 Each router-log line should contain at least:
 
@@ -136,6 +161,7 @@ Worker to Controller:
 - Reconcile task state and filesystem artifacts; chat text alone is not completion evidence.
 - Record changed files, validation, risks, and the lane's requested next state.
 - Carry forward only verified outputs. Mark replaced or superseded outputs stale until revalidated.
+- Report actual workspace, Repository Root, base revision, and changed paths. A write performed from an unverified environment fails the lane gate even when its output looks correct.
 
 User to either side:
 
@@ -198,11 +224,14 @@ Creating many tasks, receiving fluent worker responses, or saying “used multip
 
 | Situation | Decision |
 |---|---|
-| Two read-only audits inspect the same frozen inputs and write separate reports | Parallel; shared immutable reads are safe |
+| Two read-only audits inspect the same frozen inputs and return response-only findings | Parallel; shared immutable reads are safe and the Controller owns any report |
 | Implementation consumes an accepted design artifact | Serial; implementation depends on the design gate |
 | Two workers both edit `src/app.py` | Conflict; narrow scopes or serialize, with one integration owner |
 | Frontend and backend edits are disjoint but both may rewrite one lockfile | Not independent until lockfile ownership is separated or ordered |
 | Two reviewers return response-only findings while one Controller later writes the decision | Parallel reviewers; Controller owns synthesis and all writes |
+| A reviewer is asked to fix its finding while another reviewer still reads the checkout | Re-plan; move the repair to a verified worktree or wait and serialize |
+| Codex, WorkBuddy, and Trae write disjoint Git paths concurrently | Separate verified worktrees; external lanes remain standby until launch receipts exist |
+| Several harnesses work sequentially in one checkout | Allowed only after the prior writer stops and current Git/file state is reread |
 
 ## 10. Deterministic plan validation
 
@@ -218,6 +247,6 @@ Then validate the full plan:
 python3 <skill-root>/scripts/validate_orchestration_plan.py /absolute/path/to/controller/plan.json --format json
 ~~~
 
-The plan validator checks required fields, lane ids, dependency existence, cycles, requested-route/model/reasoning/surface compatibility, route-basis recording, integration ownership, read/write overlap, write/write overlap, and shared mutable resources. It returns topological concurrency waves for a valid plan and exits nonzero for an unsafe or malformed plan.
+The plan validator checks required fields, lane ids, dependency existence, cycles, requested-route/model/reasoning/surface compatibility, route-basis recording, integration ownership, scoped read/write overlap, shared canonical records, physical path identity, base identity, and mutable resources. `ready_groups` are graph waves, not permission to execute. `environment_pending`, `base_pending`, and `launch_receipt_required` keep `execution_contract_complete` false; `initial_execution_ready` contains only members of the first wave with none of those gates pending. After a managed worktree is created, write its actual paths back into the plan and rerun validation before authorizing writes.
 
 The validator can only check declared state. The Controller remains responsible for discovering omitted dependencies, implicit shared resources, semantic coupling, actual tool capacity, and whether the proposed lanes are useful.

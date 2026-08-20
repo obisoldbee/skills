@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Handoff Controller"
-  short_description: "Create verified visible-task and portable handoffs"
-  default_prompt: "Use $project-handoff to create a complete portable handoff or dispatch Sol, Terra, and Luna as separate visible Codex tasks through create_thread with validated receipts; never substitute subagents, keep Spark on its isolated bundled read-only CLI route, and stop its lane on any CLI failure without App fallback."
+  short_description: "Plan isolated multi-agent and cross-harness handoffs"
+  default_prompt: "Use $project-handoff to plan tasks by file access, workspace mode, and mutable effects, verify each lane's actual workspace and base revision, dispatch Sol, Terra, and Luna only as visible Codex tasks with validated receipts and never as subagents, keep external-harness lanes on standby until launch readback, and keep Spark on its isolated bundled read-only CLI route with terminal failure and no App fallback."

@@ -8,14 +8,37 @@ import sys
 
 
 ROUTE_BASES = {"explicit_user", "auto_requested", "auto_unspecified"}
-SURFACES = {"visible_thread", "bundled_cli"}
+SURFACES = {"visible_thread", "bundled_cli", "portable_handoff"}
 OPERATIONS = {"initial_dispatch", "followup", "sync_retry", "failure_report"}
+FILE_ACCESS_MODES = {"read_only", "write"}
+ROUTE_FIELDS = {
+    "requested_route",
+    "model",
+    "reasoning",
+    "surface",
+    "model_basis",
+    "reasoning_basis",
+}
+ATTEMPT_FIELDS = {
+    "operation",
+    "action",
+    "tool",
+    "failure_class",
+    "route_changed",
+    "explicit_user_route_change",
+    "route",
+    "prior_file_access",
+    "requested_file_access",
+    "plan_guard_valid",
+    "environment_guard_valid",
+}
 ACTIONS = {
     "create_visible_task",
     "run_bundled_spark_cli",
     "read_existing_task",
     "set_visible_task_title",
     "send_followup",
+    "produce_portable_handoff",
     "none",
 }
 ACTION_TOOL_LEAVES = {
@@ -24,6 +47,7 @@ ACTION_TOOL_LEAVES = {
     "read_existing_task": {"read_thread"},
     "set_visible_task_title": {"set_thread_title"},
     "send_followup": {"send_message_to_thread"},
+    "produce_portable_handoff": {"none"},
     "none": {"none"},
 }
 FORBIDDEN_TOOL_MARKERS = ("spawn_agent", "subagent", "collaboration")
@@ -53,6 +77,7 @@ ALIASES = {
     "luna-max": ("gpt-5.6-luna", "max", "visible_thread"),
     "spark": SPARK_ROUTE,
     "spark-xhigh": SPARK_ROUTE,
+    "portable-handoff": ("none", "none", "portable_handoff"),
 }
 
 
@@ -108,6 +133,13 @@ def validate_route(route, field="route"):
     if not isinstance(route, dict):
         return {}, [f"{field} must be an object"]
 
+    unknown_fields = sorted(set(route) - ROUTE_FIELDS)
+    if unknown_fields:
+        add_error(
+            errors,
+            f"{field} contains unsupported fields: {', '.join(unknown_fields)}",
+        )
+
     requested_route = required_string(
         route.get("requested_route"), f"{field}.requested_route", errors
     ).lower()
@@ -151,6 +183,11 @@ def validate_route(route, field="route"):
         )
     if surface == "bundled_cli" and model != SPARK_MODEL:
         add_error(errors, f"{field} bundled_cli is reserved for {SPARK_MODEL}")
+    if surface == "portable_handoff" and actual != ("none", "none", "portable_handoff"):
+        add_error(
+            errors,
+            f"{field} portable_handoff requires model=none and reasoning=none",
+        )
 
     return result, errors
 
@@ -175,6 +212,7 @@ def failure_disposition(failure_class, route, route_errors):
         route.get("requested_route") in {"spark", "spark-xhigh"}
         or route.get("model") == SPARK_MODEL
     )
+    portable_lane = route.get("surface") == "portable_handoff"
     spark_unavailable_supported = (
         not route_errors
         and route.get("model") == SPARK_MODEL
@@ -188,6 +226,10 @@ def failure_disposition(failure_class, route, route_errors):
         next_action = "correct_to_bundled_cli_before_execution"
     elif spark_lane:
         next_action = "run_bundled_spark_cli"
+    elif portable_lane and failure_class == "none":
+        next_action = "produce_portable_handoff"
+    elif portable_lane:
+        next_action = "stop_or_rebuild_portable_handoff"
     elif failure_class in SYNC_FAILURES:
         next_action = "retry_existing_task_metadata"
     elif failure_class == "none":
@@ -199,7 +241,8 @@ def failure_disposition(failure_class, route, route_errors):
         "classification": classification,
         "terminal": spark_lane and failure_class != "none",
         "next_action": next_action,
-        "visible_task_allowed": not spark_lane,
+        "visible_task_allowed": not spark_lane and not portable_lane,
+        "portable_handoff_allowed": portable_lane,
         "same_lane_retry_allowed": failure_class in SYNC_FAILURES and not spark_lane,
         "automatic_fallback_allowed": False,
         "route_change_requires_new_user_request": (
@@ -219,6 +262,10 @@ def validate_attempt(attempt):
             "route": {},
             "failure_disposition": failure_disposition("unknown", {}, ["invalid"]),
         }
+
+    unknown_fields = sorted(set(attempt) - ATTEMPT_FIELDS)
+    if unknown_fields:
+        add_error(errors, "attempt contains unsupported fields: " + ", ".join(unknown_fields))
 
     operation = required_string(attempt.get("operation"), "operation", errors)
     action = required_string(attempt.get("action"), "action", errors)
@@ -251,17 +298,26 @@ def validate_attempt(attempt):
 
     if route_changed and not explicit_user_route_change:
         add_error(errors, "route_changed requires an explicit user route change")
+    if operation != "followup" and any(
+        field in attempt
+        for field in (
+            "prior_file_access",
+            "requested_file_access",
+            "plan_guard_valid",
+            "environment_guard_valid",
+        )
+    ):
+        add_error(errors, "execution transition fields are allowed only for followup")
 
     if operation == "initial_dispatch":
         if failure_class != "none":
             add_error(errors, "initial_dispatch requires failure_class=none")
         if route_changed:
             add_error(errors, "initial_dispatch cannot be a route-changing retry")
-        expected_action = (
-            "run_bundled_spark_cli"
-            if route.get("surface") == "bundled_cli"
-            else "create_visible_task"
-        )
+        expected_action = {
+            "bundled_cli": "run_bundled_spark_cli",
+            "portable_handoff": "produce_portable_handoff",
+        }.get(route.get("surface"), "create_visible_task")
         if action != expected_action:
             add_error(
                 errors,
@@ -276,6 +332,34 @@ def validate_attempt(attempt):
             add_error(errors, "followup requires failure_class=none")
         if route.get("surface") != "visible_thread":
             add_error(errors, "followup is available only for a visible_thread route")
+        prior_file_access = required_string(
+            attempt.get("prior_file_access"), "prior_file_access", errors
+        )
+        requested_file_access = required_string(
+            attempt.get("requested_file_access"), "requested_file_access", errors
+        )
+        if prior_file_access and prior_file_access not in FILE_ACCESS_MODES:
+            add_error(errors, "prior_file_access must be read_only or write")
+        if requested_file_access and requested_file_access not in FILE_ACCESS_MODES:
+            add_error(errors, "requested_file_access must be read_only or write")
+        plan_guard_valid = required_bool(
+            attempt.get("plan_guard_valid"), "plan_guard_valid", errors
+        )
+        environment_guard_valid = required_bool(
+            attempt.get("environment_guard_valid"),
+            "environment_guard_valid",
+            errors,
+        )
+        if not plan_guard_valid:
+            add_error(errors, "followup requires a validated current lane plan")
+        if requested_file_access == "write" and not environment_guard_valid:
+            add_error(errors, "write followup requires a validated current environment")
+        if prior_file_access == "read_only" and requested_file_access == "write":
+            if not plan_guard_valid or not environment_guard_valid:
+                add_error(
+                    errors,
+                    "read_only-to-write followup requires replanned scope and environment",
+                )
 
     elif operation == "sync_retry":
         if action not in SYNC_RETRY_ACTIONS:

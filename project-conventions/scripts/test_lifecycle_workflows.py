@@ -46,9 +46,82 @@ class LifecycleWorkflowTests(unittest.TestCase):
         cls.collection = (
             PACKAGE_ROOT / "references" / "project-collection.md"
         ).read_text(encoding="utf-8")
+        cls.layout = (
+            PACKAGE_ROOT / "references" / "directory-layout.md"
+        ).read_text(encoding="utf-8")
+        cls.agents_template = (
+            PACKAGE_ROOT / "references" / "agents-md-template.md"
+        ).read_text(encoding="utf-8")
         cls.metadata = (PACKAGE_ROOT / "agents" / "openai.yaml").read_text(
             encoding="utf-8"
         )
+
+    def test_all_project_types_require_project_owned_records(self) -> None:
+        for required in (
+            "| Code | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |",
+            "| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`, versioned records |",
+            "`conversation/` and `memory/` remain required",
+            "Harness-owned memory or hidden directories never replace either project record",
+        ):
+            self.assertIn(required, self.skill)
+        for required in (
+            "| `conversation/` | Required | Required | Required |",
+            "| `memory/` daily logs | Required | Required | Required |",
+            "conversation/            # Required for every project type",
+            "memory/                  # Required for every project type",
+            "### `conversation/` (Required for Code, Document, and Hybrid)",
+            "### `memory/` (Required for Code, Document, and Hybrid)",
+            "Versioned records preserve deliverable submissions; they do not replace collaboration history or project continuity",
+            "does not satisfy or replace the required project-root `conversation/` and `memory/` records",
+        ):
+            self.assertIn(required, self.layout)
+        self.assertNotIn("optional for Document", self.layout)
+        self.assertNotIn("Optional (use versioned records instead)", self.layout)
+        self.assertIn(
+            "required for Code, Document, and Hybrid projects",
+            self.agents_template,
+        )
+        self.assertIn(
+            "Harness-owned memory does not replace project `conversation/` or `memory/`",
+            self.agents_template,
+        )
+
+    def test_concurrency_is_routed_without_permanent_role_layout(self) -> None:
+        for required in (
+            "$project-handoff",
+            "temporary per-lane execution resource",
+            "single-writer resources",
+            "response-only findings",
+            "integration owner",
+        ):
+            self.assertIn(required, self.skill)
+        for required in (
+            "permanent `work/lanes/`",
+            "response-only reviewers",
+            "temporary worktrees",
+            "one writer at a time",
+            "scan for the next `conversation/NN-*`",
+            "One integration owner",
+            "Separate Agent conversations do not imply separate filesystems",
+        ):
+            self.assertIn(required, self.layout)
+        for required in (
+            "sole active writer",
+            "only the integration owner allocates the canonical number",
+            "workers return response-only findings or use preallocated unique artifacts",
+            "integration owner updates canonical conversation, memory, and indexes",
+            "fixed role directories",
+            "permanent `work/lanes/`",
+        ):
+            self.assertIn(required, self.agents_template)
+        self.assertNotIn("both appends are valid", self.layout)
+        for forbidden in (
+            "Create a `conversation/NN-topic.md` file (scan for next number)",
+            "Done working? Append a note to `memory/YYYY-MM-DD.md`",
+            "After substantive work, append to `memory/YYYY-MM-DD.md`",
+        ):
+            self.assertNotIn(forbidden, self.agents_template)
+        self.assertIn("temporary worktrees or serialized execution", self.metadata)
 
     def run_command(
         self, command: list[str], cwd: Path | None = None

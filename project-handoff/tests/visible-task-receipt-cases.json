@@ -1,167 +1,234 @@
 [
   {
-    "id": "ready-visible-task",
+    "id": "ready-read-only-local-task",
     "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0001",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "readback",
-      "failure": null
+      "actual_tool": "codex_app__create_thread", "run_id": "review-run", "lane_id": "review-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "sol-max", "task_kind": "codex",
+      "file_access": "read_only", "workspace_mode": "shared_checkout",
+      "requested_environment": "local", "actual_environment": "local", "environment_verified": "readback",
+      "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": null,
+        "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+        "base_revision": "1111111111111111111111111111111111111111",
+        "head_revision": "1111111111111111111111111111111111111111",
+        "git_dir": "/workspace/project/.git", "git_common_dir": "/workspace/project/.git",
+        "working_tree_clean": true
+      },
+      "thread_id": "thread-demo-0001", "client_thread_id": null, "host_id": "local",
+      "prompt_verified": "readback", "failure": null
     },
-    "expected": {
-      "valid": true,
-      "classification": "visible_task_receipt",
-      "registerable": true
-    }
+    "expected": {"valid": true, "classification": "visible_task_receipt", "registerable": true, "execution_ready": true}
   },
   {
-    "id": "queued-visible-task",
+    "id": "ready-worktree-task",
     "receipt": {
-      "actual_tool": "create_thread",
-      "status": "queued",
-      "surface": "visible_thread",
-      "requested_route": "terra-max",
-      "task_kind": "codex",
-      "thread_id": null,
-      "client_thread_id": "client-demo-0001",
-      "host_id": null,
-      "prompt_verified": false,
-      "failure": null
+      "actual_tool": "codex_app__create_thread", "run_id": "write-run", "lane_id": "writer-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "terra-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "worktree",
+      "requested_environment": "worktree", "actual_environment": "worktree", "environment_verified": "readback",
+      "worktree_source": "/workspace/project", "repository_root": "/workspace/worktrees/writer-a", "workspace_path": "/workspace/worktrees/writer-a",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": "/workspace/project",
+        "repository_root": "/workspace/worktrees/writer-a", "workspace_path": "/workspace/worktrees/writer-a",
+        "git_dir": "/workspace/project/.git/worktrees/writer-a", "git_common_dir": "/workspace/project/.git",
+        "base_revision": "1111111111111111111111111111111111111111",
+        "head_revision": "1111111111111111111111111111111111111111",
+        "working_tree_clean": true
+      },
+      "thread_id": "thread-demo-0002", "client_thread_id": null, "host_id": "local",
+      "prompt_verified": "readback", "failure": null
     },
-    "expected": {
-      "valid": true,
-      "classification": "visible_task_receipt",
-      "registerable": true
-    }
+    "expected": {"valid": true, "classification": "visible_task_receipt", "registerable": true, "execution_ready": true}
   },
   {
-    "id": "created-unconfirmed-visible-task",
+    "id": "queued-worktree-task",
     "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_unconfirmed",
-      "surface": "visible_thread",
-      "requested_route": "luna-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0002",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": false,
-      "failure": null
+      "actual_tool": "create_thread", "run_id": "write-run", "lane_id": "writer-b", "harness": "codex",
+      "status": "queued", "surface": "visible_thread", "requested_route": "terra-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "worktree",
+      "requested_environment": "worktree", "actual_environment": "pending", "environment_verified": false,
+      "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null,
+      "base_revision": "1111111111111111111111111111111111111111", "environment_evidence": null,
+      "thread_id": null, "client_thread_id": "client-demo-0001", "host_id": null,
+      "prompt_verified": false, "failure": null
     },
-    "expected": {
-      "valid": true,
-      "classification": "visible_task_receipt",
-      "registerable": true
-    }
+    "expected": {"valid": true, "classification": "visible_task_receipt", "registerable": true, "execution_ready": false}
+  },
+  {
+    "id": "created-unconfirmed-local-task",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread", "run_id": "review-run", "lane_id": "review-b", "harness": "codex",
+      "status": "created_unconfirmed", "surface": "visible_thread", "requested_route": "luna-max", "task_kind": "codex",
+      "file_access": "read_only", "workspace_mode": "shared_checkout",
+      "requested_environment": "local", "actual_environment": "unknown", "environment_verified": false,
+      "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": null,
+      "base_revision": "1111111111111111111111111111111111111111", "environment_evidence": null,
+      "thread_id": "thread-demo-0003", "client_thread_id": null, "host_id": "local",
+      "prompt_verified": false, "failure": null
+    },
+    "expected": {"valid": true, "classification": "visible_task_receipt", "registerable": true, "execution_ready": false}
+  },
+  {
+    "id": "reject-worktree-resolved-local",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread", "run_id": "write-run", "lane_id": "writer-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "terra-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "worktree",
+      "requested_environment": "worktree", "actual_environment": "local", "environment_verified": "readback",
+      "worktree_source": "/workspace/project", "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": "/workspace/project",
+        "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+        "git_dir": "/workspace/project/.git", "git_common_dir": "/workspace/project/.git",
+        "base_revision": "1111111111111111111111111111111111111111",
+        "head_revision": "1111111111111111111111111111111111111111",
+        "working_tree_clean": true
+      },
+      "thread_id": "thread-demo-0004", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
+    },
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "actual_environment must match"}
+  },
+  {
+    "id": "reject-worktree-without-evidence",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread", "run_id": "write-run", "lane_id": "writer-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "terra-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "worktree",
+      "requested_environment": "worktree", "actual_environment": "worktree", "environment_verified": "readback",
+      "worktree_source": "/workspace/project", "repository_root": "/workspace/worktrees/writer-a", "workspace_path": "/workspace/worktrees/writer-a",
+      "base_revision": "1111111111111111111111111111111111111111", "environment_evidence": null,
+      "thread_id": "thread-demo-0005", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
+    },
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "requires environment_evidence"}
+  },
+  {
+    "id": "reject-worktree-common-git-dir",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread", "run_id": "write-run", "lane_id": "writer-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "terra-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "worktree",
+      "requested_environment": "worktree", "actual_environment": "worktree", "environment_verified": "readback",
+      "worktree_source": "/workspace/project", "repository_root": "/workspace/worktrees/writer-a", "workspace_path": "/workspace/worktrees/writer-a",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": "/workspace/project",
+        "repository_root": "/workspace/worktrees/writer-a", "workspace_path": "/workspace/worktrees/writer-a",
+        "git_dir": "/workspace/project/.git", "git_common_dir": "/workspace/project/.git",
+        "base_revision": "1111111111111111111111111111111111111111",
+        "head_revision": "1111111111111111111111111111111111111111",
+        "working_tree_clean": true
+      },
+      "thread_id": "thread-demo-0006", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
+    },
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "git_dir must differ"}
+  },
+  {
+    "id": "reject-dirty-worktree",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread", "run_id": "write-run", "lane_id": "writer-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "terra-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "worktree",
+      "requested_environment": "worktree", "actual_environment": "worktree", "environment_verified": "readback",
+      "worktree_source": "/workspace/project", "repository_root": "/workspace/worktrees/writer-a", "workspace_path": "/workspace/worktrees/writer-a",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": "/workspace/project",
+        "repository_root": "/workspace/worktrees/writer-a", "workspace_path": "/workspace/worktrees/writer-a",
+        "git_dir": "/workspace/project/.git/worktrees/writer-a", "git_common_dir": "/workspace/project/.git",
+        "base_revision": "1111111111111111111111111111111111111111",
+        "head_revision": "1111111111111111111111111111111111111111",
+        "working_tree_clean": false
+      },
+      "thread_id": "thread-demo-0007", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
+    },
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "clean pre-write worktree"}
+  },
+  {
+    "id": "reject-windows-worktree-alias",
+    "receipt": {
+      "actual_tool": "codex_app__create_thread", "run_id": "write-run", "lane_id": "writer-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "terra-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "worktree",
+      "requested_environment": "worktree", "actual_environment": "worktree", "environment_verified": "readback",
+      "worktree_source": "C:\\Repo", "repository_root": "c:\\repo", "workspace_path": "C:\\Repo",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": "C:\\Repo",
+        "repository_root": "c:\\repo", "workspace_path": "C:\\Repo",
+        "git_dir": "C:\\Repo\\.git", "git_common_dir": "c:\\repo\\.git",
+        "base_revision": "1111111111111111111111111111111111111111",
+        "head_revision": "1111111111111111111111111111111111111111",
+        "working_tree_clean": true
+      },
+      "thread_id": "thread-demo-0008", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
+    },
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "must differ from worktree_source"}
   },
   {
     "id": "reject-subagent-tool",
     "receipt": {
-      "actual_tool": "collaboration.spawn_agent",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0001",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "readback",
-      "failure": null
+      "actual_tool": "collaboration.spawn_agent", "run_id": "review-run", "lane_id": "review-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "sol-max", "task_kind": "codex",
+      "file_access": "read_only", "workspace_mode": "shared_checkout",
+      "requested_environment": "local", "actual_environment": "local", "environment_verified": "readback",
+      "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+        "git_dir": "/workspace/project/.git", "git_common_dir": "/workspace/project/.git",
+        "base_revision": "1111111111111111111111111111111111111111", "head_revision": "1111111111111111111111111111111111111111",
+        "working_tree_clean": true
+      },
+      "thread_id": "thread-demo-0009", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
     },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "must not use a collaboration or subagent surface"
-    }
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "must not use a collaboration or subagent surface"}
   },
   {
     "id": "reject-agent-path-as-task-id",
     "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "/synthetic/agent-path",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "readback",
-      "failure": null
+      "actual_tool": "codex_app__create_thread", "run_id": "review-run", "lane_id": "review-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "sol-max", "task_kind": "codex",
+      "file_access": "read_only", "workspace_mode": "shared_checkout",
+      "requested_environment": "local", "actual_environment": "local", "environment_verified": "readback",
+      "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+      "base_revision": "1111111111111111111111111111111111111111",
+      "environment_evidence": {
+        "verified_by": "git_readback", "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+        "git_dir": "/workspace/project/.git", "git_common_dir": "/workspace/project/.git",
+        "base_revision": "1111111111111111111111111111111111111111", "head_revision": "1111111111111111111111111111111111111111",
+        "working_tree_clean": true
+      },
+      "thread_id": "/synthetic/agent-path", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
     },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "not an agent path"
-    }
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "not an agent path"}
   },
   {
-    "id": "reject-agent-thread-field",
+    "id": "reject-confirmed-unverified-environment",
     "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0001",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "receipt",
-      "failure": null,
-      "agentThreadId": "agent-thread-demo-0001"
+      "actual_tool": "codex_app__create_thread", "run_id": "review-run", "lane_id": "review-a", "harness": "codex",
+      "status": "created_confirmed", "surface": "visible_thread", "requested_route": "sol-max", "task_kind": "codex",
+      "file_access": "read_only", "workspace_mode": "shared_checkout",
+      "requested_environment": "local", "actual_environment": "local", "environment_verified": false,
+      "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+      "base_revision": "1111111111111111111111111111111111111111", "environment_evidence": null,
+      "thread_id": "thread-demo-0010", "client_thread_id": null, "host_id": "local", "prompt_verified": "readback", "failure": null
     },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "hidden-subagent field"
-    }
-  },
-  {
-    "id": "reject-confirmed-without-thread-id",
-    "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": null,
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "receipt",
-      "failure": null
-    },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "requires thread_id"
-    }
+    "expected": {"valid": false, "classification": "invalid_visible_task_evidence", "registerable": false, "execution_ready": false, "error_contains": "environment_verified=readback"}
   },
   {
     "id": "well-formed-creation-failure",
     "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "failed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": null,
-      "client_thread_id": null,
-      "host_id": null,
-      "prompt_verified": false,
-      "failure": "permission denied"
+      "actual_tool": "codex_app__create_thread", "run_id": "write-run", "lane_id": "writer-a", "harness": "codex",
+      "status": "failed", "surface": "visible_thread", "requested_route": "sol-max", "task_kind": "codex",
+      "file_access": "write", "workspace_mode": "shared_checkout",
+      "requested_environment": "local", "actual_environment": "unknown", "environment_verified": false,
+      "worktree_source": null, "repository_root": null, "workspace_path": null, "base_revision": null, "environment_evidence": null,
+      "thread_id": null, "client_thread_id": null, "host_id": null, "prompt_verified": false, "failure": "permission denied"
     },
-    "expected": {
-      "valid": true,
-      "classification": "creation_failure",
-      "registerable": false
-    }
+    "expected": {"valid": true, "classification": "creation_failure", "registerable": false, "execution_ready": false}
   }
 ]

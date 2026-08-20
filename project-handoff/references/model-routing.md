@@ -35,6 +35,7 @@ Record each field's basis as `explicit_user`, `auto_requested`, or `auto_unspeci
 | `terra-max` | `gpt-5.6-terra` | `max` | visible Codex task |
 | `luna-max` | `gpt-5.6-luna` | `max` | visible Codex task |
 | `spark` / `spark-xhigh` | `gpt-5.3-codex-spark` | `xhigh` | bundled CLI workflow |
+| `portable-handoff` | `none` | `none` | external harness handoff |
 
 Normalize alias casing. Check the live tool declaration before creating a visible task because supported model/reasoning combinations can change. Tool capability is not route authority: an advertised Spark model does not authorize `create_thread`, fork, handoff, or any visible task. `spark` is an atomic CLI-only route, and a nonzero wrapper exit terminates that lane until a new explicit user request changes route. `luna-max` is an atomic max route unless the user explicitly replaces that alias with another route; a later follow-up does not implicitly replace it.
 
@@ -50,19 +51,21 @@ The attempt receipt requires:
 
 ~~~yaml
 operation: initial_dispatch | followup | sync_retry | failure_report
-action: create_visible_task | run_bundled_spark_cli | read_existing_task | set_visible_task_title | send_followup | none
+action: create_visible_task | run_bundled_spark_cli | produce_portable_handoff | read_existing_task | set_visible_task_title | send_followup | none
 tool: <exact live tool or bundled wrapper>
 failure_class: none | creation_visibility_delay | prompt_readback_delay | title_metadata_delay | unsupported_parameter | invalid_request | unsupported_route | wrapper_missing | codex_cli_missing | auth | permission | quota | provider_model | unknown
 route_changed: false
 explicit_user_route_change: false
 route:
-  requested_route: spark | luna-max | sol-max | terra-max | model-id
+  requested_route: spark | luna-max | sol-max | terra-max | portable-handoff | model-id
   model:
   reasoning:
-  surface: visible_thread | bundled_cli
+  surface: visible_thread | bundled_cli | portable_handoff
   model_basis: explicit_user | auto_requested | auto_unspecified
   reasoning_basis: explicit_user | auto_requested | auto_unspecified
 ~~~
+
+For `operation: followup` only, also provide `prior_file_access`, `requested_file_access`, `plan_guard_valid`, and `environment_guard_valid`. Do not add those four fields to other operations. An external harness initial attempt uses `portable-handoff`, `produce_portable_handoff`, `tool: none`, and `portable_handoff`.
 
 Proceed only when the validator returns `valid: true`. Obey its `terminal`, `next_action`, `visible_task_allowed`, and `route_change_requires_new_user_request` fields. An `unsupported_parameter`, `invalid_request`, or `reasoning.summary` rejection on the visible/Desktop surface is classified as `wrong_surface_or_request`, cannot support a Spark-unavailable claim, and must not be retried by changing or omitting reasoning.
 

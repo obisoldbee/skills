@@ -54,13 +54,16 @@ When working in this workspace, follow the `project-conventions` skill:
 ## Quick Reminders
 
 - Explicit repository/Skill update? Use update-only: fast-forward and validate the requested project or named package, then stop without restructuring, records, or link work
-- Significant decision or direction change? Create a `conversation/NN-topic.md` file (scan for next number)
+- Significant decision or direction change? A sole active writer scans and creates the next `conversation/NN-topic.md`; during concurrent work only the integration owner allocates the canonical number
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Done working? Append a note to `memory/YYYY-MM-DD.md`
-- Never write to the agent platform's system memory directory — use `memory/` instead
+- Done working? A sole active writer updates `memory/YYYY-MM-DD.md`; during concurrent work, workers return response-only findings or use preallocated unique artifacts and the integration owner updates canonical conversation, memory, and indexes
+- Harness-owned memory does not replace project `conversation/` or `memory/`; never write into the harness's system memory directory
+- Concurrent work does not add fixed role directories or a permanent `work/lanes/` tree; route overlapping writers through `project-handoff` when available or serialize them
 - Document/submission projects only: treat canonical certificates and reports as read-only; copy before modifying
 - Code in `src/`, artifacts in `release/`, documents in `docs/` — never mix
 ```
+
+The project-root `conversation/` and `memory/` directories are required for Code, Document, and Hybrid projects. The direct-write reminders above apply only when there is one active writer. Separate Agent tasks or harness conversations do not create isolated filesystems.
 
 The Source Mapping is required for every Git-backed Project Root. Keep one mapping per Project Root. If the source is a subdirectory of a larger GitHub repository, record the repository's clone URL and put the subtree in `Managed scope`; never use a `/tree/...` page as the clone URL.
 
@@ -109,8 +112,8 @@ When working in this workspace, follow the `project-conventions` skill:
 - Skill location: `<skills-dir>/project-conventions/SKILL.md`
 - Centralize all documents under `docs/` (specs/plans/reviews/research)
 - Review files: `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md` under `docs/reviews/`
-- Conversation files: `NN-kebab-topic.md` under `conversation/` (next available number)
-- After substantive work, append to `memory/YYYY-MM-DD.md` (NOT the agent platform's system memory)
+- Conversation files: `NN-kebab-topic.md` under `conversation/`; a sole writer scans for the next number, while concurrent work uses one integration owner
+- Project memory: a sole writer updates `memory/YYYY-MM-DD.md`; concurrent workers return findings and the integration owner writes canonical records
 
 ## Directory Index
 
@@ -130,10 +133,11 @@ When working in this workspace, follow the `project-conventions` skill:
 ## Quick Reminders
 
 - Explicit repository/Skill update? Fast-forward and validate only; do not turn it into a directory migration
-- Significant decision or direction change? Create a `conversation/NN-topic.md` (currently max is `05-`)
+- Significant decision or direction change? If this is the sole active writer, scan and create the next `conversation/NN-topic.md`; otherwise leave canonical numbering to the integration owner
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Done working? Append a note to `memory/YYYY-MM-DD.md`
-- Never write to the agent platform's system memory — that's reserved for the tool itself, use `memory/` instead
+- Done working? If this is the sole active writer, update `memory/YYYY-MM-DD.md`; concurrent workers return response-only findings or use a preallocated unique artifact
+- Concurrent work? The integration owner writes canonical conversation, memory, and indexes; do not create fixed role directories or a permanent `work/lanes/` tree
+- Harness-owned memory is reserved for the tool and never substitutes for project `conversation/` or `memory/`
 - Code goes in `src/`, artifacts in `release/`, never in `docs/`
 - Source namespace is `ScreenTimeoutToggle` (legacy, not renamed to `OBDim` — intentional)
 ```

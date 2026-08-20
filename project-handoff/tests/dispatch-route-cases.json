@@ -156,6 +156,10 @@
       "failure_class": "none",
       "route_changed": false,
       "explicit_user_route_change": false,
+      "prior_file_access": "read_only",
+      "requested_file_access": "read_only",
+      "plan_guard_valid": true,
+      "environment_guard_valid": true,
       "route": {
         "requested_route": "luna-max",
         "model": "gpt-5.6-luna",
@@ -180,6 +184,10 @@
       "failure_class": "none",
       "route_changed": true,
       "explicit_user_route_change": false,
+      "prior_file_access": "read_only",
+      "requested_file_access": "write",
+      "plan_guard_valid": false,
+      "environment_guard_valid": false,
       "route": {
         "requested_route": "luna-max",
         "model": "gpt-5.6-luna",
@@ -418,6 +426,116 @@
     "expected": {
       "valid": false,
       "error_contains": "must not use spawn_agent",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "portable-handoff-for-external-harness",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "produce_portable_handoff",
+      "tool": "none",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "portable-handoff",
+        "model": "none",
+        "reasoning": "none",
+        "surface": "portable_handoff",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "visible_task_allowed": false,
+      "next_action": "produce_portable_handoff"
+    }
+  },
+  {
+    "id": "reject-external-handoff-via-create-thread",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "portable-handoff",
+        "model": "none",
+        "reasoning": "none",
+        "surface": "portable_handoff",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_user"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "requires action=produce_portable_handoff",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-review-to-repair-without-replan",
+    "attempt": {
+      "operation": "followup",
+      "action": "send_followup",
+      "tool": "codex_app__send_message_to_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "prior_file_access": "read_only",
+      "requested_file_access": "write",
+      "plan_guard_valid": false,
+      "environment_guard_valid": false,
+      "route": {
+        "requested_route": "terra-max",
+        "model": "gpt-5.6-terra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "auto_unspecified",
+        "reasoning_basis": "auto_unspecified"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "read_only-to-write followup requires replanned scope and environment",
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-unknown-followup-effect-field",
+    "attempt": {
+      "operation": "followup",
+      "action": "send_followup",
+      "tool": "codex_app__send_message_to_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "prior_file_access": "read_only",
+      "requested_file_access": "read_only",
+      "plan_guard_valid": true,
+      "environment_guard_valid": true,
+      "requested_effect": "write",
+      "route": {
+        "requested_route": "terra-max",
+        "model": "gpt-5.6-terra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "auto_unspecified",
+        "reasoning_basis": "auto_unspecified"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "error_contains": "unsupported fields: requested_effect",
       "classification": "none",
       "spark_unavailable_supported": false
     }

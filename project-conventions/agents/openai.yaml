@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Conventions"
-  short_description: "Govern multi-repository Skill collections safely"
-  default_prompt: "Use $project-conventions to choose the exact lifecycle, distinguish public, private, upstream, and local sources, verify repository mappings and runtime boundaries, and keep update-only scoped to one named package."
+  short_description: "Govern project roots, repositories, and safe concurrency"
+  default_prompt: "Use $project-conventions to choose the exact lifecycle and path roles, preserve repository and runtime boundaries, keep update-only scoped to one named package, and route overlapping writers to temporary worktrees or serialized execution without creating permanent role directories."

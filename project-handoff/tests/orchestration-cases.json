@@ -1,355 +1,398 @@
 [
   {
-    "id": "parallel-independent-readers",
+    "id": "parallel-read-only-reviewers",
     "plan": {
-      "run_id": "parallel-independent-readers",
+      "run_id": "parallel-read-only-reviewers",
       "integration_owner": "controller",
       "lanes": [
         {
-          "id": "inventory",
-          "goal": "Inventory the frozen inputs.",
-          "depends_on": [],
-          "read_paths": ["inputs/frozen"],
-          "write_paths": ["reports/inventory.md"],
-          "mutable_resources": [],
-          "expected_outputs": ["reports/inventory.md"],
-          "validation": "test -s reports/inventory.md",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "review-a", "goal": "Review the frozen source without writing files.", "depends_on": [],
+          "read_paths": ["src"], "write_paths": [], "mutable_resources": [],
+          "harness": "codex", "file_access": "read_only", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+          "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["response-only findings"], "validation": "Controller reviews the complete response",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
         },
         {
-          "id": "evidence-review",
-          "goal": "Review evidence in the same frozen inputs.",
-          "depends_on": [],
-          "read_paths": ["inputs/frozen"],
-          "write_paths": ["reports/evidence.md"],
-          "mutable_resources": [],
-          "expected_outputs": ["reports/evidence.md"],
-          "validation": "test -s reports/evidence.md",
-          "route": {
-            "requested_route": "luna-max",
-            "model": "gpt-5.6-luna",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "review-b", "goal": "Independently review the same frozen source.", "depends_on": [],
+          "read_paths": ["src"], "write_paths": [], "mutable_resources": [],
+          "harness": "codex", "file_access": "read_only", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+          "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["response-only findings"], "validation": "Controller reviews the complete response",
+          "route": {"requested_route": "luna-max", "model": "gpt-5.6-luna", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
         }
       ]
     },
-    "expected": {
-      "valid": true,
-      "ready_groups": [
-        ["inventory", "evidence-review"]
+    "expected": {"valid": true, "ready_groups": [["review-a", "review-b"]], "execution_contract_complete": true, "initial_execution_ready": ["review-a", "review-b"]}
+  },
+  {
+    "id": "reject-shared-reviewers-with-different-bases",
+    "plan": {
+      "run_id": "reject-shared-reviewers-with-different-bases", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "review-a", "goal": "Review base A.", "depends_on": [], "read_paths": ["src"], "write_paths": [], "mutable_resources": [],
+          "harness": "codex", "file_access": "read_only", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+          "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["response-only findings"], "validation": "Review response",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
+        },
+        {
+          "id": "review-b", "goal": "Review base B.", "depends_on": [], "read_paths": ["src"], "write_paths": [], "mutable_resources": [],
+          "harness": "codex", "file_access": "read_only", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+          "base_revision": "2222222222222222222222222222222222222222",
+          "expected_outputs": ["response-only findings"], "validation": "Review response",
+          "route": {"requested_route": "luna-max", "model": "gpt-5.6-luna", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
+        }
       ]
-    }
+    },
+    "expected": {"valid": false, "error_contains": "one physical workspace must share one base_revision"}
+  },
+  {
+    "id": "reject-git-content-digest-base",
+    "plan": {
+      "run_id": "reject-git-content-digest-base", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "review", "goal": "Review a Git checkout from a real commit.", "depends_on": [], "read_paths": ["src"], "write_paths": [], "mutable_resources": [],
+          "harness": "codex", "file_access": "read_only", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+          "base_revision": "working-tree:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expected_outputs": ["response-only findings"], "validation": "Review response",
+          "route": {"requested_route": "luna-max", "model": "gpt-5.6-luna", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
+        }
+      ]
+    },
+    "expected": {"valid": false, "error_contains": "Git base_revision must be a full commit"}
   },
   {
     "id": "serial-design-build",
     "plan": {
-      "run_id": "serial-design-build",
-      "integration_owner": "controller",
+      "run_id": "serial-design-build", "integration_owner": "controller",
       "lanes": [
         {
-          "id": "design",
-          "goal": "Create and validate the design artifact.",
-          "depends_on": [],
-          "read_paths": ["docs/requirements.md"],
-          "write_paths": ["docs/specs/design.md"],
-          "mutable_resources": [],
-          "expected_outputs": ["docs/specs/design.md"],
-          "validation": "test -s docs/specs/design.md",
-          "route": {
-            "requested_route": "sol-max",
-            "model": "gpt-5.6-sol",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "explicit_user",
-            "reasoning_basis": "explicit_user"
-          }
+          "id": "design", "goal": "Create the design artifact.", "depends_on": [],
+          "read_paths": ["docs/requirements.md"], "write_paths": ["docs/specs/design.md"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+          "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["docs/specs/design.md"], "validation": "test -s docs/specs/design.md",
+          "route": {"requested_route": "sol-max", "model": "gpt-5.6-sol", "reasoning": "max", "surface": "visible_thread", "model_basis": "explicit_user", "reasoning_basis": "explicit_user"}
         },
         {
-          "id": "build",
-          "goal": "Implement the accepted design.",
-          "depends_on": ["design"],
-          "read_paths": ["docs/specs/design.md"],
-          "write_paths": ["src/feature.py"],
-          "mutable_resources": [],
-          "expected_outputs": ["src/feature.py"],
-          "validation": "python3 -m unittest",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "build", "goal": "Implement the accepted design.", "depends_on": ["design"],
+          "read_paths": ["docs/specs/design.md"], "write_paths": ["src/feature.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project",
+          "base_revision": null,
+          "expected_outputs": ["src/feature.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
         }
       ]
     },
-    "expected": {
-      "valid": true,
-      "ready_groups": [
-        ["design"],
-        ["build"]
-      ]
-    }
+    "expected": {"valid": true, "ready_groups": [["design"], ["build"]], "base_pending": ["build"], "execution_contract_complete": false, "initial_execution_ready": ["design"]}
   },
   {
-    "id": "unordered-same-file-writers",
+    "id": "reject-unordered-shared-writers",
     "plan": {
-      "run_id": "unordered-same-file-writers",
-      "integration_owner": "controller",
+      "run_id": "reject-unordered-shared-writers", "integration_owner": "controller",
       "lanes": [
         {
-          "id": "worker-a",
-          "goal": "Edit the application entry point.",
-          "depends_on": [],
-          "read_paths": ["src/app.py"],
-          "write_paths": ["src/app.py"],
-          "mutable_resources": [],
-          "expected_outputs": ["src/app.py"],
-          "validation": "python3 -m unittest",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_requested",
-            "reasoning_basis": "auto_requested"
-          }
+          "id": "writer-a", "goal": "Edit one source file.", "depends_on": [], "read_paths": ["src/a.py"], "write_paths": ["src/a.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/a.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
         },
         {
-          "id": "worker-b",
-          "goal": "Refactor the application entry point.",
-          "depends_on": [],
-          "read_paths": ["src/app.py"],
-          "write_paths": ["src/app.py"],
-          "mutable_resources": [],
-          "expected_outputs": ["src/app.py"],
-          "validation": "python3 -m unittest",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_requested",
-            "reasoning_basis": "auto_requested"
-          }
+          "id": "writer-b", "goal": "Edit another source file.", "depends_on": [], "read_paths": ["src/b.py"], "write_paths": ["src/b.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/b.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
         }
       ]
     },
-    "expected": {
-      "valid": false,
-      "error_contains": "unordered write/write conflict"
-    }
+    "expected": {"valid": false, "error_contains": "unordered writers in one logical repository"}
   },
   {
-    "id": "unordered-shared-service",
+    "id": "parallel-worktree-writers",
     "plan": {
-      "run_id": "unordered-shared-service",
-      "integration_owner": "controller",
+      "run_id": "parallel-worktree-writers", "integration_owner": "controller",
       "lanes": [
         {
-          "id": "api-test",
-          "goal": "Test the API against the local test database.",
-          "depends_on": [],
-          "read_paths": ["src/api"],
-          "write_paths": ["reports/api-test.md"],
-          "mutable_resources": ["test-db"],
-          "expected_outputs": ["reports/api-test.md"],
-          "validation": "test -s reports/api-test.md",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "writer-a", "goal": "Edit one source file in an isolated worktree.", "depends_on": [], "read_paths": ["src/a.py"], "write_paths": ["src/a.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/a.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
         },
         {
-          "id": "migration-test",
-          "goal": "Test migrations against the local test database.",
-          "depends_on": [],
-          "read_paths": ["src/migrations"],
-          "write_paths": ["reports/migration-test.md"],
-          "mutable_resources": ["test-db"],
-          "expected_outputs": ["reports/migration-test.md"],
-          "validation": "test -s reports/migration-test.md",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "writer-b", "goal": "Edit another source file in an isolated worktree.", "depends_on": [], "read_paths": ["src/b.py"], "write_paths": ["src/b.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/b.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
         }
       ]
     },
-    "expected": {
-      "valid": false,
-      "error_contains": "unordered mutable_resource conflict"
-    }
+    "expected": {"valid": true, "ready_groups": [["writer-a", "writer-b"]], "environment_pending": ["writer-a", "writer-b"], "execution_contract_complete": false, "initial_execution_ready": []}
   },
   {
-    "id": "unordered-windows-parent-child-writers",
+    "id": "reject-worktree-same-file",
     "plan": {
-      "run_id": "unordered-windows-parent-child-writers",
-      "integration_owner": "controller",
+      "run_id": "reject-worktree-same-file", "integration_owner": "controller",
       "lanes": [
         {
-          "id": "windows-tree-writer",
-          "goal": "Edit a Windows source tree.",
-          "depends_on": [],
-          "read_paths": [],
-          "write_paths": ["C:\\repo\\src"],
-          "mutable_resources": [],
-          "expected_outputs": ["C:\\repo\\src"],
-          "validation": "Run the project tests",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "writer-a", "goal": "Edit the shared source file.", "depends_on": [], "read_paths": ["src/shared.py"], "write_paths": ["src/shared.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/shared.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
         },
         {
-          "id": "windows-file-writer",
-          "goal": "Edit a child file in the same Windows source tree.",
-          "depends_on": [],
-          "read_paths": [],
-          "write_paths": ["C:\\repo\\src\\app.py"],
-          "mutable_resources": [],
-          "expected_outputs": ["C:\\repo\\src\\app.py"],
-          "validation": "Run the project tests",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "writer-b", "goal": "Also edit the shared source file.", "depends_on": [], "read_paths": ["src/shared.py"], "write_paths": ["src/shared.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/shared.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
         }
       ]
     },
-    "expected": {
-      "valid": false,
-      "error_contains": "unordered write/write conflict"
-    }
+    "expected": {"valid": false, "error_contains": "unordered write/write conflict"}
+  },
+  {
+    "id": "reject-windows-case-alias-logical-file",
+    "plan": {
+      "run_id": "reject-windows-case-alias-logical-file", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "writer-a", "goal": "Edit one Windows source path.", "depends_on": [], "read_paths": ["src/shared.py"], "write_paths": ["src/shared.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "C:\\Repo", "repository_root": "C:\\WT-A", "workspace_path": "C:\\WT-A", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/shared.py"], "validation": "run tests",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
+        },
+        {
+          "id": "writer-b", "goal": "Edit the case-aliased Windows source path.", "depends_on": [], "read_paths": ["SRC/SHARED.PY"], "write_paths": ["SRC/SHARED.PY"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "c:\\repo", "repository_root": "C:\\WT-B", "workspace_path": "C:\\WT-B", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["SRC/SHARED.PY"], "validation": "run tests",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
+        }
+      ]
+    },
+    "expected": {"valid": false, "error_contains": "unordered write/write conflict"}
+  },
+  {
+    "id": "different-repositories-same-relative-path",
+    "plan": {
+      "run_id": "different-repositories-same-relative-path", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "repo-a", "goal": "Edit repository A readme.", "depends_on": [], "read_paths": ["README.md"], "write_paths": ["README.md"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/repos/a", "workspace_path": "/repos/a", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["README.md"], "validation": "test -s README.md",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
+        },
+        {
+          "id": "repo-b", "goal": "Edit repository B readme.", "depends_on": [], "read_paths": ["README.md"], "write_paths": ["README.md"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/repos/b", "workspace_path": "/repos/b", "base_revision": "2222222222222222222222222222222222222222",
+          "expected_outputs": ["README.md"], "validation": "test -s README.md",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
+        }
+      ]
+    },
+    "expected": {"valid": true, "ready_groups": [["repo-a", "repo-b"]], "execution_contract_complete": true, "initial_execution_ready": ["repo-a", "repo-b"]}
+  },
+  {
+    "id": "reject-cross-harness-shared-writers",
+    "plan": {
+      "run_id": "reject-cross-harness-shared-writers", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "codex-write", "goal": "Edit the API.", "depends_on": [], "read_paths": ["src/api.py"], "write_paths": ["src/api.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/api.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
+        },
+        {
+          "id": "trae-write", "goal": "Edit the UI.", "depends_on": [], "read_paths": ["src/ui.ts"], "write_paths": ["src/ui.ts"], "mutable_resources": [],
+          "harness": "trae", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/ui.ts"], "validation": "npm test",
+          "route": {"requested_route": "portable-handoff", "model": "none", "reasoning": "none", "surface": "portable_handoff", "model_basis": "explicit_user", "reasoning_basis": "explicit_user"}
+        }
+      ]
+    },
+    "expected": {"valid": false, "error_contains": "unordered writers in one logical repository", "launch_receipt_required": ["trae-write"]}
+  },
+  {
+    "id": "parallel-cross-harness-worktrees",
+    "plan": {
+      "run_id": "parallel-cross-harness-worktrees", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "codex-write", "goal": "Edit the API in a managed worktree.", "depends_on": [], "read_paths": ["src/api.py"], "write_paths": ["src/api.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/api.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
+        },
+        {
+          "id": "trae-write", "goal": "Edit the UI in an explicit external worktree.", "depends_on": [], "read_paths": ["src/ui.ts"], "write_paths": ["src/ui.ts"], "mutable_resources": [],
+          "harness": "trae", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": "/workspace/worktrees/trae-ui", "workspace_path": "/workspace/worktrees/trae-ui", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/ui.ts"], "validation": "npm test",
+          "route": {"requested_route": "portable-handoff", "model": "none", "reasoning": "none", "surface": "portable_handoff", "model_basis": "explicit_user", "reasoning_basis": "explicit_user"}
+        }
+      ]
+    },
+    "expected": {"valid": true, "ready_groups": [["codex-write", "trae-write"]], "environment_pending": ["codex-write"], "launch_receipt_required": ["trae-write"], "execution_contract_complete": false, "initial_execution_ready": []}
+  },
+  {
+    "id": "reject-windows-duplicate-worktree-roots",
+    "plan": {
+      "run_id": "reject-windows-duplicate-worktree-roots", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "writer-a", "goal": "Edit file A.", "depends_on": [], "read_paths": ["src/a.py"], "write_paths": ["src/a.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "C:\\Repo", "repository_root": "C:\\WT", "workspace_path": "C:\\WT", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/a.py"], "validation": "test A",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
+        },
+        {
+          "id": "writer-b", "goal": "Edit file B.", "depends_on": [], "read_paths": ["src/b.py"], "write_paths": ["src/b.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "c:\\repo", "repository_root": "c:\\wt", "workspace_path": "c:\\wt", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/b.py"], "validation": "test B",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
+        }
+      ]
+    },
+    "expected": {"valid": false, "error_contains": "distinct repository_root values"}
+  },
+  {
+    "id": "reject-read-only-writes",
+    "plan": {
+      "run_id": "reject-read-only-writes", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "review", "goal": "Review without edits.", "depends_on": [], "read_paths": ["src"], "write_paths": ["docs/reviews/review.md"], "mutable_resources": [],
+          "harness": "codex", "file_access": "read_only", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project", "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["docs/reviews/review.md"], "validation": "test -s docs/reviews/review.md",
+          "route": {"requested_route": "luna-max", "model": "gpt-5.6-luna", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
+        }
+      ]
+    },
+    "expected": {"valid": false, "error_contains": "file_access=read_only must have empty write_paths"}
+  },
+  {
+    "id": "reject-worker-canonical-record-write",
+    "plan": {
+      "run_id": "reject-worker-canonical-record-write", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "review", "goal": "Write a lane report.", "depends_on": [], "read_paths": ["src"], "write_paths": ["memory/2026-08-20.md"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["memory/2026-08-20.md"], "validation": "test -s memory/2026-08-20.md",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
+        }
+      ]
+    },
+    "expected": {"valid": false, "error_contains": "integration-owner-only shared records"}
+  },
+  {
+    "id": "reject-worker-broad-scope-containing-canonical-records",
+    "plan": {
+      "run_id": "reject-worker-broad-scope-containing-canonical-records", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "worker", "goal": "Edit project files without owning canonical records.", "depends_on": [], "read_paths": ["src"], "write_paths": ["."], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/change.py"], "validation": "test the scoped change",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_requested", "reasoning_basis": "auto_requested"}
+        }
+      ]
+    },
+    "expected": {"valid": false, "error_contains": "integration-owner-only shared records"}
+  },
+  {
+    "id": "non-git-document-editor",
+    "plan": {
+      "run_id": "non-git-document-editor", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "document-editor", "goal": "Create a new final document without overwriting the source.", "depends_on": [],
+          "read_paths": ["source/input.docx"], "write_paths": ["output/final.docx"], "mutable_resources": [],
+          "harness": "workbuddy", "file_access": "write", "workspace_mode": "non_git",
+          "worktree_source": null, "repository_root": null, "workspace_path": "/workspace/document-project",
+          "base_revision": "snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expected_outputs": ["output/final.docx"], "validation": "Verify source hash and final document receipt",
+          "route": {"requested_route": "portable-handoff", "model": "none", "reasoning": "none", "surface": "portable_handoff", "model_basis": "explicit_user", "reasoning_basis": "explicit_user"}
+        }
+      ]
+    },
+    "expected": {"valid": true, "ready_groups": [["document-editor"]], "launch_receipt_required": ["document-editor"], "execution_contract_complete": false, "initial_execution_ready": []}
+  },
+  {
+    "id": "resource-owning-read-only-audit",
+    "plan": {
+      "run_id": "resource-owning-read-only-audit", "integration_owner": "controller",
+      "lanes": [
+        {
+          "id": "browser-audit", "goal": "Inspect through one mutable browser session without project writes.", "depends_on": [],
+          "read_paths": ["manifests"], "write_paths": [], "mutable_resources": ["browser-session:test"],
+          "harness": "codex-cli", "file_access": "read_only", "workspace_mode": "non_git",
+          "worktree_source": null, "repository_root": null, "workspace_path": "/workspace/audit-input",
+          "base_revision": "snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expected_outputs": ["response-only findings"], "validation": "Controller reviews the complete response",
+          "route": {"requested_route": "spark", "model": "gpt-5.3-codex-spark", "reasoning": "xhigh", "surface": "bundled_cli", "model_basis": "explicit_user", "reasoning_basis": "explicit_user"}
+        }
+      ]
+    },
+    "expected": {"valid": true, "ready_groups": [["browser-audit"]], "execution_contract_complete": true, "initial_execution_ready": ["browser-audit"]}
   },
   {
     "id": "final-integration-lane",
     "plan": {
-      "run_id": "final-integration-lane",
-      "integration_owner": "integrate",
+      "run_id": "final-integration-lane", "integration_owner": "integrate",
       "lanes": [
         {
-          "id": "docs",
-          "goal": "Prepare the user documentation.",
-          "depends_on": [],
-          "read_paths": ["docs/requirements.md"],
-          "write_paths": ["docs/guide.md"],
-          "mutable_resources": [],
-          "expected_outputs": ["docs/guide.md"],
-          "validation": "test -s docs/guide.md",
-          "route": {
-            "requested_route": "gpt-5.6-terra",
-            "model": "gpt-5.6-terra",
-            "reasoning": "high",
-            "surface": "visible_thread",
-            "model_basis": "explicit_user",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "docs", "goal": "Prepare documentation in an isolated worktree.", "depends_on": [], "read_paths": ["docs/requirements.md"], "write_paths": ["docs/guide.md"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["docs/guide.md"], "validation": "test -s docs/guide.md",
+          "route": {"requested_route": "gpt-5.6-terra", "model": "gpt-5.6-terra", "reasoning": "high", "surface": "visible_thread", "model_basis": "explicit_user", "reasoning_basis": "auto_unspecified"}
         },
         {
-          "id": "code",
-          "goal": "Implement the accepted feature.",
-          "depends_on": [],
-          "read_paths": ["docs/requirements.md"],
-          "write_paths": ["src/feature.py"],
-          "mutable_resources": [],
-          "expected_outputs": ["src/feature.py"],
-          "validation": "python3 -m unittest tests.test_feature",
-          "route": {
-            "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "code", "goal": "Implement the feature in an isolated worktree.", "depends_on": [], "read_paths": ["docs/requirements.md"], "write_paths": ["src/feature.py"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "worktree",
+          "worktree_source": "/workspace/project", "repository_root": null, "workspace_path": null, "base_revision": "1111111111111111111111111111111111111111",
+          "expected_outputs": ["src/feature.py"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "terra-max", "model": "gpt-5.6-terra", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
         },
         {
-          "id": "integrate",
-          "goal": "Reconcile both outputs and close the full validation gate.",
-          "depends_on": ["docs", "code"],
-          "read_paths": ["docs/guide.md", "src/feature.py"],
-          "write_paths": ["reports/integration.md"],
-          "mutable_resources": [],
-          "expected_outputs": ["reports/integration.md"],
-          "validation": "python3 -m unittest",
-          "route": {
-            "requested_route": "sol-max",
-            "model": "gpt-5.6-sol",
-            "reasoning": "max",
-            "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
-          }
+          "id": "integrate", "goal": "Integrate both lanes and run full validation.", "depends_on": ["docs", "code"],
+          "read_paths": ["docs/guide.md", "src/feature.py"], "write_paths": ["reports/integration.md"], "mutable_resources": [],
+          "harness": "codex", "file_access": "write", "workspace_mode": "shared_checkout",
+          "worktree_source": null, "repository_root": "/workspace/project", "workspace_path": "/workspace/project", "base_revision": null,
+          "expected_outputs": ["reports/integration.md"], "validation": "python3 -m unittest",
+          "route": {"requested_route": "sol-max", "model": "gpt-5.6-sol", "reasoning": "max", "surface": "visible_thread", "model_basis": "auto_unspecified", "reasoning_basis": "auto_unspecified"}
         }
       ]
     },
-    "expected": {
-      "valid": true,
-      "ready_groups": [
-        ["docs", "code"],
-        ["integrate"]
-      ]
-    }
-  },
-  {
-    "id": "valid-spark-cli-lane",
-    "plan": {
-      "run_id": "valid-spark-cli-lane",
-      "integration_owner": "controller",
-      "lanes": [
-        {
-          "id": "manifest-audit",
-          "goal": "Perform a bounded read-only manifest audit.",
-          "depends_on": [],
-          "read_paths": ["manifests"],
-          "write_paths": [],
-          "mutable_resources": [],
-          "expected_outputs": ["response-only findings"],
-          "validation": "Controller reviews the complete response",
-          "route": {
-            "requested_route": "spark",
-            "model": "gpt-5.3-codex-spark",
-            "reasoning": "xhigh",
-            "surface": "bundled_cli",
-            "model_basis": "explicit_user",
-            "reasoning_basis": "explicit_user"
-          }
-        }
-      ]
-    },
-    "expected": {
-      "valid": true,
-      "ready_groups": [
-        ["manifest-audit"]
-      ]
-    }
+    "expected": {"valid": true, "ready_groups": [["docs", "code"], ["integrate"]], "environment_pending": ["code", "docs"], "base_pending": ["integrate"], "execution_contract_complete": false, "initial_execution_ready": []}
   }
 ]

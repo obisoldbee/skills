@@ -9,10 +9,18 @@ Use for `complete`, `full`, `manual`, `text-only`, `file-only`, or `完整交接
 - type: complete
 - recipient:
 - recipient capabilities: create_thread=<yes/no/unknown>, CLI=<yes/no/unknown>, filesystem=<scope/unknown>
+- harness:
 
 ## 项目与目录
 - cwd:
 - repository/workspace:
+- file access: read_only | write
+- workspace mode: shared_checkout | worktree | non_git
+- worktree source:
+- Repository Root (actual lane Git top-level):
+- workspace path:
+- base revision:
+- actual environment receipt:
 
 ## 当前目标
 - 用户当前要完成什么:
@@ -23,6 +31,7 @@ Use for `complete`, `full`, `manual`, `text-only`, `file-only`, or `完整交接
 - Controller:
 - integration owner:
 - active/ready/blocked lanes:
+- lane read/write paths and mutable resources:
 - dependencies and phase gates:
 - explicit model/reasoning choices to preserve:
 
@@ -71,4 +80,6 @@ Rules:
 - Do not copy full chat history, full PRDs, or long logs.
 - Do not call a model or create a task merely to produce this artifact.
 - Preserve dependency, lifecycle, route-basis, and integration state when transferring a Controller run; do not reduce it to a prose progress summary.
+- Do not mark an external harness lane running from this handoff alone. Require current launch or disk/Git readback for the exact workspace and base.
+- If the recipient changes from review to repair, require a new write-scope and execution-environment decision before any edit.
 - Do not call multi-Agent use successful unless required artifacts, lane validation, and the integration gate are closed.
