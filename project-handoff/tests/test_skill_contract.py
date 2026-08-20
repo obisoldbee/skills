@@ -335,6 +335,13 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertIn("spark_unavailable_supported", text)
         self.assertIn("private temporary `CODEX_HOME`", text)
         self.assertIn("PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE", text)
+        self.assertIn("explicit request", text)
+        self.assertIn("pre-dispatch permission stop", text)
+        self.assertIn("64 KiB", text)
+        self.assertIn("minified JSON/JSONL", text)
+        self.assertIn("tool_output_token_limit=4096", text)
+        self.assertIn("--output-last-message", text)
+        self.assertIn("final 8 KiB", text)
 
     @unittest.skipIf(os.name == "nt", "POSIX Spark wrapper contract")
     def test_bundled_spark_wrapper_contract(self):
@@ -351,16 +358,27 @@ class ProjectHandoffContractTests(unittest.TestCase):
             source_state = source_home / "state_5.sqlite"
             source_state.write_text("do-not-touch\n", encoding="utf-8")
             runtime_home_receipt = temp / "runtime-home.txt"
+            fake_codex_receipt = temp / "fake-codex-receipt.txt"
             fake_codex = temp / "codex"
             fake_codex.write_text(
                 "#!/bin/sh\n"
+                "last_message=''\n"
+                "previous=''\n"
+                "for argument in \"$@\"; do\n"
+                "  if [ \"$previous\" = '--output-last-message' ]; then last_message=$argument; fi\n"
+                "  previous=$argument\n"
+                "done\n"
+                "{\n"
                 "printf 'ARGS:%s\\n' \"$*\"\n"
                 "printf 'RUNTIME_HOME:%s\\n' \"$CODEX_HOME\"\n"
                 "if [ -r \"$CODEX_HOME/auth.json\" ]; then printf 'AUTH:present\\n'; fi\n"
                 "if [ ! -e \"$CODEX_HOME/state_5.sqlite\" ]; then printf 'LIVE_STATE:absent\\n'; fi\n"
-                "printf '%s\\n' \"$CODEX_HOME\" > \"$RUNTIME_HOME_RECEIPT\"\n"
                 "printf 'STDIN:'\n"
-                "cat\n",
+                "cat\n"
+                "} > \"$FAKE_CODEX_RECEIPT\"\n"
+                "printf '%s\\n' \"$CODEX_HOME\" > \"$RUNTIME_HOME_RECEIPT\"\n"
+                "printf 'TRACE:must-not-reach-parent\\n'\n"
+                "printf 'OK\\n' > \"$last_message\"\n",
                 encoding="utf-8",
             )
             fake_codex.chmod(0o755)
@@ -371,6 +389,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
             env["CODEX_HOME"] = str(source_home)
             env["TMPDIR"] = temp_dir
             env["RUNTIME_HOME_RECEIPT"] = str(runtime_home_receipt)
+            env["FAKE_CODEX_RECEIPT"] = str(fake_codex_receipt)
             proc = subprocess.run(
                 [
                     str(script),
@@ -391,15 +410,22 @@ class ProjectHandoffContractTests(unittest.TestCase):
             self.assertNotEqual(source_home, isolated_home)
             self.assertFalse(isolated_home.exists())
             self.assertEqual("do-not-touch\n", source_state.read_text(encoding="utf-8"))
+            receipt_text = fake_codex_receipt.read_text(encoding="utf-8")
 
-        self.assertIn("--ignore-user-config", proc.stdout)
-        self.assertIn("--ephemeral", proc.stdout)
-        self.assertIn("-s read-only", proc.stdout)
-        self.assertIn("-m gpt-5.3-codex-spark", proc.stdout)
-        self.assertIn('model_reasoning_effort="xhigh"', proc.stdout)
-        self.assertIn("AUTH:present", proc.stdout)
-        self.assertIn("LIVE_STATE:absent", proc.stdout)
-        self.assertIn("STDIN:Reply exactly OK.", proc.stdout)
+        self.assertEqual("OK\n", proc.stdout)
+        self.assertNotIn("TRACE:must-not-reach-parent", proc.stdout)
+        self.assertIn("--ignore-user-config", receipt_text)
+        self.assertIn("--strict-config", receipt_text)
+        self.assertIn("--ephemeral", receipt_text)
+        self.assertIn("-s read-only", receipt_text)
+        self.assertIn("-m gpt-5.3-codex-spark", receipt_text)
+        self.assertIn('model_reasoning_effort="xhigh"', receipt_text)
+        self.assertIn("tool_output_token_limit=4096", receipt_text)
+        self.assertIn("--output-last-message", receipt_text)
+        self.assertNotIn("model_supports_reasoning_summaries", receipt_text)
+        self.assertIn("AUTH:present", receipt_text)
+        self.assertIn("LIVE_STATE:absent", receipt_text)
+        self.assertIn("STDIN:Reply exactly OK.", receipt_text)
 
     @unittest.skipIf(os.name == "nt", "POSIX Spark wrapper contract")
     def test_bundled_spark_wrapper_failure_is_terminal(self):

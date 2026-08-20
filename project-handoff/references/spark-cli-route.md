@@ -7,12 +7,14 @@ Use this route only for bounded, mechanical, read-only work.
 1. Surface guard
 2. Executor contract
 3. Bundled executor
-4. Good Spark tasks
-5. Do not send to Spark
-6. Prompt requirements
-7. Result shape
-8. Main-agent duties
-9. Failure handling
+4. Authorization and data boundary
+5. Bounded input and output gate
+6. Good Spark tasks
+7. Do not send to Spark
+8. Prompt requirements
+9. Result shape
+10. Main-agent duties
+11. Failure handling
 
 ## Surface guard
 
@@ -29,6 +31,7 @@ Before execution, validate an `initial_dispatch` / `run_bundled_spark_cli` recei
 | Context | ephemeral |
 | Sandbox | read-only |
 | CLI state | private temporary `CODEX_HOME`, removed on exit |
+| Per-tool output | at most `4096` tokens |
 | Result owner | main Controller/agent |
 | Visible task | no |
 
@@ -42,9 +45,27 @@ Do not route final product judgment, user-position decisions, formal writes, sec
 <skill-root>/scripts/run-spark-cli.sh --cwd /absolute/workspace --prompt-file /absolute/prompt-file.md
 ~~~
 
-The bundled wrapper pins `gpt-5.3-codex-spark`, `xhigh`, `--ephemeral`, read-only sandboxing, disabled concurrent reasoning summaries, and prompt input through stdin. It creates a mode-`0700` temporary `CODEX_HOME`, copies only readable `auth.json` with mode `0600` when present, ignores user config, never copies live state/session/cache files, and removes the temporary home on exit. Never add writable sandbox flags, `--add-dir`, or bypass flags.
+The bundled wrapper pins `gpt-5.3-codex-spark`, `xhigh`, `--ephemeral`, read-only sandboxing, disabled concurrent reasoning summaries, `tool_output_token_limit=4096`, strict config validation, and prompt input through stdin. It creates a mode-`0700` temporary `CODEX_HOME`, copies only readable `auth.json` with mode `0600` when present, ignores user config, never copies live state/session/cache files, and removes the temporary home on exit. It captures the verbose CLI trace privately: success emits only `--output-last-message`, while failure emits at most the final 8 KiB of diagnostics followed by the terminal marker. Never add writable sandbox flags, `--add-dir`, or bypass flags.
 
 This integration was derived from an earlier project-local Spark workflow. That historical source is provenance only, not a runtime dependency or a portable path contract.
+
+## Authorization and data boundary
+
+- An explicit request such as “use Spark to inspect this named project/material” authorizes one provider call containing only the minimum non-secret material needed for that scope.
+- Ask for separate disclosure approval only when current target instructions require it, the named scope does not identify what may leave the machine, or the material includes secrets, private chats, account data, medical data, or another explicitly sensitive class.
+- A platform or sandbox approval prompt occurs before provider execution. If it is pending or denied, report a pre-dispatch permission stop; do not claim that Spark ran, emit a terminal Spark failure, or consume the lane's one execution attempt.
+
+## Bounded input and output gate
+
+Apply this gate before the provider call:
+
+1. When discovery covers more than 20 records, any minified or one-line JSON/JSONL, or any record that may exceed 8 KiB, prefilter locally with a deterministic structured parser.
+2. Build a temporary evidence packet containing at most 20 candidates and 64 KiB total. Project only identifiers, selected fields, exact paths, and necessary excerpts; cap every excerpt at 2 KiB and exclude complete raw documents.
+3. Point Spark at the packet directory when the packet contains everything needed. Do not expose a broad workspace root merely for discovery convenience.
+4. Require no more than eight tool commands. Each command must use structured field projection and emit at most 200 short lines. Never use `cat`, `sed`, or `rg` to print complete minified JSON/JSONL records, and never treat `head` as a byte limit.
+5. If the bounded packet cannot support the requested result, return `NEEDS_CONTEXT` instead of widening the scan.
+
+The wrapper's `4096`-token per-tool cap limits accidental output inside the Spark context, and final-message extraction prevents verbose CLI traces from flooding the parent task. Neither control authorizes a larger evidence packet or replaces local prefiltering.
 
 ## Good Spark tasks
 
@@ -88,7 +109,7 @@ Include:
 4. prohibited actions;
 5. output fields;
 6. evidence rules;
-7. file/runtime/finding budget;
+7. evidence-packet byte, candidate, excerpt, command, and output budgets;
 8. `BLOCKED` or `NEEDS_CONTEXT` stop behavior.
 
 ## Result shape
@@ -108,7 +129,7 @@ For a pure connectivity smoke test, require exactly `OK` and prohibit file inspe
 
 ## Main-agent duties
 
-- Pre-screen the exact files and prompt before the provider call.
+- Pre-screen the exact files and prompt before the provider call; build the bounded evidence packet locally when the input gate requires it.
 - Keep immediate critical-path work local and avoid duplicate assignments.
 - Review the complete Spark result before adopting any finding.
 - Perform all writes, final validation, and judgment locally.

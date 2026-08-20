@@ -108,9 +108,34 @@ if [ -n "$source_codex_home" ] && [ -f "$source_codex_home/auth.json" ] && [ -r 
   chmod 600 "$isolated_codex_home/auth.json" || terminal_failure 73 'Could not secure isolated Spark CLI authentication'
 fi
 
-if CODEX_HOME="$isolated_codex_home" "$codex_bin" exec --ignore-user-config --ephemeral --skip-git-repo-check --color never -C "$cwd" -s read-only -m gpt-5.3-codex-spark --disable concurrent_reasoning_summaries -c 'model_reasoning_effort="xhigh"' -c 'model_reasoning_summary="none"' -c 'model_supports_reasoning_summaries=false' - < "$prompt_file"; then
+last_message_file=$isolated_codex_home/last-message.txt
+diagnostic_file=$isolated_codex_home/diagnostic.log
+
+if CODEX_HOME="$isolated_codex_home" "$codex_bin" exec \
+  --strict-config \
+  --ignore-user-config \
+  --ephemeral \
+  --skip-git-repo-check \
+  --color never \
+  -C "$cwd" \
+  -s read-only \
+  -m gpt-5.3-codex-spark \
+  --disable concurrent_reasoning_summaries \
+  -c 'model_reasoning_effort="xhigh"' \
+  -c 'model_reasoning_summary="none"' \
+  -c 'tool_output_token_limit=4096' \
+  --output-last-message "$last_message_file" \
+  - < "$prompt_file" > "$diagnostic_file" 2>&1; then
+  if [ ! -r "$last_message_file" ] || [ ! -s "$last_message_file" ]; then
+    terminal_failure 70 'Spark CLI succeeded without a final message'
+  fi
+  cat "$last_message_file"
   exit 0
 else
   status=$?
+  if [ -s "$diagnostic_file" ]; then
+    tail -c 8192 "$diagnostic_file" >&2
+    printf '\n' >&2
+  fi
   terminal_failure "$status"
 fi

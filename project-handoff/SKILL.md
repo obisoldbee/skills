@@ -167,6 +167,8 @@ Use Spark for bounded, mechanical, read-only work that benefits from independent
 - Execute the bundled `scripts/run-spark-cli.sh`; do not require the user or recipient to locate another skill.
 - Fix the route to `gpt-5.3-codex-spark`, `xhigh`, ephemeral, and read-only.
 - Let the wrapper isolate writable CLI runtime state in a private temporary `CODEX_HOME`; never grant the project or live user state database extra write access.
+- Treat an explicit request to use Spark on named materials as authority for one minimally scoped provider call; request separate disclosure approval only when current project rules require it, the scope is ambiguous, or sensitive data would be sent. A pending or denied platform approval is a pre-dispatch stop, not a started Spark failure.
+- Pass the bounded-input gate in `references/spark-cli-route.md` before provider execution. For large or minified records, prepare a compact structured evidence packet locally; never let Spark discover candidates by echoing whole JSON/JSONL records or by relying on a line-only `head` limit. The wrapper's per-tool output cap is a backstop, not a substitute for prefiltering; on success it returns only the final message, and on failure only bounded diagnostics plus the terminal marker.
 - Disclose that this route creates no visible task.
 - Do not call any visible-task create/fork/handoff API for Spark, regardless of what its schema advertises.
 - Require the main agent to review findings and make all writes and final judgments.
