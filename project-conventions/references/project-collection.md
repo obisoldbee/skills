@@ -10,8 +10,10 @@ A Project Collection groups related but independently governed Project Roots. It
 ├── README.md
 ├── MEMBERS.md
 ├── <control-project>/
+│   ├── .project-conventions/        # Harness-neutral access entry
 │   └── docs/indexes/members.md
 └── <member-project>/
+    ├── .project-conventions/        # Independent member access entry
     ├── AGENTS.md
     ├── README.md
     ├── docs/
@@ -21,6 +23,8 @@ A Project Collection groups related but independently governed Project Roots. It
 ```
 
 The three collection-root files route; they do not absorb member documents or source. Exactly one **collection-control Project Root** owns the canonical member index and collection-wide deterministic tools.
+
+An Agent entering the collection first routes to the exact control/member Project Root, then runs that Project Root's local access helper before substantive work. A separate Harness conversation is not admission, and no orchestration Skill is required.
 
 ## Canonical member index
 

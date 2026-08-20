@@ -6,7 +6,6 @@ description: >-
   Codex tasks, bounded Spark CLI audits, and phase artifacts. Use for "handoff",
   "交接", "完整交接", "任务分解", "并行 Agent", "编排派发", "可见任务派发",
   "阶段交接", "新对话", "新任务", "接着做", controller/router workflows,
-  cross-harness work, Git worktrees, parallel review, concurrent writers,
   staged design-to-development, sol-ultra, sol-max, terra-max, luna-max, or
   spark. For Sol/Terra/Luna dispatch, call create_thread and validate the real
   thread/client receipt; never substitute spawn_agent, collaboration subagents,
@@ -112,15 +111,12 @@ Before dispatch:
 For two or more lanes, or any gated phase transfer:
 
 1. Read `references/orchestration-control.md`.
-2. Read `references/execution-isolation.md` when lanes may overlap in time, use different harnesses, write files, run mutable tests, or transition from review to repair.
-3. Define the final deliverable and one integration owner.
-4. Build a dependency graph with exact read paths, write paths, mutable resources, file access, workspace mode, harness, workspace identity, base revision, expected outputs, validation, and handoff gates for every lane.
-5. Decide independence before selecting concurrency. Dispatch all ready conflict-free lanes in the same wave; keep dependent waves serial.
-6. Declare same-file, read/write, service, worktree, lockfile, and generated-output conflicts. Narrow scopes or serialize them; an integration owner does not make concurrent conflicting writes safe.
-7. Route model and reasoning per lane, preserving explicit user choices.
-8. Validate every route attempt with `scripts/validate_dispatch_route.py`, then validate a durable JSON plan with `scripts/validate_orchestration_plan.py`; after creation, bind every normalized visible-task receipt with `scripts/validate_visible_task_receipt.py --plan`, and validate each external launch with `scripts/validate_external_environment_receipt.py --plan`. Treat plan validation as declared-state checking, not proof of the tool actually called or the environment actually used.
-
-Do not allocate workers from a fixed role list. Define lanes from the current goal and side effects. Multiple response-only reviewers may share one frozen input, while every unordered Git-backed writer needs a separately verified worktree. A reviewer becoming a writer is a new execution decision: re-plan its write scope and environment before sending any repair instruction.
+2. Define the final deliverable and one integration owner.
+3. Build a dependency graph with exact read paths, write paths, mutable resources, expected outputs, validation, and handoff gates for every lane.
+4. Decide independence before selecting concurrency. Dispatch all ready conflict-free lanes in the same wave; keep dependent waves serial.
+5. Declare same-file, read/write, service, worktree, lockfile, and generated-output conflicts. Narrow scopes or serialize them; an integration owner does not make concurrent conflicting writes safe.
+6. Route model and reasoning per lane, preserving explicit user choices.
+7. Validate every route attempt with `scripts/validate_dispatch_route.py`, then validate a durable JSON plan with `scripts/validate_orchestration_plan.py`; after creation, validate every normalized visible-task receipt with `scripts/validate_visible_task_receipt.py`. Treat plan validation as declared-state checking, not proof of the tool actually called.
 
 Do not split a task merely to use more Agents. Keep tightly coupled work in one lane when decomposition would increase integration risk or duplicate context.
 

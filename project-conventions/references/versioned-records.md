@@ -4,13 +4,13 @@ This document provides the complete specification for the versioned records patt
 
 ## When to Use This Pattern
 
-- **Document projects**: primary deliverable is forms, submissions, certifications, or reports
+- **Document projects with a repeated version/submission cycle**: primary deliverable is forms, submissions, certifications, or reports
 - **Any project with versioned submissions**: where each version has distinct content, limits, and outcomes
-- **Instead of daily memory logs**: when the project spans months/years and a daily log would grow unboundedly
+- **In addition to project memory**: version records preserve each deliverable state; `memory/` preserves cross-task continuity and remains required
 
 ## When NOT to Use
 
-- **Code projects**: use `memory/YYYY-MM-DD.md` daily logs instead
+- **Code projects without a separate submission/version lifecycle**
 - **One-off documents**: a single spec or plan doesn't need versioned records
 - **Projects with no submission/versioning cycle**
 

@@ -13,7 +13,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DISTRIBUTION_ROOT = PACKAGE_ROOT.parent
 
@@ -59,19 +58,19 @@ class LifecycleWorkflowTests(unittest.TestCase):
     def test_all_project_types_require_project_owned_records(self) -> None:
         for required in (
             "| Code | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |",
-            "| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`, versioned records |",
+            "| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`; add versioned records only for a real submission/version cycle |",
             "`conversation/` and `memory/` remain required",
             "Harness-owned memory or hidden directories never replace either project record",
         ):
             self.assertIn(required, self.skill)
         for required in (
             "| `conversation/` | Required | Required | Required |",
-            "| `memory/` daily logs | Required | Required | Required |",
+            "| `memory/` project continuity | Required | Required | Required |",
             "conversation/            # Required for every project type",
             "memory/                  # Required for every project type",
             "### `conversation/` (Required for Code, Document, and Hybrid)",
             "### `memory/` (Required for Code, Document, and Hybrid)",
-            "Versioned records preserve deliverable submissions; they do not replace collaboration history or project continuity",
+            "versioned records only for a real submission/version cycle",
             "does not satisfy or replace the required project-root `conversation/` and `memory/` records",
         ):
             self.assertIn(required, self.layout)
@@ -86,34 +85,38 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.agents_template,
         )
 
-    def test_concurrency_is_routed_without_permanent_role_layout(self) -> None:
+    def test_concurrency_has_project_local_admission_without_external_skill(self) -> None:
         for required in (
-            "$project-handoff",
-            "temporary per-lane execution resource",
-            "single-writer resources",
-            "response-only findings",
-            "integration owner",
+            ".project-conventions/project_access.py",
+            "project-local helper",
+            "read-only",
+            "isolated-writer",
+            "blocked or failed configured admission means no write",
+            "do not pause the requested work merely to propose `adopt-existing`",
+            "does not authorize or require retroactive initialization",
         ):
             self.assertIn(required, self.skill)
         for required in (
             "permanent `work/lanes/`",
-            "response-only reviewers",
-            "temporary worktrees",
-            "one writer at a time",
-            "scan for the next `conversation/NN-*`",
-            "One integration owner",
+            "SQLite transaction",
+            "Multiple response-only reviewers",
+            "different clean linked worktrees",
+            "A blocked Agent writes nothing",
+            "Stale claims never expire automatically",
             "Separate Agent conversations do not imply separate filesystems",
         ):
             self.assertIn(required, self.layout)
         for required in (
-            "sole active writer",
-            "only the integration owner allocates the canonical number",
-            "workers return response-only findings or use preallocated unique artifacts",
-            "integration owner updates canonical conversation, memory, and indexes",
-            "fixed role directories",
+            ".project-conventions/project_access.py status",
+            "status: entered",
+            "A blocked Agent writes nothing",
+            "exclusive writer",
             "permanent `work/lanes/`",
         ):
             self.assertIn(required, self.agents_template)
+        self.assertNotIn("$project-handoff", self.skill)
+        self.assertNotIn("$project-handoff", self.agents_template)
+        self.assertNotIn("sole active writer", self.agents_template)
         self.assertNotIn("both appends are valid", self.layout)
         for forbidden in (
             "Create a `conversation/NN-topic.md` file (scan for next number)",
@@ -121,7 +124,28 @@ class LifecycleWorkflowTests(unittest.TestCase):
             "After substantive work, append to `memory/YYYY-MM-DD.md`",
         ):
             self.assertNotIn(forbidden, self.agents_template)
-        self.assertIn("temporary worktrees or serialized execution", self.metadata)
+        self.assertIn("project-local reader/writer admission", self.metadata)
+        self.assertIn("`src/<skill-name>/SKILL.md`", self.skill)
+        self.assertIn("`docs/<skill-name>/SKILL.md` are invalid", self.skill)
+        self.assertIn("one local member `enter` automatically uses the same collection-wide", self.shared)
+        self.assertIn("no dual manual lock sequence", self.shared)
+        for required_file in (
+            "initialize_project_root.py",
+            "project_access.py",
+            "validate_project_root.py",
+            "test_project_root_workflows.py",
+        ):
+            self.assertTrue((PACKAGE_ROOT / "scripts" / required_file).is_file())
+
+    def test_project_root_workflow_suite_passes(self) -> None:
+        result = self.run_command(
+            [
+                sys.executable,
+                "-B",
+                str(PACKAGE_ROOT / "scripts" / "test_project_root_workflows.py"),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
     def run_command(
         self, command: list[str], cwd: Path | None = None
@@ -269,6 +293,14 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 "--distribution-root",
                 str(checkout),
             ]
+            for extra in (
+                ["--control-project", "CON"],
+                ["--package-subpath", "project-conventions/a|b"],
+            ):
+                rejected_portable = self.run_command([*command, *extra])
+                self.assertNotEqual(rejected_portable.returncode, 0)
+                self.assertFalse((collection / "skills").exists())
+                self.assertFalse((collection / "project-conventions").exists())
             before_head = self.git(checkout, "rev-parse", "HEAD")
             dry = self.run_command(command)
             self.assertEqual(dry.returncode, 0, dry.stderr)
@@ -337,6 +369,136 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 cwd=control,
             )
             self.assertEqual(generated_tests.returncode, 0, generated_tests.stderr)
+
+            project_root_validator = target / "scripts" / "validate_project_root.py"
+            for generated_root in (control, wrapper):
+                validated_root = self.run_command(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(project_root_validator),
+                        str(generated_root),
+                    ]
+                )
+                self.assertEqual(validated_root.returncode, 0, validated_root.stderr)
+
+            control_access = control / ".project-conventions" / "project_access.py"
+            member_access = wrapper / ".project-conventions" / "project_access.py"
+            entered_control = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(control_access),
+                    "enter",
+                    "--mode",
+                    "writer",
+                    "--session",
+                    "control-writer",
+                    "--actor",
+                    "control-agent",
+                ]
+            )
+            self.assertEqual(entered_control.returncode, 0, entered_control.stderr)
+            control_receipt = json.loads(entered_control.stdout)
+            blocked_member = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(member_access),
+                    "enter",
+                    "--mode",
+                    "writer",
+                    "--actor",
+                    "member-agent",
+                ]
+            )
+            self.assertEqual(blocked_member.returncode, 2, blocked_member.stderr)
+            finished_control = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(control_access),
+                    "finish",
+                    "--session",
+                    str(control_receipt["session_id"]),
+                    "--token",
+                    str(control_receipt["token"]),
+                    "--outcome",
+                    "success",
+                ]
+            )
+            self.assertEqual(finished_control.returncode, 0, finished_control.stderr)
+            entered_member = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(member_access),
+                    "enter",
+                    "--mode",
+                    "writer",
+                    "--session",
+                    "member-writer",
+                    "--actor",
+                    "member-agent",
+                ]
+            )
+            self.assertEqual(entered_member.returncode, 0, entered_member.stderr)
+            member_receipt = json.loads(entered_member.stdout)
+            self.assertEqual(member_receipt["runtime_storage"], "collection-control")
+            control_status = self.run_command(
+                [sys.executable, "-B", str(control_access), "status"]
+            )
+            self.assertEqual(control_status.returncode, 0, control_status.stderr)
+            self.assertEqual(
+                json.loads(control_status.stdout)["claims"][0]["session_id"],
+                "member-writer",
+            )
+            finished_member = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(member_access),
+                    "finish",
+                    "--session",
+                    str(member_receipt["session_id"]),
+                    "--token",
+                    str(member_receipt["token"]),
+                    "--outcome",
+                    "success",
+                ]
+            )
+            self.assertEqual(finished_member.returncode, 0, finished_member.stderr)
+
+            member_config = wrapper / ".project-conventions" / "project.json"
+            original_member_config = member_config.read_bytes()
+            changed = json.loads(original_member_config)
+            changed["coordination_root"] = "../project-conventions"
+            member_config.write_text(
+                json.dumps(changed, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            wrong_sibling_status = self.run_command(
+                [sys.executable, "-B", str(member_access), "status"]
+            )
+            self.assertEqual(wrong_sibling_status.returncode, 3)
+            wrong_sibling_validation = self.run_command(
+                [sys.executable, "-B", str(project_root_validator), str(wrapper)]
+            )
+            self.assertNotEqual(wrong_sibling_validation.returncode, 0)
+            member_config.write_bytes(original_member_config)
+
+            control_access_readme = control / ".project-conventions" / "ACCESS.md"
+            original_access_readme = control_access_readme.read_bytes()
+            control_access_readme.write_bytes(original_access_readme + b"tampered\n")
+            tampered_coordinator_status = self.run_command(
+                [sys.executable, "-B", str(member_access), "status"]
+            )
+            self.assertEqual(tampered_coordinator_status.returncode, 3)
+            tampered_coordinator_validation = self.run_command(
+                [sys.executable, "-B", str(project_root_validator), str(wrapper)]
+            )
+            self.assertNotEqual(tampered_coordinator_validation.returncode, 0)
+            control_access_readme.write_bytes(original_access_readme)
 
             repeated = self.run_command([*command, "--apply"])
             self.assertEqual(repeated.returncode, 0, repeated.stderr)

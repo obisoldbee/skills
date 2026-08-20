@@ -13,6 +13,7 @@ creates Agent consumer links, or rewrites an existing non-deterministic tree.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -42,6 +43,14 @@ PUBLIC_ROOT_FILES = (
     "scripts/verify_release.py",
 )
 PUBLIC_ROOT_DIRECTORIES = (".github", ".github/workflows", "config", "scripts")
+WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
 TEMPLATE_FILES = (
     "src/scripts/build_public_root_overlay.py",
     "src/scripts/link-macos.sh",
@@ -49,6 +58,7 @@ TEMPLATE_FILES = (
     "src/tests/test_public_root_overlay.py",
 )
 CONTROL_DIRECTORIES = (
+    ".project-conventions",
     "conversation",
     "docs/decisions",
     "docs/indexes",
@@ -65,6 +75,7 @@ CONTROL_DIRECTORIES = (
     "src/tests",
 )
 MEMBER_DIRECTORIES = (
+    ".project-conventions",
     "conversation",
     "docs/decisions",
     "docs/indexes",
@@ -82,14 +93,80 @@ class ControlInitializationError(RuntimeError):
     """Raised when initialization cannot proceed without guessing or overwriting."""
 
 
+def render_access_block() -> str:
+    return """<!-- project-conventions:access:start -->
+## Mandatory Agent Entry
+
+- Before substantive work, run `python3 -B .project-conventions/project_access.py status`.
+- Response-only inspection enters `read-only`; any possible side effect enters `writer`. Do not write until the JSON receipt says `status: entered`.
+- Save the returned `session_id` and `token`, re-read current state, run `check` before write batches, and finish project records before `finish`.
+- A blocked Agent writes nothing. Never auto-clear another claim; recovery requires explicit user authorization, a reason, dry-run, then `--apply --token <recovery-token>` with the same reason.
+- The entry is project-local and works from any cooperating Harness; no dispatcher or Agent messaging is required.
+<!-- project-conventions:access:end -->
+"""
+
+
+def render_access_files(
+    project_type: str = "code",
+    project_role: str = "ordinary",
+    coordination_id: str | None = None,
+    runtime_backend: str = "project-local",
+    coordination_root: str | None = None,
+) -> dict[str, str]:
+    helper_path = PACKAGE_ROOT / "scripts" / "project_access.py"
+    validate_source_file(helper_path, "project access helper")
+    helper = helper_path.read_text(encoding="utf-8")
+    access_block = render_access_block().rstrip("\n")
+    access_readme = (
+        "# Project Access\n\n"
+        "Use `project_access.py status`, then obtain `read-only` or exclusive `writer` "
+        "admission before substantive work. Save the returned session and token. "
+        "Claims never expire automatically. Recovery requires explicit user authorization: "
+        "run a dry-run with the reason, then repeat with `--apply`, the same reason, and "
+        "the returned one-time `--token`.\n"
+    )
+    config = {
+        "access_readme_sha256": hashlib.sha256(access_readme.encode("utf-8")).hexdigest(),
+        "agents_block_sha256": hashlib.sha256(access_block.encode("utf-8")).hexdigest(),
+        "coordination_id": coordination_id,
+        "coordination_root": coordination_root,
+        "helper_sha256": hashlib.sha256(helper.encode("utf-8")).hexdigest(),
+        "project_profile": "standard",
+        "project_role": project_role,
+        "project_type": project_type,
+        "records_dir": None,
+        "repository_root": None,
+        "runtime_backend": runtime_backend,
+        "schema_version": 1,
+        "skill_package": None,
+    }
+    files = {
+        ".project-conventions/.gitignore": "/runtime/\n*.sqlite3\n*.sqlite3-journal\n",
+        ".project-conventions/ACCESS.md": access_readme,
+        ".project-conventions/project.json": (
+            json.dumps(config, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        ),
+        ".project-conventions/project_access.py": helper,
+    }
+    return files
+
+
 def validate_name(value: str, label: str) -> str:
-    if not SAFE_NAME.fullmatch(value) or value in {".", ".."}:
+    stem = value.split(".", 1)[0].upper()
+    if (
+        not SAFE_NAME.fullmatch(value)
+        or value in {".", ".."}
+        or value.endswith((".", " "))
+        or stem in WINDOWS_RESERVED_NAMES
+    ):
         raise ControlInitializationError(f"unsafe {label}: {value!r}")
     return value
 
 
 def validate_relative(value: str, label: str) -> str:
-    normalized = value.replace("\\", "/").strip("/")
+    if "\\" in value or value != value.strip("/"):
+        raise ControlInitializationError(f"unsafe {label}: {value!r}")
+    normalized = value
     path = PurePosixPath(normalized)
     if (
         not normalized
@@ -98,6 +175,14 @@ def validate_relative(value: str, label: str) -> str:
         or any(part in {"", ".", ".."} for part in path.parts)
     ):
         raise ControlInitializationError(f"unsafe {label}: {value!r}")
+    for part in path.parts:
+        stem = part.split(".", 1)[0].upper()
+        if (
+            any(ord(character) < 32 or character in '<>:"|?*' for character in part)
+            or part.endswith((".", " "))
+            or stem in WINDOWS_RESERVED_NAMES
+        ):
+            raise ControlInitializationError(f"unsafe {label}: {value!r}")
     return path.as_posix()
 
 
@@ -370,7 +455,7 @@ def render_control_files(
         remote_identity,
         member_category,
     )
-    return {
+    files = {
         ".gitignore": ".DS_Store\nruntime/\nrelease/*/\n*.tmp\n__pycache__/\n*.py[cod]\n",
         "AGENTS.md": f"""# AGENTS.md
 
@@ -379,6 +464,8 @@ def render_control_files(
 ## Project
 
 `{control_project}` owns device-local membership, explicit Skill exports, safe link utilities, and a root-overlay builder that reads the shared checkout directly. It does not own member source or a second root-file copy.
+
+{render_access_block()}
 
 ## Mandatory Rules
 
@@ -430,6 +517,15 @@ Initialization creates no Agent links. Linking is a later, separately authorized
 Updating one Skill is update-only: refresh `../{repository_project}` safely, validate the named package, and stop. It does not reinitialize this collection or relink consumers.
 """,
         "docs/indexes/members.md": members,
+        "conversation/00-initialization.md": (
+            "# Collection-Control Initialization\n\n"
+            "This Project Root was created by the deterministic shared-Skills initializer. "
+            "No Agent links, Git history changes, or member migrations were performed.\n"
+        ),
+        "memory/MEMORY.md": (
+            "# Project Memory\n\n"
+            "Durable collection-control facts belong here after substantive work.\n"
+        ),
         "src/README.md": f"""# Collection-Control Source
 
 This directory contains deterministic control assets only. Member source is not copied here.
@@ -441,15 +537,23 @@ This directory contains deterministic control assets only. Member source is not 
             f"project-conventions\t{repository_project}/{package_subpath}\tall\n"
         ),
     }
+    files.update(
+        render_access_files(
+            project_role="collection-control",
+            coordination_id=control_project,
+        )
+    )
+    return files
 
 
 def render_member_files(
+    control_project: str,
     repository_project: str,
     member_project: str,
     package_subpath: str,
     remote_identity: str,
 ) -> dict[str, str]:
-    return {
+    files = {
         "AGENTS.md": f"""# AGENTS.md
 
 > Agent entry point for the `{member_project}` Project Root.
@@ -458,9 +562,13 @@ def render_member_files(
 
 This wrapper owns project documents, conversation, and memory. Its loadable Skill source is the stable projection `src/{member_project}`; the one Git source of truth is `../{repository_project}/{package_subpath}`.
 
+{render_access_block()}
+
 ## Mandatory Rules
 
+- This member's local helper stores claims in `../{control_project}/.project-conventions/runtime`, so one local `enter` automatically shares the collection-wide gate used by every member and the control project. Do not bypass it by entering `../{repository_project}` directly.
 - Edit Skill content through `src/{member_project}` or directly at `../{repository_project}/{package_subpath}`; both resolve to the same bytes.
+- `SKILL.md` is package source even though it is Markdown; never move the package under this wrapper's `docs/` or into an Agent consumer directory.
 - Run Git only at `../{repository_project}` after verifying the worktree root, remote, branch, and status.
 - An update request runs `src/{member_project}/scripts/update_shared_checkout.py`, validates the named package, reports the before/after commit, and stops.
 - Update-only never rewrites this wrapper, collection indexes, other members, or Agent links.
@@ -489,7 +597,25 @@ The wrapper keeps project-local documents and continuity records. The shared Git
 
 To update this Skill only, run its `scripts/update_shared_checkout.py` entry. It may fast-forward the shared repository, validates this named package, and then stops without rebuilding the collection or links.
 """,
+        "conversation/00-initialization.md": (
+            "# Member Wrapper Initialization\n\n"
+            "This wrapper was created around the verified shared package source. "
+            "No second checkout or source copy was created.\n"
+        ),
+        "memory/MEMORY.md": (
+            "# Project Memory\n\n"
+            "Durable wrapper facts belong here after substantive work.\n"
+        ),
     }
+    files.update(
+        render_access_files(
+            project_role="collection-member",
+            coordination_id=control_project,
+            runtime_backend="collection-control",
+            coordination_root=f"../{control_project}",
+        )
+    )
+    return files
 
 
 def render_root_files(
@@ -592,9 +718,14 @@ def expected_control_files(dynamic: dict[str, str]) -> set[str]:
     return expected
 
 
-def observed_files(root: Path, ignored_links: set[str] | None = None) -> set[str]:
+def observed_files(
+    root: Path,
+    ignored_links: set[str] | None = None,
+    ignored_directories: set[str] | None = None,
+) -> set[str]:
     """List files without ever descending through a link or junction."""
     ignored_links = ignored_links or set()
+    ignored_directories = ignored_directories or set()
     observed: set[str] = set()
     pending = [root]
     while pending:
@@ -608,7 +739,8 @@ def observed_files(root: Path, ignored_links: set[str] | None = None) -> set[str
                         observed.add(relative)
                     continue
                 if entry.is_dir(follow_symlinks=False):
-                    pending.append(path)
+                    if relative not in ignored_directories:
+                        pending.append(path)
                 elif entry.is_file(follow_symlinks=False):
                     observed.add(relative)
                 else:
@@ -629,7 +761,11 @@ def verify_control_tree(control_root: Path, dynamic: dict[str, str]) -> None:
         if path.read_text(encoding="utf-8") != content:
             raise ControlInitializationError(f"generated control file differs: {path}")
     expected = expected_control_files(dynamic)
-    observed = observed_files(control_root)
+    runtime = control_root / ".project-conventions" / "runtime"
+    if is_link_or_junction(runtime) or (runtime.exists() and not runtime.is_dir()):
+        raise ControlInitializationError(f"control runtime path is not a real directory: {runtime}")
+    ignored_runtime = {".project-conventions/runtime"} if runtime.is_dir() else set()
+    observed = observed_files(control_root, ignored_directories=ignored_runtime)
     if observed != expected:
         raise ControlInitializationError(
             f"control file set differs: missing={sorted(expected - observed)} "
@@ -695,7 +831,15 @@ def verify_member_tree(
         )
     if not (projection / "SKILL.md").is_file():
         raise ControlInitializationError(f"member projection package entry is missing: {projection}")
-    observed = observed_files(member_root, {f"src/{member_project}"})
+    runtime = member_root / ".project-conventions" / "runtime"
+    if is_link_or_junction(runtime) or (runtime.exists() and not runtime.is_dir()):
+        raise ControlInitializationError(f"member runtime path is not a real directory: {runtime}")
+    ignored_runtime = {".project-conventions/runtime"} if runtime.is_dir() else set()
+    observed = observed_files(
+        member_root,
+        {f"src/{member_project}"},
+        ignored_directories=ignored_runtime,
+    )
     expected = set(dynamic)
     if observed != expected:
         raise ControlInitializationError(
@@ -809,6 +953,7 @@ def initialize(
         member_category,
     )
     member_files = render_member_files(
+        control_project,
         repository_project,
         member_project,
         package_subpath,

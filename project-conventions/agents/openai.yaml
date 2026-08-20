@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Conventions"
   short_description: "Govern project roots, repositories, and safe concurrency"
-  default_prompt: "Use $project-conventions to choose the exact lifecycle and path roles, preserve repository and runtime boundaries, keep update-only scoped to one named package, and route overlapping writers to temporary worktrees or serialized execution without creating permanent role directories."
+  default_prompt: "Use $project-conventions to choose the exact lifecycle and path roles. Initialize or adopt only when that is the selected request; never interrupt an unrelated task merely because a legacy project lacks the local helper. Preserve repository and material boundaries, and enforce project-local reader/writer admission whenever the exact Project Root has adopted it."

@@ -28,6 +28,8 @@ It is not:
 
 Each direct or nested child project remains an independent **Project Root** with its own conventions and optional Git history.
 
+The workspace root only routes. After selecting a child Project Root or `_project-catalog/`, every Agent uses that target's project-local access helper before substantive work; the workspace itself does not grant a writer slot.
+
 The Projects Workspace manages only the current computer. Another computer may contain fewer or different projects and repeats the same local initialization independently.
 
 ## 2. Minimal layout
@@ -39,6 +41,7 @@ The Projects Workspace manages only the current computer. Another computer may c
 ├── _project-catalog/                 # Reserved local management project
 │   ├── AGENTS.md
 │   ├── README.md
+│   ├── .project-conventions/         # Catalog Project Root access entry
 │   ├── .gitignore
 │   ├── config/
 │   │   ├── scan.yaml

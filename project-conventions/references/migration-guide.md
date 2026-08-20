@@ -2,6 +2,8 @@
 
 This document provides the step-by-step procedure for migrating a project's directory layout to conform to the `project-conventions` standard. It is based on real-world migrations (OB Dim, Pets) and covers safety checks, atomic moves, reference syncing, and verification.
 
+Before any migration write, obtain the initialized Project Root's exclusive project-local `writer` claim. If the access helper is missing, initialize/adopt the Project Root first or remain read-only. A blocked Agent does not create a migration record, move files, or update indexes. Keep the claim through readback, conversation, and memory updates, then finish it.
+
 ## When to Use This Guide
 
 - Restructuring an existing project to conform to the standard layout

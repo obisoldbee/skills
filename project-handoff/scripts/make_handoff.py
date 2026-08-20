@@ -49,17 +49,7 @@ cwd: {cwd}
 ## 交接类型与接收方
 - type: complete
 - recipient:
-- harness:
 - recipient capabilities: create_thread=unknown, CLI=unknown, filesystem=unknown
-
-## 项目、执行环境与权限
-- file access: read_only | write
-- workspace mode: shared_checkout | worktree | non_git
-- worktree source:
-- Repository Root (actual lane Git top-level):
-- workspace path: {cwd}
-- base revision (full commit for Git; verified content-state digest for non-Git):
-- environment receipt: pending; this scaffold alone never proves launch or write authority
 
 ## 当前目标
 -
@@ -69,9 +59,6 @@ cwd: {cwd}
 - Controller:
 - integration owner:
 - active/ready/blocked lanes:
-- lane read paths:
-- lane write paths:
-- mutable resources:
 - dependencies and phase gates:
 - explicit model/reasoning choices to preserve:
 
@@ -107,9 +94,7 @@ cwd: {cwd}
 -
 
 ## 接收 Agent 第一动作
-- Read back the actual workspace, base, and current state before doing work.
-- If this is an external-harness handoff, remain standby until launch/environment evidence exists.
-- If review changes to repair, re-plan file access, write scope, conflicts, and environment before editing.
+-
 """
     )
 

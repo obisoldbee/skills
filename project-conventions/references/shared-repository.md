@@ -10,6 +10,7 @@ The shared Repository Root is collection infrastructure. It owns Git history and
 |---|---|
 | Git history and package bytes | `<collection>/GitHub` |
 | Project documents and continuity | `<collection>/<member>/` |
+| Cross-Harness reader/writer admission | `<collection>/<member>/.project-conventions/` and `<collection>/skills/.project-conventions/` |
 | Member and Repository Root mapping | `<collection>/skills/docs/indexes/members.md` |
 | Agent export allowlist | `<collection>/skills/src/config/skill-exports.tsv` |
 | Runtime consumer | Existing Agent-specific Skill root |
@@ -64,11 +65,13 @@ For a new or explicitly cleared collection, the allowed initial write order is:
 4. Validate repository-root manifest and named package separately.
 5. Run `initialize_skills_control_project.py` dry-run.
 6. Run the same initializer with `--apply`.
-7. Read back root files, control project, wrapper, projection, index, and direct export.
+7. Read back root files, control project, wrapper, both project-local access entries, projection, index, and direct export.
 8. Rerun the initializer and require `already_initialized`.
 9. Stop before consumer links unless exact Agent targets were also authorized.
 
 The clone path is final from the start. Do not clone beneath a temporary member `src/` and then ask the initializer to discover or move it.
+
+The generated control and member Project Roots each contain a Harness-neutral access helper, but every member helper stores its claims in the collection-control runtime. Therefore one local member `enter` automatically uses the same collection-wide reader/writer gate as the control project and every other member. This prevents two wrappers from independently obtaining permission to mutate the same physical Git index/HEAD; no dual manual lock sequence, Agent messaging, or orchestration Skill is required. A member wrapper with a missing/wrong `coordination_root` is invalid and must fail closed.
 
 ## Git safety gate
 

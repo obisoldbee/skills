@@ -13,6 +13,8 @@ Use this reference before filesystem-governance references whenever a request me
 
 `clone` does not authorize sibling scans or Agent installation. `update` does not authorize initialization. An explicit end-to-end request naming the target, repository, migration inputs, and consumers authorizes those exact stages without making the user reconfirm the same map.
 
+Likewise, an unrelated bug fix, implementation, review, build, or run request does not become Full initialization merely because the current legacy Project Root lacks `.project-conventions/`. Do not pause it to propose adoption unless the user asked for governance or actual concurrent-write evidence makes the requested write unsafe under the project's current rules.
+
 ## Full initialization: shared Skills collection
 
 Read `shared-repository.md`. Freeze these roles before writing:
@@ -187,7 +189,21 @@ For an explicitly named upstream pool:
 
 ## Generic non-shared initialization
 
-For an ordinary Projects Workspace, Project Collection, or Project Root that does not use the shared profile, route to its governance reference and use its initializer. A normal Git-backed Project Root usually keeps its Repository Root under `src/`.
+For an ordinary Projects Workspace or Project Collection, route to its governance reference and named initializer.
+
+For a Code, Document, or Hybrid Project Root, read `project-root-initialization.md`, choose `fresh-empty` or `adopt-existing`, and run the deterministic dry-run/apply/validate chain:
+
+```text
+python3 -B scripts/initialize_project_root.py <target> \
+  --type <code|document|hybrid> \
+  --mode <fresh-empty|adopt-existing>
+python3 -B scripts/initialize_project_root.py <target> \
+  --type <code|document|hybrid> \
+  --mode <fresh-empty|adopt-existing> --apply
+python3 -B scripts/validate_project_root.py <target>
+```
+
+The initializer preserves existing user material, creates no Git root or worktree, and installs a self-contained `.project-conventions/project_access.py` entry. Any Agent or Harness must obtain a local access claim before substantive work; read `project-access.md`. A normal Git-backed Project Root usually keeps its Repository Root under `src/`.
 
 Do not apply the shared exception merely because two projects use the same hosting provider. It requires an explicit collection-relative `repository_root` plus a repository-relative `managed_scope`.
 

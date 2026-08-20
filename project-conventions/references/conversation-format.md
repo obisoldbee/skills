@@ -2,6 +2,8 @@
 
 This document defines the standard format for files under `conversation/`. The goal is to capture not just the outcome of a discussion, but the **reasoning process**: what the agent proposed, what the user changed, and why.
 
+Allocate and write a canonical conversation file only while holding the Project Root's exclusive `writer` claim. Read-only and isolated-worktree Agents return their findings or commits first; the later shared writer records the integrated reasoning and user corrections without replacing the original inputs.
+
 ## File Template
 
 ```markdown

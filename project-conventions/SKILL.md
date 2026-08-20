@@ -1,6 +1,6 @@
 ---
 name: project-conventions
-description: "Initialize, organize, migrate, or update project filesystems without confusing a workspace, collection, project wrapper, Git checkout, Agent Skill root, or temporary worktree. Supports owned public and private Skill distributions, third-party checkout pools, stable member projections, device/network runtime boundaries, complete control files, scoped Agent links, a strict update-only path, and safe routing for concurrent Agents or cross-harness work. Use for 项目目录初始化, obisoldbee-skills 初始化, 克隆最新版技能, 更新某个 Skill, 多设备同步, 私有 Skill 仓库, GitHub-private, GitHub-others, 设备或网络限定 Skill, 多 Agent 并发, worktree, 项目合集, 项目根目录, AGENTS.md, README.md, repository mapping, symlink or junction, and directory migration."
+description: "Initialize, organize, migrate, or update project filesystems without confusing a workspace, collection, project wrapper, Git checkout, Agent Skill root, or temporary worktree. Provides deterministic ordinary Project Root initialization and a project-local, Harness-neutral reader/writer admission protocol, plus owned public/private Skill distributions, third-party checkout pools, stable member projections, device/network boundaries, scoped Agent links, and a strict update-only path. Use for 项目目录初始化, 任意 Agent 安全进入, 多 Agent 并发, 跨 Harness, worktree, obisoldbee-skills 初始化, 克隆最新版技能, 更新某个 Skill, 多设备同步, 私有 Skill 仓库, GitHub-private, GitHub-others, 设备或网络限定 Skill, 项目合集, 项目根目录, AGENTS.md, README.md, repository mapping, symlink or junction, and directory migration."
 ---
 
 # Project Conventions
@@ -18,6 +18,8 @@ For clone, initialization, sync, pull, or update work, read `references/lifecycl
 
 The presence of `AGENTS.md`, `README.md`, another project, or an Agent Skill directory never broadens the request. Do not inspect or modify unnamed siblings.
 
+Loading this Skill during an unrelated implementation, review, or bug-fix task does not authorize or require retroactive initialization. The project-local admission protocol is mandatory only when the exact Project Root already contains its managed access block/config, or when the user selected initialization/adoption in this task. If a legacy Project Root has no local entry and its own `AGENTS.md` does not require one, do not pause the requested work merely to propose `adopt-existing`; follow its current rules and report the uncoordinated legacy boundary. Stop only on observed concurrent-write evidence or another actual conflict. Never install governance files as a side effect of an unrelated task.
+
 ## Shared-repository Skills collection profile
 
 Read `references/shared-repository.md` completely when the target is a Skills collection backed by `obisoldbee/skills`, or when the user asks for the same directory shape on another device.
@@ -32,11 +34,13 @@ The standard shape is:
 ├── GitHub/                                  # the one Git worktree
 │   └── project-conventions/                 # true package source
 ├── project-conventions/                     # stable Project Root wrapper
+│   ├── .project-conventions/                # project-local cross-Harness access entry
 │   ├── docs/
 │   ├── conversation/
 │   ├── memory/
 │   └── src/project-conventions              # symlink/junction projection
 └── skills/                                  # collection-control Project Root
+    ├── .project-conventions/                 # independent control-project access entry
     └── src/config/skill-exports.tsv          # direct source: GitHub/project-conventions
 ```
 
@@ -158,13 +162,15 @@ Read `references/project-collection.md` completely.
 
 ## Project Root mode
 
-Read `references/directory-layout.md` completely and select the primary deliverable:
+Read `references/directory-layout.md` completely and select the primary deliverable. For initialization or adoption, also read `references/project-root-initialization.md`:
 
 | Type | Required paths |
 |---|---|
 | Code | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |
-| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`, versioned records |
+| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`; add versioned records only for a real submission/version cycle |
 | Hybrid | Code paths plus relevant document paths; `conversation/` and `memory/` remain required |
+
+An Agent Skill development workspace remains a **Code** Project and adds the `agent-skill` profile. Its package is executable/configuration source even when the entry is Markdown: the exact entry is `src/<skill-name>/SKILL.md`, with the complete package under `src/<skill-name>/`. `src/SKILL.md` and `docs/<skill-name>/SKILL.md` are invalid. Agent-specific Skill directories are installation consumers, never editable source. The shared-repository profile is separate: its wrapper source is a verified projection to the true package in the shared checkout.
 
 Core rules:
 
@@ -175,9 +181,26 @@ Core rules:
 5. Archive superseded project documents rather than silently deleting them.
 6. Verify Repository Roots with Git; do not infer them from folder names.
 7. Keep wrapper metadata and machine paths out of portable/public packages.
-8. Do not create permanent role directories or worktrees during ordinary initialization. When Agents may overlap in time, classify lanes by actual reads, writes, and mutable resources. Route orchestration to `$project-handoff` when available; otherwise serialize all writers.
-9. A Git worktree is a temporary per-lane execution resource, not a Project Root, Repository Root copy, project type, or conversation boundary. It prevents immediate filesystem overwrite but does not remove merge conflicts.
-10. Treat `conversation/`, `memory/`, indexes, status files, and other shared records as single-writer resources. Workers return response-only findings or write preallocated unique artifacts; one integration owner reconciles and writes canonical records.
+8. Ordinary initialization installs `.project-conventions/project_access.py` inside the target. This project-local helper—not Codex, another Skill, a role name, or Agent messaging—is the admission authority for cooperating Harnesses after adoption.
+9. In an adopted Project Root whose local `AGENTS.md` contains the managed access block, every Agent runs `status` and obtains `read-only`, exclusive `writer`, or validated linked-worktree `isolated-writer` admission. A blocked or failed configured admission means no write, including reviews, conversation, memory, indexes, caches, Git, databases, or services. Missing governance in a legacy project is not itself permission to initialize and is not an unrelated-task blocker.
+10. Do not create permanent role directories or worktrees during ordinary initialization. A Git worktree is an optional temporary execution resource and does not remove logical path, merge, lockfile, service, or canonical-record conflicts.
+11. `conversation/`, `memory/`, indexes, status files, and other canonical records require the exclusive shared writer. An isolated writer cannot claim them; merge and final record updates happen only after isolated writers finish.
+
+Initialize an ordinary Project Root with a dry-run, explicit type/mode, apply, and target validation:
+
+```text
+python3 -B scripts/initialize_project_root.py <target> \
+  --type <code|document|hybrid> \
+  --mode <fresh-empty|adopt-existing>
+python3 -B scripts/initialize_project_root.py <target> \
+  --type <code|document|hybrid> \
+  --mode <fresh-empty|adopt-existing> --apply
+python3 -B scripts/validate_project_root.py <target>
+```
+
+For an Agent Skill Code Project, add `--profile agent-skill --skill-name <lowercase-hyphen-name>` to both initializer commands. Validation then requires that exact package entry and a matching frontmatter `name`.
+
+After initialization, any Harness enters through relative project-local commands documented in `references/project-access.md`; it does not need this Skill installed at runtime. Existing materials are preserved and never moved by initialization.
 
 For a contribution fork, read `references/fork-workflow.md`. For records, use `references/conversation-format.md`, `references/review-naming.md`, and `references/versioned-records.md` as routed.
 
@@ -223,6 +246,8 @@ A successful shared Skills initialization has:
 | `references/projects-workspace.md` | Maintaining a Projects Workspace |
 | `references/project-collection.md` | Initializing or maintaining a collection |
 | `references/directory-layout.md` | Initializing or explaining one Project Root |
+| `references/project-root-initialization.md` | Deterministically creating or adopting an ordinary Project Root |
+| `references/project-access.md` | Any overlapping Agent/Harness work or linked-worktree writer |
 | `references/agents-md-template.md` | Creating or revising AGENTS.md |
 | `references/migration-guide.md` | Moving existing paths or repository boundaries |
 | `references/fork-workflow.md` | Configuring a fork and upstream |

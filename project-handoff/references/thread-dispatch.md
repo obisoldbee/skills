@@ -19,10 +19,8 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 - Use `list_projects` before project-scoped creation when that tool exists.
 - If the live `create_thread` schema resolves a verified workspace/project target directly, follow that schema instead of inventing an obsolete lookup step.
 - Match the user-provided or currently verified path unambiguously. Never guess a project id, host, checkout, or worktree.
-- Match the lane's validated `file_access` and `workspace_mode`. For unordered writers in one Git repository, request worktrees; for shared read-only reviewers, local execution is allowed only on the one frozen base recorded in the plan.
 - Do not create a projectless task as a fallback unless the user authorized projectless execution.
 - If the surface lacks visible-task creation, produce a complete portable handoff. Do not silently substitute a hidden subagent.
-- External harnesses do not use this visible-task receipt. Keep them on `portable_handoff` and require `scripts/validate_external_environment_receipt.py --plan` before `running`.
 
 ## Visible-task exclusivity
 
@@ -45,12 +43,10 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
   - ready creation: `threadId` and `hostId`;
   - queued worktree setup: `clientThreadId`.
 - **Postcondition**: Normalize the raw return as the receipt shape below and require `scripts/validate_visible_task_receipt.py` to report `valid: true` before registration.
-- **Environment postcondition**: A queued worktree may be registered but is not execution-ready. Before a lane writes, read back the task and Git state; require the normalized receipt to prove `worktree_source`, the linked worktree's own Repository Root, workspace path, frozen base, clean pre-write status, and distinct Git/common directories. For a same-source concurrency wave, update the plan with every writer's actual paths and rerun plan validation before authorizing any writer in that wave.
 - **Failure handling**: An unsupported parameter, invalid request, permission/auth/quota failure, or provider/model failure is not a synchronization delay and must not be retried by stripping or changing route fields. When creation returns an ambiguous result, inspect current task state before considering any new create call. Do not silently use a hidden subagent.
 - **Stop rules**:
   - Do not pass a `clientThreadId` to tools requiring a `threadId`.
   - Do not claim prompt acceptance from creation alone when the receipt does not cover delivery and readback is available.
-  - Do not mark a task `running` or send a write instruction while `environment_verified` is false.
   - Treat every created task as user-owned and visible in the task list.
 
 ## `set_thread_title`
@@ -84,7 +80,6 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 - **Do not use when**: Creating the initial task.
 - **Failure handling**: Do not duplicate the same follow-up after an uncertain send without checking the task.
 - **Route rule**: Preserve the task's effective model/reasoning route. Do not pass a new model or `thinking` value unless the user explicitly requested that route change; in particular, keep `luna-max` at `max`.
-- **Execution rule**: A follow-up that changes `file_access=read_only` into file repair is not an ordinary continuation. Re-plan write paths and mutable resources, wait for other readers or move to a verified worktree, then validate the revised environment before sending repair instructions. The dispatch-attempt receipt must include `prior_file_access`, `requested_file_access`, `plan_guard_valid`, and `environment_guard_valid`; unsupported fields are rejected rather than ignored.
 
 ## `set_thread_archived`
 
@@ -104,17 +99,16 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 3. Select the route, write its dispatch-attempt receipt, and require `valid: true` from `scripts/validate_dispatch_route.py`.
 4. Generate internal prompt.
 5. Create task.
-6. Normalize and validate the real creation receipt, including requested file access, workspace mode, and environment.
+6. Normalize and validate the real creation receipt.
 7. Set title.
-8. Confirm prompt delivery and read back actual environment. Keep the task non-running when the environment remains unverified.
-9. For a Git write lane, verify the worktree path and base revision before authorizing writes.
-10. Return task receipt.
+8. Confirm delivery from the receipt or read back once.
+9. Return task receipt.
 
 ## Multi-lane lifecycle
 
 1. Build and validate the dependency graph, scopes, conflict declarations, routes, and integration owner.
 2. Create all currently ready, conflict-free lanes in one wave, within the live concurrency cap.
-3. Validate every real creation receipt, then immediately record each ready task id or queued client id, actual tool, harness, planned and actual environment, dependencies, route, expected outputs, and last cursor/time.
+3. Validate every real creation receipt, then immediately record each ready task id or queued client id, actual tool, role, dependencies, route, expected outputs, and last cursor/time.
 4. Wait on the wave with bounded calls while keeping target-specific cursors.
 5. Reconcile final task state, direct user-to-worker changes, output artifacts, and lane validation.
 6. Mark a passed lane `succeeded_pending_integration`; keep missing or failed gates in `needs_fix`, `blocked`, `failed`, or `aborted`.
@@ -142,23 +136,10 @@ Required creation-receipt fields:
 
 ~~~yaml
 actual_tool: codex_app__create_thread
-run_id: <controller run id>
-lane_id: <lane id>
-harness: codex
 status: created_confirmed | created_unconfirmed | queued | failed
 surface: visible_thread
 requested_route: sol-max | terra-max | luna-max | <supported visible route>
 task_kind: codex
-file_access: read_only | write
-workspace_mode: shared_checkout | worktree | non_git
-requested_environment: local | worktree
-actual_environment: local | worktree | pending | unknown
-environment_verified: receipt | readback | false
-worktree_source: <source Repository Root or null>
-repository_root: <absolute path or null>
-workspace_path: <absolute path or null>
-base_revision: <full commit for Git, verified content-state digest for non-Git, or null>
-environment_evidence: <null, or exactly one mode-specific shape below>
 thread_id: <ready task id or null>
 client_thread_id: <queued client id or null>
 host_id: <ready host id or null>
@@ -166,36 +147,9 @@ prompt_verified: receipt | readback | false
 failure: <message or null>
 ~~~
 
-For a confirmed Git worktree, use exactly this evidence shape; a shared checkout uses the same fields with `worktree_source: null` and equal `git_dir` / `git_common_dir`:
-
-~~~yaml
-environment_evidence:
-  verified_by: git_readback
-  worktree_source: <absolute source Repository Root>
-  repository_root: <actual linked-worktree Git top-level>
-  workspace_path: <actual execution directory inside that root>
-  base_revision: <full commit>
-  git_dir: <absolute per-worktree Git directory>
-  git_common_dir: <absolute shared Git directory>
-  head_revision: <same full commit before writes>
-  working_tree_clean: true
-~~~
-
-For confirmed non-Git execution, use exactly:
-
-~~~yaml
-environment_evidence:
-  verified_by: snapshot_readback
-  worktree_source: null
-  repository_root: null
-  workspace_path: <absolute execution directory>
-  base_revision: <snapshot:sha256 digest>
-  content_state_verified: true
-~~~
-
 Do not include `agentPath`, `agentThreadId`, `agent_path`, or `agent_thread_id`.
 
-Controller registry fields only (do not pass this superset to the receipt validator):
+Controller registry/receipt fields:
 
 ~~~yaml
 run_id:
@@ -212,16 +166,6 @@ requested_route:
 model:
 reasoning:
 surface:
-file_access:
-workspace_mode:
-requested_environment:
-actual_environment:
-environment_verified:
-worktree_source:
-repository_root:
-workspace_path:
-base_revision:
-environment_evidence:
 model_basis:
 reasoning_basis:
 dispatch_guard_valid:

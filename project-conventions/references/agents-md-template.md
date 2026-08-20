@@ -23,9 +23,13 @@ AGENTS.md is an **index**, not a reference manual. It follows three principles:
 
 ## Mandatory Rules
 
-When working in this workspace, follow the `project-conventions` skill:
-- Skill location: `<skills-dir>/project-conventions/SKILL.md` (path varies by agent tool)
-- [3-5 key rules, one line each]
+<!-- project-conventions:access:start -->
+- Before substantive work, run `python3 -B .project-conventions/project_access.py status`.
+- Response-only inspection enters `read-only`; any possible side effect enters `writer`. Do not write until the JSON receipt says `status: entered`.
+- Save the returned `session_id` and `token`, re-read current state, run `check` before write batches, and `finish` only after project records are complete.
+- A blocked Agent writes nothing. Never auto-clear another claim; recovery needs explicit user authorization, a reason, dry-run, then `--apply`.
+- A clean linked Git worktree may use `isolated-writer` with exact non-overlapping `--write-path` values, but canonical records still require the exclusive writer.
+<!-- project-conventions:access:end -->
 
 ## Directory Index
 
@@ -40,6 +44,7 @@ When working in this workspace, follow the `project-conventions` skill:
 | `src/` | Source code | — |
 | `release/` | Build artifacts (on demand) | — |
 | `memory/` | Agent-maintained project memory | — |
+| `.project-conventions/` | Harness-neutral status/enter/check/finish/recover entry | `.project-conventions/ACCESS.md` |
 
 ## Source Mapping
 
@@ -53,17 +58,27 @@ When working in this workspace, follow the `project-conventions` skill:
 
 ## Quick Reminders
 
+- Missing or failed local access helper? Remain read-only; do not guess that no other Agent is active
 - Explicit repository/Skill update? Use update-only: fast-forward and validate the requested project or named package, then stop without restructuring, records, or link work
-- Significant decision or direction change? A sole active writer scans and creates the next `conversation/NN-topic.md`; during concurrent work only the integration owner allocates the canonical number
+- Significant decision or direction change? Only the active exclusive writer scans and creates the next `conversation/NN-topic.md`
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Done working? A sole active writer updates `memory/YYYY-MM-DD.md`; during concurrent work, workers return response-only findings or use preallocated unique artifacts and the integration owner updates canonical conversation, memory, and indexes
+- Done working? The active exclusive writer updates canonical conversation, memory, and indexes before releasing its claim
 - Harness-owned memory does not replace project `conversation/` or `memory/`; never write into the harness's system memory directory
-- Concurrent work does not add fixed role directories or a permanent `work/lanes/` tree; route overlapping writers through `project-handoff` when available or serialize them
+- Concurrent work does not add fixed role directories or a permanent `work/lanes/` tree; the project-local access receipt, not a role or separate chat, controls admission
 - Document/submission projects only: treat canonical certificates and reports as read-only; copy before modifying
 - Code in `src/`, artifacts in `release/`, documents in `docs/` — never mix
 ```
 
-The project-root `conversation/` and `memory/` directories are required for Code, Document, and Hybrid projects. The direct-write reminders above apply only when there is one active writer. Separate Agent tasks or harness conversations do not create isolated filesystems.
+For an Agent Skill Code Project, the generated managed block must additionally identify the exact package root:
+
+```markdown
+| Skill Package Root | `src/<skill-name>` |
+| Agent consumer | separate installation target; never source |
+```
+
+The package entry is `src/<skill-name>/SKILL.md`; do not shorten it to `src/SKILL.md` or move it under `docs/` merely because it is Markdown.
+
+The project-root `conversation/` and `memory/` directories are required for Code, Document, and Hybrid projects. Direct writes require a valid exclusive project-local writer claim. Separate Agent tasks or Harness conversations do not create isolated filesystems, and another Skill is not required to discover active claims.
 
 The Source Mapping is required for every Git-backed Project Root. Keep one mapping per Project Root. If the source is a subdirectory of a larger GitHub repository, record the repository's clone URL and put the subtree in `Managed scope`; never use a `/tree/...` page as the clone URL.
 
@@ -108,12 +123,12 @@ OB Dim — Windows 系统托盘小程序，在 Work/Away 模式间一键切换�
 
 ## Mandatory Rules
 
-When working in this workspace, follow the `project-conventions` skill:
-- Skill location: `<skills-dir>/project-conventions/SKILL.md`
+When working in this workspace, follow its initialized project-local access entry:
+- Run `.project-conventions/project_access.py status`, then obtain the appropriate claim before substantive work
 - Centralize all documents under `docs/` (specs/plans/reviews/research)
 - Review files: `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md` under `docs/reviews/`
-- Conversation files: `NN-kebab-topic.md` under `conversation/`; a sole writer scans for the next number, while concurrent work uses one integration owner
-- Project memory: a sole writer updates `memory/YYYY-MM-DD.md`; concurrent workers return findings and the integration owner writes canonical records
+- Conversation files: `NN-kebab-topic.md` under `conversation/`; only the exclusive writer allocates the next number
+- Project memory: only the exclusive writer updates `memory/YYYY-MM-DD.md` and `memory/MEMORY.md`
 
 ## Directory Index
 
@@ -129,14 +144,16 @@ When working in this workspace, follow the `project-conventions` skill:
 | `src/` | Source code (C# .NET 8, 15 .cs files, .git with tag v1.0.0) | — |
 | `release/` | Compiled EXE (192KB, framework-dependent) | `ScreenTimeoutToggle.exe` |
 | `memory/` | Agent-maintained daily logs + long-term memory | `MEMORY.md` + `YYYY-MM-DD.md` |
+| `.project-conventions/` | Harness-neutral Agent admission | `ACCESS.md` + `project_access.py` |
 
 ## Quick Reminders
 
+- Before work, run project-local `status` and `enter`; without an entered receipt, do not write
 - Explicit repository/Skill update? Fast-forward and validate only; do not turn it into a directory migration
-- Significant decision or direction change? If this is the sole active writer, scan and create the next `conversation/NN-topic.md`; otherwise leave canonical numbering to the integration owner
+- Significant decision or direction change? The exclusive writer scans and creates the next `conversation/NN-topic.md`
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Done working? If this is the sole active writer, update `memory/YYYY-MM-DD.md`; concurrent workers return response-only findings or use a preallocated unique artifact
-- Concurrent work? The integration owner writes canonical conversation, memory, and indexes; do not create fixed role directories or a permanent `work/lanes/` tree
+- Done working? Update project memory and conversation before finishing the exclusive writer claim
+- Concurrent work? Readers may coexist; shared writers are exclusive; isolated Git writers need distinct worktrees and disjoint paths
 - Harness-owned memory is reserved for the tool and never substitutes for project `conversation/` or `memory/`
 - Code goes in `src/`, artifacts in `release/`, never in `docs/`
 - Source namespace is `ScreenTimeoutToggle` (legacy, not renamed to `OBDim` — intentional)

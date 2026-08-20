@@ -17,12 +17,18 @@ REQUIRED_FILES = {
     "README.md",
     "agents/openai.yaml",
     "scripts/initialize_project_collection.py",
+    "scripts/initialize_project_root.py",
     "scripts/initialize_skills_control_project.py",
     "scripts/inspect_projects_workspace.py",
+    "scripts/project_access.py",
     "scripts/test_inspect_projects_workspace.py",
     "scripts/test_lifecycle_workflows.py",
+    "scripts/test_project_root_workflows.py",
     "scripts/update_shared_checkout.py",
     "scripts/validate_package.py",
+    "scripts/validate_project_root.py",
+    "references/project-access.md",
+    "references/project-root-initialization.md",
     "references/shared-repository.md",
 }
 REQUIRED_DIRECTORIES = {"agents", "assets", "references", "scripts"}

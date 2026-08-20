@@ -9,7 +9,7 @@ Three project types, each with different required directories:
 | Type | Primary deliverable | Required dirs | Typical examples |
 |---|---|---|---|
 | **Code** | Source code / software | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` | Web app, CLI tool, mobile app, library |
-| **Document** | Documents, forms, submissions, certifications | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`, versioned records (e.g. `提交记录/`) | 申报材料, 合同管理, 报表, 认证材料 |
+| **Document** | Documents, forms, submissions, certifications | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`; versioned records only for a real submission/version cycle | 申报材料, 合同管理, 报表, 认证材料 |
 | **Hybrid** | Both code and significant document/submission components | Code dirs + relevant document dirs; `conversation/` and `memory/` are required | SaaS with compliance docs, open-source with certifications |
 
 ### What changes by project type
@@ -19,9 +19,9 @@ Three project types, each with different required directories:
 | `src/` | Required | Not needed | Required |
 | `release/` | On demand | Not needed | On demand |
 | `conversation/` | Required | Required | Required |
-| `memory/` daily logs | Required | Required | Required |
+| `memory/` project continuity | Required | Required | Required |
 | `docs/specs/`, `docs/plans/` | Required | Optional | Required |
-| Versioned records (`vNNN/RECORD.md`) | Not typical | Required | Optional |
+| Versioned records (`vNNN/RECORD.md`) | Not typical | On demand for repeated submissions/versions | Optional |
 | Review naming (second-precision) | Required | Optional (date-precision OK for single-user) | Required |
 | `design/` | Optional | Optional | Optional |
 
@@ -42,6 +42,7 @@ project-root/
 ├── AGENTS.md                # Required. Agent entry point — directory index + rule reference (auto-loaded)
 ├── README.md                # Required. Project overview & directory navigation
 ├── conversation/            # Required for every project type
+├── material/                # Optional. User-provided source/evidence, preserved in place
 ├── docs/                    # Required. All formal documents, centralized
 │   ├── specs/               # Spec / design documents
 │   ├── plans/               # Implementation plans, task breakdowns
@@ -57,8 +58,12 @@ project-root/
 │   └── ...                  # Follow language ecosystem conventions; internal docs (e.g. src/docs/qa/) OK
 ├── release/                 # On demand. Final distributable artifacts only (no build intermediates)
 ├── memory/                  # Required for every project type
-│   ├── YYYY-MM-DD.md        # Daily work log (append-only)
+│   ├── YYYY-MM-DD.md        # Daily work log after substantive work (append-only)
 │   └── MEMORY.md            # Curated long-term project notes
+├── .project-conventions/    # Required. Project-owned, Harness-neutral access entry
+│   ├── ACCESS.md            # Reader/writer/worktree admission contract
+│   ├── project.json         # Portable type/mapping and helper digest
+│   └── project_access.py    # Local status/enter/check/finish/recover CLI
 └── <agent-system-dir>/      # Agent platform's system directory (e.g. .workbuddy/, .qoderworkcn/) — NOT managed by this skill
     └── memory/              # Platform auto-maintained; never substitutes for project records
 ```
@@ -120,13 +125,26 @@ project-root/
   - `05-brand-and-naming.md`
 
 **Numbering rule**:
-- In a single active task with no overlapping writer, scan the directory and use the next available number. If `05-*.md` is the highest, the next file is `06-*.md`.
-- During concurrent work, workers must not scan for or claim the next number. The integration owner serially allocates it; workers return response-only findings or use an exact preallocated unique artifact path.
+- Under an active exclusive `writer` claim, scan the directory and use the next available number. If `05-*.md` is the highest, the next file is `06-*.md`.
+- A read-only or isolated-worktree claim cannot allocate canonical conversation numbers. Finish isolated work first; the next exclusive writer serially records the integrated decision.
 - Never renumber existing files (breaks references).
 
-**Maintained by**: The active Agent in a single-writer task, or the integration owner after concurrent work. One file per major topic or phase.
+**Maintained by**: The Agent holding the exclusive project-local writer claim. One file per major topic or phase.
 
 **Format**: See `conversation-format.md` for the full template.
+
+---
+
+### `material/` (Optional source boundary)
+
+**Purpose**: User-provided inputs, source evidence, reference files, recordings, images, scans, and upstream-derived material received before Agent work.
+
+**Rules**:
+- Initialization and adoption preserve it in place and do not rewrite, rename, move, summarize-away, or count it inside a durable routing file.
+- Its presence does not determine Project Type. Select Code, Document, or Hybrid from the requested primary deliverable.
+- Agent-created PRDs/specifications go to `docs/specs/`, source analysis to `docs/research/`, plans to `docs/plans/`, design outputs to `design/`, and runnable implementation to `src/`.
+- Derived output cites Project-Root-relative material paths; it does not replace the source.
+- Nested Git roots, links, unreadable media, and ambiguous ownership are reported and left untouched until separately authorized.
 
 ---
 
@@ -219,6 +237,7 @@ project-root/
 
 **Notes**:
 - **One Project Root, one source-repository mapping by default.** Record it in `AGENTS.md`. If unrelated repositories are needed, create sibling Project Roots instead of hiding them in one wrapper.
+- **Agent Skill profile**: an Agent Skill is source, not a project document. Its owned-local package root is `src/<skill-name>/` and its entry is `src/<skill-name>/SKILL.md`, even when the package is mostly Markdown/YAML. Never use `src/SKILL.md`, place the package under `docs/`, or treat an Agent consumer directory as editable source. The shared-repository projection is a separate explicit exception.
 - The Repository Root may be `src/` itself or one named child such as `src/<repo-name>/`. Verify it with `git rev-parse --show-toplevel`.
 - **Explicit shared-repository exception**: inside a Project Collection, `src/<package-name>` may be a verified projection to `<collection>/<repository_root>/<managed_scope>`. The canonical member index must record `source`, collection-relative `repository_root`, and repository-relative `managed_scope` separately. Read `shared-repository.md`; do not infer this exception from a symlink alone.
 - Keep the Project Root wrapper outside the source repository unless the user explicitly chooses a repository that includes the wrapper.
@@ -272,7 +291,7 @@ This mapping prevents future agents from confusing wrapper files with repository
 
 “Append-only” is a history rule, not a concurrency primitive. Multiple Agents must not perform independent read-modify-write updates to the same daily file.
 
-In a single active task with no overlapping writer, the active Agent may update canonical project memory directly. During concurrent work, workers return response-only findings or exact preallocated artifacts; the integration owner alone reconciles them into the daily log, `MEMORY.md`, conversation record, and indexes.
+An Agent may update canonical project memory only while holding the exclusive project-local `writer` claim. Read-only and isolated-worktree Agents return response-only findings or Git commits; after they finish, the next exclusive writer reconciles results into the daily log, `MEMORY.md`, conversation record, and indexes.
 
 **When to write**:
 - After completing substantive work (building, fixing, refactoring, generating a deliverable).
@@ -301,7 +320,7 @@ In a single active task with no overlapping writer, the active Agent may update 
 
 ### `<agent-system-dir>/` (System — NOT managed by this skill)
 
-**Purpose**: The agent platform's own system directory (e.g. `.workbuddy/`, `.qoderworkcn/`, `.claude/`). Contains platform-managed memory that gets auto-injected into the system prompt.
+**Purpose**: The agent platform's own system directory (e.g. `.workbuddy/`, `.minimax/`, `.qoderworkcn/`, `.claude/`). Contains platform-managed memory that gets auto-injected into the system prompt.
 
 **Important**: This skill's workflows NEVER write to the agent platform's system memory directory. That location is reserved for the platform itself, and its existence does not satisfy or replace the required project-root `conversation/` and `memory/` records.
 
@@ -321,18 +340,21 @@ If a document genuinely doesn't fit `specs/`, `plans/`, `reviews/`, or `research
 
 ### What if the project has no code (docs-only project)?
 
-Follow the Document row in **Project Types**: require `AGENTS.md`, `README.md`, root `INDEX.md`, `docs/`, `conversation/`, `memory/`, and versioned records. Versioned records preserve deliverable submissions; they do not replace collaboration history or project continuity.
+Follow the Document row in **Project Types**: require `AGENTS.md`, `README.md`, root `INDEX.md`, `docs/`, `conversation/`, and `memory/`. Add versioned records only when an actual repeated submission/version lifecycle exists; they never replace collaboration history or project continuity.
 
 ### What if multiple agents are working concurrently?
 
-- In a single active task with no overlapping writer, the acting Agent may allocate the next conversation number and update canonical project records directly.
-- Do not initialize fixed role folders or a permanent `work/lanes/` tree. Roles do not determine isolation; actual reads, writes, and mutable resources do.
-- Multiple response-only reviewers may share one frozen input. If a reviewer becomes a fixer, stop and re-plan it as a writer before any edit.
-- Concurrent Git-backed writers use separate temporary worktrees or run serially. A worktree protects physical files only; overlapping logical paths, lockfiles, generated trees, databases, ports, devices, and services still require narrower scopes or serialization.
-- Non-Git and binary-document work has one writer at a time. Independent readers may run concurrently when they do not mutate the source or surrounding state.
-- Do not let workers scan for the next `conversation/NN-*` name or update the same `memory/YYYY-MM-DD.md`, `memory/MEMORY.md`, index, or shared status file concurrently. Preallocate exact unique artifact paths, or have workers return response-only results.
-- One integration owner serially reconciles lane results and writes canonical conversation, memory, indexes, and final review synthesis. Use `$project-handoff` for multi-Agent or cross-harness planning when it is available; otherwise serialize all writers.
-- Harness-owned hidden directories remain opaque. Separate Agent conversations do not imply separate filesystems.
+- Every Agent uses the project-local `.project-conventions/project_access.py` before substantive work. The SQLite transaction—not a role name or self-assessment—decides whether access is granted.
+- Multiple response-only reviewers may hold `read-only` claims. If a reviewer becomes a fixer, it finishes the reader claim and enters again as a writer before any edit.
+- A normal `writer` is exclusive against all readers and writers. Non-Git, binary-document, cache, database, service, and canonical-record work uses this mode.
+- Git-backed code writers may use `isolated-writer` only from different clean linked worktrees with declared, non-overlapping logical paths. This mode cannot write `.project-conventions/`, `conversation/`, `memory/`, indexes, controller state, or member catalogs.
+- A worktree protects physical files only. Overlapping logical paths, lockfiles, generated trees, databases, ports, devices, and services still require the exclusive writer.
+- Merge/integration and canonical conversation, memory, index, and final review updates occur only under the exclusive writer after isolated writers finish.
+- Do not initialize fixed role folders or a permanent `work/lanes/` tree. Roles do not determine isolation; actual effects and the access receipt do.
+- A blocked Agent writes nothing. Stale claims never expire automatically and require explicit user-authorized dry-run/apply recovery.
+- Harness-owned hidden directories remain opaque. Separate Agent conversations do not imply separate filesystems. The protocol needs no Agent messaging or other Skill.
+
+Read `project-access.md` for commands, receipts, recovery, worktree rules, and the guarantee boundary.
 
 ## File Focus Principle
 

@@ -2,14 +2,6 @@ Background:
 - Source task: local project-handoff controller
 - Run id / lane id: handoff-v3-audit / contract-audit
 - Project: /workspace/project-handoff
-- Harness: codex
-- File access: read_only
-- Workspace mode: shared_checkout
-- Worktree source: null
-- Repository Root: /workspace/project-handoff
-- Workspace path: /workspace/project-handoff
-- Base revision: 1111111111111111111111111111111111111111
-- Environment receipt: git readback confirmed one clean shared checkout at the stated base
 - Current phase: candidate design review
 - Dependencies: none; this lane is ready in the first wave
 - Controller / integration owner: the source task owns routing, writes, and final integration
@@ -26,8 +18,6 @@ Constraints:
 - Read scope: M1, M2, and M3 only.
 - Write scope: none.
 - Mutable resources: none.
-- Task-specific responsibility: inspect the contract; this label does not choose filesystem isolation.
-- Execution transition: any repair request requires a new write-scope plan and environment validation.
 - Conflicts and order: none; this read-only lane has no shared writes.
 - Do not edit, install, publish, push, create a remote, create a Codex task, or invoke an external model.
 - Cite a file path and section for every finding so the main agent can verify it.
@@ -38,7 +28,7 @@ Tools:
 - Failure handling: stop after one unreadable required file and report BLOCKED with its path.
 
 Boundary examples:
-- Case 1: two read-only lanes share frozen inputs and return response-only findings → valid parallel wave; the Controller owns any report.
+- Case 1: two read-only lanes share frozen inputs and write separate reports → valid parallel wave.
 - Case 2: implementation consumes a design artifact → valid only when a dependency serializes the phases.
 - Case 3: two unordered lanes write the same file → invalid even when one Controller is named integration owner.
 
