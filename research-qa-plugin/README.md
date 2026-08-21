@@ -29,11 +29,14 @@ The destination command only preflights a nonexistent calendar path. The package
 
 ## External dependencies
 
-Real execution requires a live Akashic registry/rule, a lawful paper acquisition executor, eight independent author contexts, and independent semantic audit capacity. Static validation does not prove any provider call, literature download, plugin installation, or formal adoption.
+Real execution requires a live Akashic registry/rule, the separately registered `$paper-downloader` executor, eight independent author contexts, and independent semantic audit capacity. In this collection, the executor consumer must resolve directly to `GitHub/paper-downloader`; the wrapper projection and former `working-skills` path are not callable sources. See `skills/research-qa-orchestrator/references/external-executors.md`.
+
+Static validation does not prove any provider call, literature download, plugin installation, or formal adoption.
 
 ## Publication boundary
 
-This directory is the local canonical source inside the shared Git worktree. It
-is currently untracked, so no tracked, committed, pushed, or published state is
-implied. Review [NOTICE.md](NOTICE.md) before any remote publication or
-redistribution of bundled persona material.
+This directory is the local canonical source inside the shared Git worktree.
+Its presence in a checkout, and any local modifications, do not by themselves
+prove that the current bytes were committed, pushed, or published. Review
+[NOTICE.md](NOTICE.md) before any remote publication or redistribution of
+bundled persona material.

@@ -1,6 +1,6 @@
 ---
 name: media-creator
-description: Route non-native media generation for video, speech, music, and provider-explicit ChatGPT Web, MiniMax MMX, or Agnes requests. In Codex, do not use this Skill for ordinary image generation or image editing while the built-in imagegen/image_gen path is available; let native imagegen handle those requests directly. Use it for generic image generation on non-Codex agents, preferring an authenticated ChatGPT Web browser route on macOS with ego-browser and falling back to MMX only for supported image modes. Also use it for MMX or Agnes video generation, MMX speech/music/cover generation, or when the user explicitly names one of these providers.
+description: Route non-native media generation for video, speech, music, and provider-explicit ChatGPT Web, MiniMax Web Music, MiniMax MMX, or Agnes requests. In Codex, do not use this Skill for ordinary image generation or image editing while the built-in imagegen/image_gen path is available; let native imagegen handle those requests directly. Use it for generic image generation on non-Codex agents, preferring an authenticated ChatGPT Web browser route on eligible macOS/ego-browser environments and using MMX only for supported pre-submission fallback modes. Also use it for MiniMax Web Music, MMX or Agnes video generation, MMX speech or explicitly eligible legacy music/cover generation, or when the user explicitly names one of these providers.
 ---
 
 # Media Creator
@@ -17,6 +17,14 @@ description: Route non-native media generation for video, speech, music, and pro
 - 请求是视频、语音、音乐或翻唱；
 - 当前宿主明确没有原生图片生成能力。
 
+## 共享执行合同：planner → Luna → ego-browser
+
+ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行分开：发起任务的主任务负责理解意图，并在交接前创建完整、最终的 provider payload。ChatGPT Web payload 至少包含最终图片提示词、输入文件及顺序（没有输入图时为空列表）和调用方授权的输出路径；MiniMax Web Music payload 至少包含标题、纯音乐/人声模式、风格提示词、歌词（如有）、数量和调用方授权的输出路径。网页 worker 只能按 payload 填表、提交、等待、下载和验证，不能重新创作、改写或补齐创意字段。
+
+当 live `project-handoff` visible-task surface 可用时，主任务必须按 `$project-handoff` 创建并校验精确的 `luna-max` visible thread：model=`gpt-5.6-luna`、reasoning=`max`、surface=`visible_thread`。交接 envelope 标记 `execution_role=browser_worker`、`handoff_depth=1`，并指定 `ego-browser`；worker 收到这个 envelope 后直接执行，禁止再次 dispatch Luna。用户请求并选定这条浏览器生成路线时，授权的是一个有界 Luna 可见任务和一次提交；只要用户要求的是规划、提示词或预览，就不得派发。若某个 Harness 确实没有 visible-task dispatch，但自身已验证有等价浏览器执行能力，可以在本地按同一最终 payload 合同执行；ego-browser 仍是首选。这只是能力缺失路径，不是 Luna 创建失败后的 fallback，显式 Luna 请求不得降级。
+
+登录、验证码、人工确认、当前费用非零或费用/授权不明确时，在提交前通过 ego-browser handoff 暂停。一次提交后保留任务状态，不切换 provider、不重复提交；下载失败只处理同一结果。完整字段和停止条件见 [browser-handoff-envelope.md](references/browser-handoff-envelope.md)。
+
 ## 选择路线
 
 1. 识别模态：`image`、`video`、`speech`、`music` 或 `music-cover`。
@@ -26,11 +34,11 @@ description: Route non-native media generation for video, speech, music, and pro
 5. 提交前完成依赖、登录、鉴权或配额预检。提交后保留任务 ID，不因等待中断而重复提交。
 6. 下载或保存产物，验证文件类型、非零大小和用户要求的输出位置。
 
-路线一旦提交，不要静默切换供应商。跨供应商 fallback 只能发生在确认原路线尚未创建任务时；否则先询问用户。
+跨供应商 fallback 只能发生在确认原路线尚未创建任务时。路线一旦提交，禁止跨供应商 fallback；等待或下载失败只能继续核对同一任务/结果，不能靠另投 provider 掩盖不确定状态。
 
 ## 图片
 
-- 非 Codex 文生图：在 macOS、ego-browser 可用且 ChatGPT 登录态可复用时优先 ChatGPT Web；提交前不可用时才默认使用 MMX。
+- 非 Codex 文生图：在 eligible macOS、ego-browser 可用且 ChatGPT 登录态可复用时优先 ChatGPT Web，并按上面的 `luna-max`/最终 payload 合同执行；只有在提交前确认所需 browser capability 根本不存在时才可使用 MMX。
 - 非 Codex 通用图生图、编辑或多图合成：ChatGPT Web 当前只观察到可用的多文件上传控件，端到端编辑尚未验证；先做运行时验证。不可用或验证失败时询问是否改用 Agnes。MMX 当前不是通用图生图 fallback。
 - Agnes 图片：仅在用户显式指定，或能力不匹配后用户确认切换时使用。
 - MMX 图片：仅承诺文生图和单主体参考，不承诺 mask、通用编辑或多图合成。
@@ -57,7 +65,9 @@ MMX H3 的参考视频是参考条件生成，不等于确定性的原视频编�
 
 ## 语音与音乐
 
-语音、音乐和翻唱默认使用外置 MMX CLI。MMX 是可升级依赖：不要复制它的 Skill、H3 子 Skill、CLI 或凭据到本包。运行时以当前 `mmx --version` 和对应 `--help` 为准，详细合同见 [mmx.md](references/mmx.md)。
+- 通用原创歌曲和纯音乐 BGM 默认使用 MiniMax Web Music：`https://www.minimaxi.com/audio/music`。它是独立的浏览器路线，使用实时模型/费用控件，默认只生成 1 首，等待全曲完成后下载并验证 MP3；详细合同见 [minimax-web-music.md](references/minimax-web-music.md)。网页失败不得静默切换到 MMX API 音乐。
+- MMX 音乐 API 不是通用默认路线。只有用户明确选择、且运行时确认是 2026-08-20 公告所述历史付费 API 用户时才可使用；免费音乐模型已停止。MMX 仍是外置、可升级依赖，不复制其 Skill、CLI 或凭据；speech 仍是独立的 MMX 语音路线。详细边界见 [mmx.md](references/mmx.md)。
+- MiniMax Web Music 当前合同不承诺 voice cloning、reference-audio editing、cover、精确时长或商用许可。翻唱/cover 若有明确需求，不能把 Web Music 当作支持路线，应按 MMX legacy eligibility 或其他明确 provider 合同处理。
 
 ## 其他本地生成能力
 

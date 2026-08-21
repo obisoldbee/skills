@@ -33,13 +33,15 @@
 ## 外部专项执行器
 
 - `agnes-image` 使用包内 `scripts/providers/agnes_vision.py` 与 `agnes-2.5-flash`；输入必须是 provider 可读取的 URL，调用前仍需当前外发授权与 route check。
-- MiniMax 快速单图使用 `$mmx-cli`；MiniMax-M3 direct 图片在 adapter 未显式绑定前保持 `needs_explicit_binding`。
+- 无视觉宿主的默认单图路线是 `minimax-mmx-image`，使用 `$mmx-cli`；MiniMax-M3 direct 图片在 adapter 未显式绑定前保持 `needs_explicit_binding`。
 - 历史火山图片独立 Skill 已退役；火山请求只按 `provider-routing.md` 的普通 Platform 或 Ark CLI 路线执行。
 
-## 普通图片与表情包的独立默认/降级
+## 普通图片与表情包的宿主旁路/路由
 
-- 单张已附、可读的普通照片或截图，仅需描述、理解、粗略读字或直接问答，且用户未点名本 Skill、外部 provider/model、精确 OCR、坐标、批量、证据产物或评测时，默认由 Codex 原生视觉直接回答，不触发本 Skill。
-- 用户明确点名本 Skill，或任务涉及复杂信息图/布局、grounding、批量、外部模型选型或正式证据时，才选择已验证的 provider/profile；仍先做整体视觉理解，不先走 OCR。外部调用必须有当前请求对 provider、素材范围和成本边界的明确授权。
-- 表情包先走 Codex 原生视觉。只有用户明确授权外部 provider 或要求历史 benchmark 复现时，才按 [provider-routing.md](provider-routing.md) 选择一个当前可检查的 route；历史排名见 [benchmark-history-and-routing.md](benchmark-history-and-routing.md)，不构成永久默认模型。
+- 只有当前宿主/模型已确认具备原生视觉并实际读到本次附件，且用户未点名本 Skill、外部 provider/model、精确 OCR、坐标、批量、证据产物或评测时，单张普通照片或截图的描述、理解、粗略读字或直接问答才走 `host_native` 会话旁路，不触发本 Skill。
+- 用户明确点名本 Skill 时必须进入本 Skill。当前宿主/模型不能读取本次附件或能力未知时也必须进入；不要把 `host_native` 写进 portable registry。
+- 无视觉宿主收到本次单张图片，且用户要求描述、读图或回答图片问题时，“附图 + 要求理解”即授权该图片默认走 `minimax-mmx-image`，无需重复询问 provider 或普通单次调用成本。用户指定其他 provider/model 或禁止外发时覆盖默认。
+- 该默认授权只覆盖本次图片和一次常规 MiniMax 识图；不覆盖批量、其他媒体、后续素材或失败后的其他 provider。MiniMax 未配置或失败时停止并请用户决定，不自动 fallback。
+- 表情包同样先按当前宿主的实际附件能力判断。只有宿主已确认可读且没有显式调用/专项要求时才走 `host_native`；无视觉宿主未收到其他 provider 指令时仍默认 `minimax-mmx-image`。历史排名见 [benchmark-history-and-routing.md](benchmark-history-and-routing.md)，只作评测证据，不覆盖当前运行默认。
 - 对低清、裁切、双关或缺少上下文的表情包，先输出可见角色、文字、视角、情绪线索和不确定项；不要自动切外部 provider 或 OCR，也不要把猜测写成梗的事实。
 - OCR 只能在用户目标是转录、扫描文档、文本精确提取或 Akashic 正式入库确有需要时作为辅助；它不会在普通图片或表情包失败时自动成为 fallback。详见 [provider-routing.md](provider-routing.md) 与 [ocr-and-document-understanding.md](ocr-and-document-understanding.md)。

@@ -60,8 +60,6 @@ def private_permissions(path: Path) -> bool | None:
 
 def inspect_executor(executor: dict[str, Any], home: Path) -> dict[str, Any]:
     kind = executor.get("kind")
-    if kind == "native":
-        return {"kind": kind, "present": True, "evidence": "current_session"}
     if kind == "cli":
         command = str(executor["command"])
         resolved = shutil.which(command)
@@ -164,8 +162,6 @@ def readiness(route: dict[str, Any], executor: dict[str, Any], credentials: dict
         return "needs_explicit_binding"
     if executor.get("present") is not True:
         return "missing_executor"
-    if declared == "active":
-        return "native_ready"
     return "configured_not_called"
 
 
@@ -190,6 +186,11 @@ def main() -> None:
             "declared_status": route["status"],
             "provider": route["provider"],
             "model": route.get("model"),
+            "authorization": route.get("authorization"),
+            "default_for": route.get("default_for"),
+            "authorization_scope": route.get("authorization_scope"),
+            "cost_scope": route.get("cost_scope"),
+            "fallback_policy": route.get("fallback_policy"),
             "readiness": readiness(route, executor, credentials),
             "runtime_state": route.get("runtime_state"),
             "executor": executor,

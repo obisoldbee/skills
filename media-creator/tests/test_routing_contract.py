@@ -42,6 +42,88 @@ class RoutingContractTests(unittest.TestCase):
         self.assertEqual(policy["pre_submission_fallback"], "minimax-mmx-image")
         self.assertEqual(policy["fallback_phase"], "before_submission_only")
         self.assertEqual(policy["agnes_selection"], "explicit_or_user_confirmed")
+        self.assertEqual(policy["post_submission_cross_provider_fallback"], "none")
+        for excluded in (
+            "login_or_manual_check_required",
+            "luna_creation_failed",
+            "visible_task_handoff_failed",
+            "explicit_luna_request",
+            "prompt_or_task_submitted",
+        ):
+            self.assertIn(excluded, policy["fallback_exclusions"])
+
+    def test_browser_routes_require_main_payload_luna_max_visible_thread_and_ego(self) -> None:
+        contract = self.registry["execution_contract"]
+        self.assertEqual(contract["planner"], "originating_main_task")
+        self.assertTrue(contract["final_payload"]["required_before_handoff"])
+        self.assertEqual(contract["luna_max"]["route"], "luna-max")
+        self.assertEqual(contract["luna_max"]["model"], "gpt-5.6-luna")
+        self.assertEqual(contract["luna_max"]["reasoning"], "max")
+        self.assertEqual(contract["luna_max"]["thread"], "visible")
+        self.assertEqual(contract["luna_max"]["surface"], "visible_thread")
+        self.assertEqual(contract["luna_max"]["orchestrator"], "project-handoff")
+        authorization = contract["authorization"]
+        self.assertEqual(
+            authorization["selected_browser_generation_request"],
+            "one_bounded_luna_visible_task",
+        )
+        self.assertEqual(authorization["plan_or_prompt_only_request"], "no_dispatch")
+        self.assertEqual(
+            authorization["additional_task_or_submission"],
+            "requires_new_authority",
+        )
+
+        for route_id in ("chatgpt-web-image", "minimax-web-music"):
+            with self.subTest(route_id=route_id):
+                route = route_by_id(self.registry, route_id)
+                executor = route["executor"]
+                self.assertEqual(executor["kind"], "project_handoff_visible_thread")
+                self.assertEqual(executor["orchestrator"], "project-handoff")
+                self.assertEqual(executor["route"], "luna-max")
+                self.assertEqual(executor["model"], "gpt-5.6-luna")
+                self.assertEqual(executor["reasoning"], "max")
+                self.assertEqual(executor["surface"], "visible_thread")
+                self.assertEqual(executor["worker"]["command"], "ego-browser")
+                handoff = route["browser_handoff"]
+                self.assertTrue(handoff["required_when_visible_task_surface_available"])
+                self.assertEqual(handoff["orchestrator"], "project-handoff")
+                self.assertEqual(handoff["luna_route"], "luna-max")
+                self.assertEqual(handoff["model"], "gpt-5.6-luna")
+                self.assertEqual(handoff["reasoning"], "max")
+                self.assertEqual(handoff["thread"], "visible")
+                self.assertEqual(handoff["surface"], "visible_thread")
+                self.assertEqual(handoff["worker_executor"], "ego-browser")
+                self.assertEqual(handoff["execution_role"], "browser_worker")
+                self.assertEqual(handoff["handoff_depth"], 1)
+                self.assertFalse(handoff["recursive_dispatch"])
+                self.assertEqual(handoff["payload_author"], "originating_main_task")
+                self.assertFalse(handoff["worker_creative_rewrite"])
+                self.assertFalse(route["payload"]["worker_creative_rewrite"])
+
+    def test_browser_worker_cannot_recurse_or_downgrade_explicit_luna(self) -> None:
+        contract = self.registry["execution_contract"]
+        worker = contract["worker"]
+        self.assertEqual(worker["execution_role"], "browser_worker")
+        self.assertEqual(worker["handoff_depth"], 1)
+        self.assertFalse(worker["recursive_dispatch"])
+        self.assertEqual(worker["action"], "execute_envelope_directly")
+        cross_harness = contract["cross_harness"]
+        self.assertTrue(cross_harness["local_execution_requires_all"])
+        self.assertEqual(cross_harness["preferred_local_executor"], "ego-browser")
+        self.assertFalse(cross_harness["is_fallback_after_luna_creation_failure"])
+        self.assertFalse(cross_harness["explicit_luna_request_may_downgrade"])
+        submission = contract["submission"]
+        self.assertEqual(submission["pre_submission_manual_or_login_check"], "handoff_and_pause")
+        self.assertEqual(submission["nonzero_or_ambiguous_cost"], "pause_before_submission")
+        self.assertFalse(submission["duplicate_submission"])
+        self.assertFalse(submission["post_submission_provider_switch"])
+
+    def test_chatgpt_payload_includes_output_path(self) -> None:
+        route = route_by_id(self.registry, "chatgpt-web-image")
+        self.assertEqual(
+            set(route["payload"]["required_before_handoff"]),
+            {"final_image_prompt", "inputs", "output_path"},
+        )
 
     def test_chatgpt_web_requires_darwin_ego_and_runtime_login(self) -> None:
         route = route_by_id(self.registry, "chatgpt-web-image")
@@ -82,6 +164,52 @@ class RoutingContractTests(unittest.TestCase):
         self.assertEqual(policy["states"]["known_exhausted"], "ask_user_mmx_or_agnes")
         self.assertEqual(policy["states"]["unknown"], "ask_user_mmx_or_agnes")
         self.assertFalse(policy["h3_quota_authoritative"])
+
+    def test_minimax_web_music_is_generic_default_and_has_bounded_completion(self) -> None:
+        policy = self.registry["policies"]["music"]
+        self.assertEqual(policy["primary"], "minimax-web-music")
+        self.assertEqual(policy["default_count"], 1)
+        self.assertEqual(policy["web_music_failure"], "stop_and_report")
+        self.assertEqual(policy["post_submission_fallback"], "none")
+        self.assertEqual(policy["mmx_music_api"], "explicit_and_runtime_eligibility_gated")
+
+        route = route_by_id(self.registry, "minimax-web-music")
+        self.assertEqual(route["url"], "https://www.minimaxi.com/audio/music")
+        self.assertEqual(route["selection"], "default_for_generic_music")
+        self.assertEqual(route["payload"]["default_count"], 1)
+        self.assertEqual(
+            set(route["payload"]["required_before_handoff"]),
+            {"title", "mode", "style_prompt", "lyrics", "count", "output_path"},
+        )
+        capabilities = route["capabilities"]["music"]
+        self.assertTrue(capabilities["original_song"])
+        self.assertTrue(capabilities["instrumental_bgm"])
+        self.assertFalse(capabilities["voice_cloning"])
+        self.assertFalse(capabilities["reference_audio_editing"])
+        self.assertFalse(capabilities["cover"])
+        self.assertFalse(capabilities["exact_duration"])
+        self.assertEqual(capabilities["commercial_license"], "not_claimed")
+        self.assertEqual(route["completion"]["wait_for"], "full_completion")
+        self.assertEqual(route["completion"]["download_format"], "mp3")
+        self.assertEqual(
+            set(route["completion"]["verify"]),
+            {"regular_file", "nonzero_size", "mp3_type", "sha256"},
+        )
+
+    def test_mmx_music_is_legacy_explicit_and_eligibility_gated(self) -> None:
+        route = route_by_id(self.registry, "minimax-mmx-music")
+        self.assertEqual(route["status"], "legacy_if_explicit_and_eligible")
+        self.assertEqual(route["selection"], "explicit_only_after_runtime_eligibility_confirmation")
+        eligibility = route["eligibility"]
+        self.assertEqual(eligibility["official_notice_date"], "2026-08-20")
+        self.assertEqual(eligibility["new_users_paid_music_api"], "not_offered")
+        self.assertEqual(
+            eligibility["historical_paid_api_users"],
+            "may_continue_after_runtime_confirmation",
+        )
+        self.assertEqual(eligibility["free_music_models"], "stopped")
+        self.assertEqual(eligibility["local_cli_help"], "interface_evidence_only")
+        self.assertEqual(self.registry["policies"]["music"]["primary"], "minimax-web-music")
 
     def test_local_check_reports_metadata_without_reading_secret_or_login(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -4,9 +4,9 @@ OCR/文档是独立任务轨，不是图像理解的低配替代品。先确认�
 
 ## 候选路线
 
-| 目标 | Route | 选择条件 |
+| 目标 | 路径 | 选择条件 |
 |---|---|---|
-| 少量可见文字粗读 | `codex-native-image` | 明确标注为非归档粗读 |
+| 少量可见文字粗读 | `host_native` 会话旁路（非 route） | 当前宿主/模型已确认实际读取本次附件；明确标注为非归档粗读 |
 | 精确 OCR、版式、坐标 | `local-ocr-document` | 当前任务已绑定并核验具体本地服务 |
 | 火山生产 PDF 理解 | `volcengine-platform-responses-files` | 普通 Platform adapter、key/model 和授权已显式绑定 |
 | 火山交互式 PDF 抽取 | `volcengine-arkcli-understand` → `doc-extract` | recipe 实际模型与认证已核对 |

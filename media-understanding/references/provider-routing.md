@@ -8,14 +8,24 @@
 路线：一个 config/routes.json route id
 ```
 
-普通单张图片的描述、粗略读字和直接问答在进入本表前由 Codex 原生视觉完成。
+`host_native` 是当前会话已确认可读取本次附件时的宿主旁路，不是 portable route。用户未点名本 Skill 且任务仅为普通单图描述、粗略读字或直接问答时，可在进入本表前使用该旁路。用户显式调用本 Skill，或宿主/模型不能读取本次附件、能力未知时，必须进入本路由；不要从附件存在、模型名称或静态配置推断原生能力。
+
+## 无视觉宿主的单图默认
+
+以下条件同时成立时，不再询问 provider 或普通单次调用成本，直接选择 `minimax-mmx-image`：
+
+- 当前宿主/模型不能实际读取本次附件；
+- 用户提供的是本次任务所指向的单张图片，并要求描述、读图或回答图片问题；
+- 用户没有指定其他 provider/model，也没有禁止把图片发给外部服务。
+
+“附图 + 要求理解”即为本次图片的窄范围授权，只覆盖一次常规 MiniMax 图片理解调用；不覆盖其他附件、批量任务、后续请求、其他媒体或失败后的跨 provider fallback。若 MiniMax route 未配置或调用失败，报告并停止，等待用户决定是否改用其他路线。
 
 ## 活动路线
 
 | 媒体/任务 | Route id | 精确执行器 | 外部凭据 |
 |---|---|---|---|
-| 普通单图 | `codex-native-image` | 当前 Codex 原生视觉 | 无 |
-| MiniMax 快速图片理解 | `minimax-mmx-image` | `$mmx-cli` → `mmx vision describe`；底层模型未暴露 | `~/.codex/secrets/minimax.env` |
+| 无视觉宿主的默认单图理解 | `minimax-mmx-image` | `$mmx-cli` → `mmx vision describe`；底层模型未暴露 | `~/.codex/secrets/minimax.env` |
+| MiniMax-M3 direct 图片理解 | `minimax-m3-image` | Anthropic-compatible Messages adapter；当前需显式绑定 | `~/.codex/secrets/minimax.env` |
 | MiniMax 课程视频视觉 | `minimax-m3-course-video` | 包内 `scripts/providers/minimax_m3_course_video.py` | `~/.codex/secrets/minimax.env` |
 | MiniMax 音频语义主路由 | `minimax-m3-transcript-semantics` | 获授权的 ASR → transcript → MiniMax-M3 文本请求；需显式绑定 | `~/.codex/secrets/minimax.env` |
 | MiniMax 音频语义实验 | `minimax-m3-course-audio-via-video-experimental` | 包内 `scripts/providers/minimax_m3_course_audio.py`，真实低清 MP4 载体 | `~/.codex/secrets/minimax.env` |
@@ -36,7 +46,6 @@
 
 | Readiness | 含义 |
 |---|---|
-| `native_ready` | 当前原生执行器可用 |
 | `configured_not_called` | 执行器、env 文件和必需变量名存在；POSIX 系统上的私有权限检查通过；没有调用 provider |
 | `missing_credentials` | env 文件或必需变量缺失 |
 | `unsafe_credential_permissions` | POSIX 系统上的 key 文件对 group/other 开放 |
@@ -47,6 +56,7 @@
 
 不要把 `configured_not_called` 写成远端可用、余额充足、模型已接受或任务成功。
 Windows 不提供等价的 POSIX group/other mode 证据，因此 `private_permissions` 报告 `null`，而不是把 Windows ACL 推断为安全或不安全。
+Route checker 只检查 portable registry；它不探测或证明任何宿主的原生附件能力。
 
 ## 火山隔离
 
@@ -70,6 +80,7 @@ MiMo 的图/音/视频 route、三份官方文档 URL 和逐媒体 re-enable gat
 
 ## 授权与失败
 
+- 对无视觉宿主的本次单张图片理解请求，用户附图并要求理解即授权 `minimax-mmx-image`；无需再问一次。该默认不扩展到批量、其他媒体或 fallback。
 - 用户点名 provider/model 时，只授权该 profile 与本次素材。
 - “选择最合适的外部模型”允许在同一任务族内选择一个已有当前证据的路线，不等于允许多 provider 试跑。
 - 连接重试只按执行器自己的有限策略；模型拒绝、空输出或格式错误不授权跨 profile fallback。

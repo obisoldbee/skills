@@ -25,7 +25,7 @@ REQUIRED = [
     "scripts/providers/minimax_m3_course_audio.py",
     "scripts/providers/minimax_m3_course_video.py",
 ]
-ALLOWED_STATUS = {"active", "active_if_configured", "disabled", "external_configuration", "discovery_required"}
+ALLOWED_STATUS = {"active_if_configured", "disabled", "external_configuration", "discovery_required"}
 STALE_ACTIVE_BINDINGS = {
     "13-course-video-understanding",
     "14-video-visual-understanding",
@@ -65,6 +65,27 @@ def main() -> None:
             errors.append(f"stale active binding remains: {stale}")
 
     skill_text = (ROOT / "SKILL.md").read_text(encoding="utf-8") if (ROOT / "SKILL.md").is_file() else ""
+    for stale_entry in ("这类请求由 Codex 原生视觉直接完成", "直接用 Codex 原生视觉回答并停止"):
+        if stale_entry in skill_text:
+            errors.append(f"host-specific entry rule remains in SKILL.md: {stale_entry}")
+    for required_entry in (
+        "用户明确点名 `$media-understanding`",
+        "不假定宿主是 Codex",
+        "不能实际读取本次附件",
+        "用户提供单张图片并要求",
+        "当前请求已授权",
+    ):
+        if required_entry not in skill_text:
+            errors.append(f"missing host-neutral entry contract in SKILL.md: {required_entry}")
+    openai_text = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8") if (ROOT / "agents" / "openai.yaml").is_file() else ""
+    if "不要调用本 Skill" in openai_text or "Codex 原生视觉" in openai_text:
+        errors.append("agents/openai.yaml still exposes a host-specific image-entry rule")
+    if (
+        "显式调用必须进入本 Skill" not in openai_text
+        or "当前宿主/模型" not in openai_text
+        or "默认走 MiniMax" not in openai_text
+    ):
+        errors.append("agents/openai.yaml must expose the host-neutral explicit-invocation contract")
     for target in re.findall(r"\[[^]]+\]\((references/[^)]+)\)", skill_text):
         if not (ROOT / target).is_file():
             errors.append(f"broken SKILL reference: {target}")
@@ -79,9 +100,21 @@ def main() -> None:
     ids = [route.get("id") for route in routes]
     if len(ids) != len(set(ids)):
         errors.append("route ids are not unique")
+    routing_text = (ROOT / "references" / "provider-routing.md").read_text(encoding="utf-8") if (ROOT / "references" / "provider-routing.md").is_file() else ""
+    for route_id in ids:
+        if route_id and f"`{route_id}`" not in routing_text:
+            errors.append(f"route missing from provider-routing reference: {route_id}")
     for route in routes:
         if route.get("status") not in ALLOWED_STATUS:
             errors.append(f"invalid status for {route.get('id')}: {route.get('status')}")
+        provider = str(route.get("provider") or "")
+        if (
+            route.get("id") == "codex-native-image"
+            or provider.endswith("_native")
+            or route.get("authorization") == "session_native"
+            or route.get("executor", {}).get("kind") == "native"
+        ):
+            errors.append(f"host-native capability must not be a portable route: {route.get('id')}")
         credentials = route.get("credentials")
         if credentials and not str(credentials.get("file", "")).startswith("~/.codex/secrets/"):
             errors.append(f"nonstandard credential path for {route.get('id')}")
@@ -100,8 +133,16 @@ def main() -> None:
     if not agnes or agnes.get("model") != "agnes-2.5-flash":
         errors.append("Agnes route must target agnes-2.5-flash")
     mmx = next((route for route in routes if route.get("id") == "minimax-mmx-image"), None)
-    if not mmx or mmx.get("model") is not None:
-        errors.append("mmx vision route must not claim an underlying model id")
+    if (
+        not mmx
+        or mmx.get("model") is not None
+        or mmx.get("authorization") != "implicit_current_attachment_request"
+        or mmx.get("default_for") != ["nonvision_host_single_image_understanding"]
+        or mmx.get("authorization_scope") != "current_request_single_image_only"
+        or mmx.get("cost_scope") != "one_default_minimax_image_call"
+        or mmx.get("fallback_policy") != "requires_user_opt_in"
+    ):
+        errors.append("mmx vision route must be the scoped non-vision-host image default without claiming a model id")
     minimax_m3_ids = {
         "minimax-m3-image",
         "minimax-m3-course-video",

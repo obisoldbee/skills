@@ -31,9 +31,11 @@
 
 - 图片：文生图、单主体参考、通用图生图/编辑、多图合成及 mask 未验证边界；
 - 视频：文生、单图、首尾帧、图片关键帧、参考图/视频/音频，以及“参考视频不等于精确视频编辑”；
-- 音频：文字转语音、字幕、音乐、纯伴奏、歌词歌曲与翻唱；
+- 音频：文字转语音、字幕、MiniMax Web Music 的原创歌曲与纯伴奏、以及显式资格受限的 MMX legacy 音乐/翻唱；
 - 运行：登录/依赖预检、MMX 配额三态、异步任务 ID、防重复提交、下载回读；
-- 治理：Codex 原生排除、MMX 外置、其他 provider `observed_not_routed`、凭据不入包。
+- 治理：Codex 原生排除、浏览器路线的 planner→Luna→ego-browser 合同、MMX 外置且 music API eligibility-gated、其他 provider `observed_not_routed`、凭据不入包。
+
+MiniMax Web Music 是当前通用原创歌曲/纯音乐 BGM 路由，使用实时页面模型、费用和数量控件，默认数量为 1，并要求全曲完成、MP3 下载、非零文件与 SHA-256 读回。2026-08-20 官方服务公告之后，MMX music API 只保留为用户显式选择且运行时确认历史付费 API 资格的 legacy 路线；免费音乐模型已停止。本地 `mmx --help` 只算接口证据，不算账号资格证据。网页 Music 失败不自动回退 MMX。
 
 ## 未来纳入门槛
 

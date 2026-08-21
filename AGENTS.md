@@ -6,7 +6,7 @@ This is the portable Git source for published Skill packages. In the standard lo
 Materials:
 - `<checkout-root>` is the Git worktree containing this file.
 - Root-owned publication files are `.gitattributes`, `.github/workflows/verify.yml`, `.gitignore`, `AGENTS.md`, `README.md`, `ROOT-MANIFEST.sha256`, `config/`, and `scripts/`.
-- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, `media-creator/`, `project-handoff/`, or `document-workspace/`, is an independently validated managed scope.
+- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, `paper-downloader/`, `buddy-travelling/`, `media-creator/`, `project-handoff/`, or `document-workspace/`, is an independently validated managed scope.
 - A local collection wrapper, control project, member records, and Agent links live outside this repository.
 
 Constraints:
@@ -49,6 +49,10 @@ Shared collection invariants:
 <collection>/research-qa-plugin/src/research-qa-plugin         # member projection
 <agent-root>/research-qa-orchestrator                           # direct link to first-level Skill
 
+<collection>/GitHub/paper-downloader                            # true source
+<collection>/paper-downloader/src/paper-downloader              # member projection
+<agent-root>/paper-downloader                                   # direct consumer link to true source
+
 <collection>/GitHub/media-creator                               # true source
 <collection>/media-creator/src/media-creator                    # member projection
 <agent-root>/media-creator                                      # direct consumer link to true source
@@ -78,6 +82,9 @@ python3 -B -m unittest discover -s media-understanding/tests -p 'test_*.py'
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
 python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchestrator/tests -p 'test_*.py'
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" paper-downloader
+python3 -B -m unittest discover -s paper-downloader/scripts/tests -p 'test_*.py'
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" buddy-travelling
 python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 python3 -B project-handoff/scripts/validate_package.py project-handoff
@@ -105,6 +112,8 @@ Entry points:
 | `media-understanding/SKILL.md` | Multimodal task router and provider-binding package |
 | `research-qa-plugin/plugin.json` | Agent Plugins v1 research QA package manifest |
 | `research-qa-plugin/skills/research-qa-orchestrator/SKILL.md` | Audited five-stage research QA entry point |
+| `paper-downloader/SKILL.md` | Lawful academic PDF acquisition and disk-receipt verification |
+| `buddy-travelling/SKILL.md` | Bounded daily Buddy gift and travel workflow |
 | `media-creator/SKILL.md` | Non-native cross-Agent image and video generation router |
 | `project-handoff/SKILL.md` | Portable handoff and verified visible-task orchestration controller |
 | `document-workspace/SKILL.md` | Local-first document workspace lifecycle and evidence package |

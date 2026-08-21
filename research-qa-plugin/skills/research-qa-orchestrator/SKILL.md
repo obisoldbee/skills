@@ -24,6 +24,7 @@ Before planning or dispatching a real run, read these files completely:
 1. [workflow-contract.md](references/workflow-contract.md) — state machine, gates, stop rules, and boundary examples.
 2. [executor-and-audit-contract.md](references/executor-and-audit-contract.md) — runtime selection, independent auditor contract, dispatch prompts, and retry rules.
 3. [artifact-contract.md](references/artifact-contract.md) — output tree, receipts, schemas, and completion evidence.
+4. [external-executors.md](references/external-executors.md) — canonical `$paper-downloader` source binding and runtime preflight.
 
 At runtime, read `bundled/source-manifest.json` relative to this Skill directory. Use it to locate exactly eight expert Skills and one Fuxi Skill. Fail closed if the manifest, any declared file, or any declared SHA-256 binding is missing or invalid. Never discover experts by recursively scanning `bundled/`, guessing names, or using remembered personas.
 
@@ -68,7 +69,7 @@ Task:
 
 1. Lock the user question, exclusions, language, runtime, and a new calendar package ID. Preflight the path, reserve it through Akashic v2, and validate the plugin/manifest.
 2. Dispatch exactly eight manifest-bound topic experts in eight distinct contexts. Freeze all non-empty contributions into `research-brief.json` using a separate integrator context.
-3. Read/hash the live rule. Derive canonical publication identities and query Akashic before retrieval. Reuse exact matches without downloading; use a lawful acquisition executor only for misses. Preserve every outcome and real disk receipt.
+3. Read/hash the live rule. Resolve the registered `$paper-downloader` consumer and verify its real path and `SKILL.md` hash against `external-executors.md`. Derive canonical publication identities and query Akashic before retrieval. Reuse exact matches without downloading; use the verified lawful acquisition executor only for misses. Preserve every outcome and real disk receipt.
 4. Have a separate material auditor verify lookup/reuse, download truth, unique identities, eligibility, access depth, and at least 30 reviewable publications. Freeze the source set only after pass.
 5. Dispatch the eight manifest-bound experts in eight new clean contexts. Deliver the same full frozen corpus and require exact source-coverage artifacts. Do not expose another expert's draft or audit comments in an initial prompt.
 6. Independently audit every candidate attempt. Preserve rejections; allow at most three hash-bound reworks. Stop unless all eight lanes pass.

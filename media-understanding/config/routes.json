@@ -7,24 +7,17 @@
   },
   "routes": [
     {
-      "id": "codex-native-image",
-      "status": "active",
-      "media": ["image"],
-      "tasks": ["description", "rough_text", "direct_qa"],
-      "provider": "codex_native",
-      "model": null,
-      "authorization": "session_native",
-      "credentials": null,
-      "executor": {"kind": "native"}
-    },
-    {
       "id": "minimax-mmx-image",
       "status": "active_if_configured",
       "media": ["image"],
       "tasks": ["holistic", "image_qa", "ocr_assist"],
       "provider": "minimax",
       "model": null,
-      "authorization": "explicit_external_provider",
+      "authorization": "implicit_current_attachment_request",
+      "default_for": ["nonvision_host_single_image_understanding"],
+      "authorization_scope": "current_request_single_image_only",
+      "cost_scope": "one_default_minimax_image_call",
+      "fallback_policy": "requires_user_opt_in",
       "credentials": {
         "file": "~/.codex/secrets/minimax.env",
         "required_env": ["MINIMAX_API_KEY"],
@@ -36,7 +29,7 @@
         "args": ["vision", "describe"],
         "skill": "~/.agents/skills/mmx-cli/SKILL.md"
       },
-      "notes": "mmx 1.0.19 calls the Coding Plan VLM endpoint but does not expose or accept a model id; do not label the underlying model MiniMax-VL-01."
+      "notes": "Default image-understanding route when the current host cannot read a single attached image and the user asks to understand it. mmx 1.0.19 calls the Coding Plan VLM endpoint but does not expose or accept a model id; do not label the underlying model MiniMax-VL-01."
     },
     {
       "id": "minimax-m3-image",

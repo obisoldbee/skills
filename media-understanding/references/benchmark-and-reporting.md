@@ -13,7 +13,7 @@ Benchmark 是可选模式，不是每次媒体理解的必经流程。
 - [benchmark-human-ranking.md](benchmark-human-ranking.md)：人工前三名评分、覆盖率与盲评规则。
 - [benchmark-history-and-routing.md](benchmark-history-and-routing.md)：已封存的 VU01–VU10、OCR 和表情包任务族结论，以及需要重新评估的套餐状态。
 
-这些模块只在用户明确要求比较、比赛、回归或更新默认时使用；结构/报告脚本可以本地运行，任何 provider 调用仍需要当前授权。
+这些模块只在用户明确要求比较、比赛、回归或更新默认时使用；结构/报告脚本可以本地运行，任何 provider 调用仍需要当前授权。无视觉宿主的单图 MiniMax 默认授权只覆盖一次常规识图，不自动授权 benchmark 的重复或多 provider 调用。
 
 ## 触发条件
 

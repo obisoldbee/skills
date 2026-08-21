@@ -16,13 +16,13 @@ Keep at least these task families separate: `ui_layout_and_infographic`, `plain_
 - Agnes 2.0 Flash and 2.5 Flash returned text for 10/10 benchmark cases but had 0/10 complete JSON and required truncated-output salvage. Treat it as an explicitly selected free rough-reading candidate, never an automatic normalizer/default.
 - For OCR, GLM-OCR had the most direct readable text projection; MinerU produced document-oriented Markdown/structure; Unlimited-OCR required strict separation of readable text from `<|det|>`/bbox evidence. OCR remained an auxiliary track for the image benchmark.
 
-## Meme correction and current default
+## Meme correction and historical benchmark default
 
-The current **task-family-scoped** default for `meme_and_cultural_semantics` is Doubao `doubao-seed-2.0-lite`, not a global visual default. A separate historical 17-case Lu Shuanghou comparison had MiniMax/mmx mean self-score `5.38` over 16 numeric cases and Doubao Lite `8.47` over 17; Doubao completed `17/17` cases versus `16/17` for MiniMax/mmx. These were model self-scores rather than independent human grades, so the evidence supports a low-cost working default, not a cultural-champion claim. The important conclusion is scenario drift: models repeatedly flattened or reversed subtle emotion, viewpoint, and low-resolution/crop cues.
+The historical **task-family-scoped** working default for `meme_and_cultural_semantics` was Doubao `doubao-seed-2.0-lite`, not a global visual default and not an active automatic route. A separate historical 17-case Lu Shuanghou comparison had MiniMax/mmx mean self-score `5.38` over 16 numeric cases and Doubao Lite `8.47` over 17; Doubao completed `17/17` cases versus `16/17` for MiniMax/mmx. These were model self-scores rather than independent human grades, so they remain benchmark evidence only; they do not override the current operational `minimax-mmx-image` default for a non-vision host. The important conclusion is scenario drift: models repeatedly flattened or reversed subtle emotion, viewpoint, and low-resolution/crop cues.
 
 The strongest human correction involved the text `妈妈开门 我是离谱`; all tested models missed the full Chinese wordplay and peephole/fisheye viewpoint. A meme benchmark must therefore include human truth for `cultural_punchline`, `emotion_polarity`, `viewpoint`, `visual_degradation_as_signal`, and `wordplay`. A wrong cultural explanation or reversed emotion is a correctness `OUT`, not a minor style issue.
 
-For a single current attachment, select Doubao Lite through its independent Volcengine Coding Plan profile and state uncertainty. If that profile is unavailable or not authorized, stop or request an explicitly selected alternative; do not silently use Codex native or OCR. For high-confidence or batch work, retain the meme truth fields and rerun a meme-specific benchmark; do not inherit the UI/infographic route.
+Only when the user explicitly requests replay of that historical meme route should Doubao Lite be selected through its independent Volcengine Coding Plan profile. Ordinary single-image understanding on a non-vision host follows the current `minimax-mmx-image` default. For high-confidence or batch work, retain the meme truth fields and rerun a meme-specific benchmark; do not inherit the UI/infographic route.
 
 ## User-provided plan and connection snapshot — 2026-07-29
 

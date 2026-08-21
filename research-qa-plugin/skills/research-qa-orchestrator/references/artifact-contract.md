@@ -173,7 +173,14 @@ reservation_path: .reservation.json
 reservation_sha256: <sha256>
 akashic_manifest_path: manifest.yaml
 akashic_manifest_sha256: <sha256>
+acquisition_executor.name: paper-downloader
+acquisition_executor.registered_skill_path: <absolute consumer SKILL.md path>
+acquisition_executor.canonical_realpath: <collection>/GitHub/paper-downloader
+acquisition_executor.skill_sha256: <canonical SKILL.md sha256>
+acquisition_executor.verified_at: <RFC3339>
 ```
+
+The validator resolves `registered_skill_path` at validation time. It must resolve to the sibling canonical package's real `SKILL.md`, and the recorded hash must match current canonical bytes. A copied consumer, wrapper projection, former `working-skills` path, missing file, or hash drift fails before Stage 3.
 
 `run-manifest.json` contains the internal result:
 

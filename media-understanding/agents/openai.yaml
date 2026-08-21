@@ -1,4 +1,4 @@
 interface:
   display_name: "媒体理解与模型路由"
-  short_description: "为 OCR、音视频、批量、外部模型与评测任务选择可追溯路线"
-  default_prompt: "使用 $media-understanding 为精确 OCR/文档、音视频、批量、外部 provider 或 benchmark 任务选择路线；普通单张图片或截图的直接问答请使用 Codex 原生视觉，不要调用本 Skill。"
+  short_description: "无视觉宿主默认用 MiniMax 识图，并路由 OCR、音视频与外部模型"
+  default_prompt: "使用 $media-understanding 理解当前媒体；显式调用必须进入本 Skill。若当前宿主/模型不能读取用户本次所附单张图片，用户要求理解即授权该图片默认走 MiniMax；除非用户指定其他 provider 或禁止外发。"
