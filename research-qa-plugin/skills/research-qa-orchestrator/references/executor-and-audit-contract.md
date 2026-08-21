@@ -59,7 +59,7 @@ Apply these rules to material, expert, and synthesis audits:
 - Purpose: derive stable publication identities, query Akashic first, gather candidate records, and save lawfully accessible material with truthful receipts.
 - Use when: before material audit.
 - Do not use when: expert analysis has begun for the current frozen source version.
-- Parameters: frozen research brief, Akashic registry root, `paper-downloader` or equivalent lawful acquisition route, local read roots, network authority, and candidate output directory.
+- Parameters: frozen research brief, Akashic registry root, registered `$paper-downloader` real path and `SKILL.md` SHA-256 from `external-executors.md`, local read roots, network authority, and candidate output directory.
 - Returns: inventory rows, per-source Akashic lookup/acquisition receipts, retained payloads, search/access logs, failures, and hashes.
 - Failure handling: preserve per-source failures; never download an exact Akashic match; never label HTML, a landing page, or an intended filename as downloaded.
 - Stop rule: access-control bypass, unsafe request, or inability to produce an auditable inventory.

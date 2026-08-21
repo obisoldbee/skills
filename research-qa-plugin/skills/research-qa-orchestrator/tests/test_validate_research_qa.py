@@ -58,7 +58,14 @@ def sha(path: Path) -> str:
 
 
 def build_plugin(root: Path) -> tuple[Path, dict[str, dict[str, Any]]]:
-    plugin = root / "research-qa-plugin"
+    repository = root / "collection" / "GitHub"
+    plugin = repository / "research-qa-plugin"
+    paper_downloader = repository / validator.PAPER_DOWNLOADER_NAME
+    paper_downloader.mkdir(parents=True)
+    (paper_downloader / "SKILL.md").write_text(
+        "---\nname: paper-downloader\ndescription: fixture\n---\n\n# Fixture\n",
+        encoding="utf-8",
+    )
     skill = plugin / "skills" / validator.SKILL_NAME
     bundled = skill / "bundled"
     write_json(
@@ -227,6 +234,13 @@ class RunFixture:
         self.rule.write_text("# live Akashic rule fixture\n", encoding="utf-8")
         self.rule_sha = sha(self.rule)
         self.runtime = {"kind": "codex", "auditor_kind": "codex-independent"}
+        self.paper_downloader_root = self.plugin.parent / validator.PAPER_DOWNLOADER_NAME
+        self.paper_downloader_consumer = root / "agent-skills" / validator.PAPER_DOWNLOADER_NAME
+        self.paper_downloader_consumer.parent.mkdir()
+        self.paper_downloader_consumer.symlink_to(
+            self.paper_downloader_root,
+            target_is_directory=True,
+        )
         self.reviewable_count = reviewable_count
         self.expert_reworks = expert_reworks or {}
         self.exhausted_expert = exhausted_expert
@@ -626,6 +640,15 @@ class RunFixture:
                 "akashic_manifest_path": "manifest.yaml",
                 "akashic_manifest_sha256": sha(self.package / "manifest.yaml"),
                 "runtime": self.runtime,
+                "acquisition_executor": {
+                    "name": validator.PAPER_DOWNLOADER_NAME,
+                    "registered_skill_path": str(
+                        self.paper_downloader_consumer / "SKILL.md"
+                    ),
+                    "canonical_realpath": str(self.paper_downloader_root.resolve()),
+                    "skill_sha256": sha(self.paper_downloader_root / "SKILL.md"),
+                    "verified_at": NOW,
+                },
                 "initialized_at": NOW,
             },
         )
@@ -886,6 +909,18 @@ class RunFixture:
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_paper_downloader_binding_uses_registered_canonical_source(self) -> None:
+        binding = (SKILL_ROOT / "references" / "external-executors.md").read_text(
+            encoding="utf-8"
+        )
+        workflow = (SKILL_ROOT / "references" / "workflow-contract.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("$paper-downloader", binding)
+        self.assertIn("<collection>/GitHub/paper-downloader/SKILL.md", binding)
+        self.assertIn("never to the `paper-downloader/src/paper-downloader`", binding)
+        self.assertIn("registered `$paper-downloader` consumer", workflow)
+
     def assert_run_error(
         self,
         fixture: RunFixture,
@@ -953,6 +988,97 @@ class ValidatorTests(unittest.TestCase):
             self.assertEqual(report["reviewable_source_count"], 30)
             self.assertEqual(report["experts_passed"], 8)
             self.assertEqual(report["synthesis_audit"], "pass")
+            self.assertEqual(
+                report["acquisition_executor"]["canonical_realpath"],
+                str(fixture.paper_downloader_root.resolve()),
+            )
+
+    def test_copied_paper_downloader_consumer_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            copied = root / "copied-paper-downloader" / "SKILL.md"
+            copied.parent.mkdir()
+            copied.write_bytes((fixture.paper_downloader_root / "SKILL.md").read_bytes())
+            receipt_path = fixture.package / "payload/receipts/run-init.json"
+            receipt = read_json(receipt_path)
+            receipt["acquisition_executor"]["registered_skill_path"] = str(copied)
+            write_json(receipt_path, receipt)
+            self.assert_run_error(fixture, plugin, "acquisition_executor_unavailable")
+
+    def test_wrapper_paper_downloader_projection_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            wrapper = (
+                plugin.parent.parent
+                / validator.PAPER_DOWNLOADER_NAME
+                / "src"
+                / validator.PAPER_DOWNLOADER_NAME
+            )
+            wrapper.parent.mkdir(parents=True)
+            wrapper.symlink_to(
+                fixture.paper_downloader_root,
+                target_is_directory=True,
+            )
+            receipt_path = fixture.package / "payload/receipts/run-init.json"
+            receipt = read_json(receipt_path)
+            receipt["acquisition_executor"]["registered_skill_path"] = str(
+                wrapper / "SKILL.md"
+            )
+            with self.assertRaises(validator.ValidationError) as raised:
+                validator.validate_acquisition_executor(
+                    receipt["acquisition_executor"],
+                    plugin,
+                )
+            self.assertEqual(raised.exception.code, "acquisition_executor_unavailable")
+
+    def test_consumer_link_via_wrapper_projection_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            wrapper = (
+                plugin.parent.parent
+                / validator.PAPER_DOWNLOADER_NAME
+                / "src"
+                / validator.PAPER_DOWNLOADER_NAME
+            )
+            wrapper.parent.mkdir(parents=True)
+            wrapper.symlink_to(
+                fixture.paper_downloader_root,
+                target_is_directory=True,
+            )
+            indirect_consumer = (
+                root / "indirect-agent-skills" / validator.PAPER_DOWNLOADER_NAME
+            )
+            indirect_consumer.parent.mkdir()
+            indirect_consumer.symlink_to(wrapper, target_is_directory=True)
+            receipt = read_json(
+                fixture.package / "payload/receipts/run-init.json"
+            )
+            receipt["acquisition_executor"]["registered_skill_path"] = str(
+                indirect_consumer / "SKILL.md"
+            )
+            with self.assertRaises(validator.ValidationError) as raised:
+                validator.validate_acquisition_executor(
+                    receipt["acquisition_executor"],
+                    plugin,
+                )
+            self.assertEqual(raised.exception.code, "acquisition_executor_unavailable")
+
+    def test_paper_downloader_hash_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            receipt_path = fixture.package / "payload/receipts/run-init.json"
+            receipt = read_json(receipt_path)
+            receipt["acquisition_executor"]["skill_sha256"] = "0" * 64
+            write_json(receipt_path, receipt)
+            self.assert_run_error(fixture, plugin, "acquisition_executor_hash_mismatch")
 
     def test_akashic_root_manifest_must_remain_pending(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

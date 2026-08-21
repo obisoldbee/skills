@@ -19,7 +19,7 @@ Preflight these external dependencies and stop clearly if any required route is 
 
 - the live Akashic literature registry at `03-metadata/registry/`;
 - the live rule `90-project-rules/current/05-文献分级与创作.md`;
-- a lawful paper acquisition executor such as `paper-downloader`;
+- the registered `$paper-downloader` consumer, resolving directly to the canonical package described in `external-executors.md`;
 - a visible-task or equivalent runtime route capable of eight independent author contexts;
 - an independent semantic auditor for Stages 3 and 4.
 
@@ -63,7 +63,7 @@ The topic integrator uses a ninth, separate context and freezes `research-brief.
 Derive one canonical publication identity in this order: DOI, PMID, PMCID, then normalized publication URL. Search the Akashic registry before any network download.
 
 - On an exact Akashic match, reuse the existing source, materialize a hash-equal package payload, and record `access_status: akashic_reused` with `download_attempted: false`.
-- On a miss, a lawful acquisition executor may attempt retrieval. Every attempt must occur after the lookup timestamp.
+- On a miss, the preflighted `$paper-downloader` executor may attempt retrieval. Every attempt must occur after the lookup timestamp.
 - Never use title similarity alone to declare a match or invent an identifier.
 
 ### Honest acquisition states

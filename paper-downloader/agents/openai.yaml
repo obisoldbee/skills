@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper Downloader"
+  short_description: "Lawfully acquire and verify academic PDFs with disk receipts"
+  default_prompt: "Use $paper-downloader to acquire the exact requested papers through lawful local, open-access, publisher, and authorized browser routes. Serialize all network requests through one shared egress IP, prefer $ego-browser for interactive follow-up, then verify every claimed PDF from disk and report complete inventory coverage."

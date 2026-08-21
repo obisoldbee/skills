@@ -19,6 +19,7 @@ PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 PLUGIN_NAME = "research-qa-plugin"
 PLUGIN_VERSION = "0.2.0"
 SKILL_NAME = "research-qa-orchestrator"
+PAPER_DOWNLOADER_NAME = "paper-downloader"
 BUNDLED_SCHEMA = "research-qa-orchestrator/bundled-source-manifest/v1"
 TREE_HASH_ALGORITHM = (
     "sha256(concat(sorted_utf8(relative_path) + NUL + "
@@ -152,6 +153,7 @@ TERMINAL_FAILURE_EVENTS = {
     "package_exists",
     "package_escape",
     "output_boundary_invalid",
+    "acquisition_executor_unavailable",
 }
 
 
@@ -774,6 +776,130 @@ def validate_runtime(runtime_value: Any) -> dict[str, Any]:
     if kind not in {"minimax-code", "codex"} and auditor_kind == "minimax-default-verifier":
         fail("verifier_route_mismatch", "non-MiniMax runtime cannot default to MiniMax Verifier")
     return runtime
+
+
+def validate_acquisition_executor(value: Any, plugin_root: Path) -> dict[str, Any]:
+    binding = require_object(value, "run-init.acquisition_executor")
+    required = {
+        "name",
+        "registered_skill_path",
+        "canonical_realpath",
+        "skill_sha256",
+        "verified_at",
+    }
+    if set(binding) != required or binding.get("name") != PAPER_DOWNLOADER_NAME:
+        fail(
+            "acquisition_executor_binding",
+            "run-init must bind the registered Paper Downloader path, canonical realpath, and Skill hash",
+        )
+
+    canonical_root = plugin_root.parent / PAPER_DOWNLOADER_NAME
+    if canonical_root.is_symlink() or not canonical_root.is_dir():
+        fail(
+            "acquisition_executor_unavailable",
+            "canonical Paper Downloader package is missing or is not a real directory",
+            path=str(canonical_root),
+        )
+    canonical_skill = canonical_root / "SKILL.md"
+    if canonical_skill.is_symlink() or not canonical_skill.is_file():
+        fail(
+            "acquisition_executor_unavailable",
+            "canonical Paper Downloader SKILL.md is missing or symlinked",
+            path=str(canonical_skill),
+        )
+
+    registered_skill = Path(
+        require_nonempty_string(
+            binding.get("registered_skill_path"),
+            "run-init.acquisition_executor.registered_skill_path",
+        )
+    ).expanduser()
+    if not registered_skill.is_absolute():
+        fail(
+            "acquisition_executor_binding",
+            "registered Paper Downloader Skill path must be absolute",
+        )
+    collection_root = Path(os.path.abspath(plugin_root.parent.parent))
+    registered_lexical_path = Path(os.path.abspath(registered_skill))
+    try:
+        registered_lexical_path.relative_to(collection_root)
+    except ValueError:
+        pass
+    else:
+        fail(
+            "acquisition_executor_unavailable",
+            "registered Paper Downloader Skill must be an external Agent consumer, not a collection source or wrapper projection",
+            path=str(registered_lexical_path),
+        )
+    expected_realpath = canonical_root.resolve()
+    registered_package = registered_lexical_path.parent
+    try:
+        raw_target = Path(os.readlink(registered_package))
+    except OSError as error:
+        fail(
+            "acquisition_executor_unavailable",
+            "registered Paper Downloader consumer must be a direct package link",
+            path=str(registered_package),
+            error=str(error),
+        )
+    if not raw_target.is_absolute():
+        raw_target = registered_package.parent / raw_target
+    direct_target = Path(os.path.abspath(raw_target))
+    if (
+        direct_target.is_symlink()
+        or not direct_target.is_dir()
+        or direct_target.resolve() != expected_realpath
+    ):
+        fail(
+            "acquisition_executor_unavailable",
+            "registered Paper Downloader consumer does not link directly to the canonical package",
+            path=str(registered_package),
+            target=str(direct_target),
+        )
+    try:
+        registered_realpath = registered_skill.resolve(strict=True)
+    except OSError as error:
+        fail(
+            "acquisition_executor_unavailable",
+            "registered Paper Downloader Skill is unreadable",
+            path=str(registered_skill),
+            error=str(error),
+        )
+
+    expected_skill = canonical_skill.resolve()
+    if registered_realpath != expected_skill:
+        fail(
+            "acquisition_executor_unavailable",
+            "registered Paper Downloader Skill does not resolve directly to the canonical package",
+            registered_realpath=str(registered_realpath),
+            expected=str(expected_skill),
+        )
+    if binding.get("canonical_realpath") != str(expected_realpath):
+        fail(
+            "acquisition_executor_binding",
+            "recorded Paper Downloader canonical realpath is stale or incorrect",
+            expected=str(expected_realpath),
+        )
+    expected_sha = sha256_file(canonical_skill)
+    if require_hex(
+        binding.get("skill_sha256"),
+        "run-init.acquisition_executor.skill_sha256",
+    ) != expected_sha:
+        fail(
+            "acquisition_executor_hash_mismatch",
+            "recorded Paper Downloader SKILL.md hash differs from the canonical source",
+            expected=expected_sha,
+        )
+    parse_time(
+        binding.get("verified_at"),
+        "run-init.acquisition_executor.verified_at",
+    )
+    return {
+        "name": PAPER_DOWNLOADER_NAME,
+        "registered_skill_path": str(registered_skill),
+        "canonical_realpath": str(expected_realpath),
+        "skill_sha256": expected_sha,
+    }
 
 
 def validate_rule_binding(
@@ -1618,6 +1744,10 @@ def validate_run(
     ):
         fail("run_init_binding", "run-init receipt does not match the run manifest")
     parse_time(run_init.get("initialized_at"), "run-init.initialized_at")
+    acquisition_executor = validate_acquisition_executor(
+        run_init.get("acquisition_executor"),
+        plugin_root,
+    )
 
     plugin_validation_path = package_path(package_root, package, "payload/receipts/plugin-validation.json")
     plugin_validation = load_json(plugin_validation_path, "plugin-validation receipt")
@@ -1886,6 +2016,7 @@ def validate_run(
         "package_relative_path": package_relative_path,
         "task_id": task_id,
         "runtime": runtime,
+        "acquisition_executor": acquisition_executor,
         "reviewable_source_count": reviewable_count,
         "reviewable_source_ids_sha256": reviewable_ids_sha,
         "topic_experts_completed": 8,
