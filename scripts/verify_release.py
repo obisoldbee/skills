@@ -9,9 +9,11 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 ROOT_MANIFEST = "ROOT-MANIFEST.sha256"
@@ -48,6 +50,8 @@ FORBIDDEN_MARKERS = {
     b"BEGIN OPENSSH " + b"PRIVATE KEY": "private-key",
     b"id_" + b"ed25519": "private-key-name",
 }
+REMOTE_IDENTITY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def is_windows_junction(path: Path) -> bool:
@@ -233,18 +237,253 @@ def verify(root: Path) -> dict[str, object]:
     }
 
 
+def run_command(
+    root: Path,
+    *arguments: str,
+    allow_failure: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        list(arguments),
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 and not allow_failure:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        detail = re.sub(
+            r"((?:https?|ssh|git)://)[^/@\s]+@",
+            r"\1<redacted>@",
+            detail,
+            flags=re.IGNORECASE,
+        )
+        raise ValueError(f"{' '.join(arguments)} failed at {root}: {detail}")
+    return result
+
+
+def git(root: Path, *arguments: str) -> str:
+    return run_command(root, "git", *arguments).stdout.strip()
+
+
+def safe_component(value: str, label: str) -> str:
+    if not SAFE_COMPONENT.fullmatch(value) or value in {".", ".."}:
+        raise ValueError(f"unsafe {label}: {value!r}")
+    return value
+
+
+def normalize_remote(url: str) -> str | None:
+    value = url.strip().rstrip("/")
+    scp = re.fullmatch(r"(?:[^@/:]+@)?github\.com:(.+)", value, re.IGNORECASE)
+    if scp:
+        identity = scp.group(1)
+    else:
+        parsed = urlsplit(value)
+        if parsed.scheme.lower() not in {"http", "https", "ssh", "git"}:
+            return None
+        if (parsed.hostname or "").lower() != "github.com":
+            return None
+        identity = parsed.path.lstrip("/")
+    if identity.endswith(".git"):
+        identity = identity[:-4]
+    return identity if REMOTE_IDENTITY.fullmatch(identity) else None
+
+
+def remote_matches(observed: str, expected: str) -> bool:
+    normalized = normalize_remote(observed)
+    if REMOTE_IDENTITY.fullmatch(expected):
+        return normalized is not None and normalized.lower() == expected.lower()
+    return observed.strip().rstrip("/") == expected.strip().rstrip("/")
+
+
+def display_remote(url: str) -> str:
+    if REMOTE_IDENTITY.fullmatch(url):
+        return url
+    return normalize_remote(url) or "<non-GitHub remote>"
+
+
+def operation_markers(root: Path) -> list[str]:
+    git_dir = Path(git(root, "rev-parse", "--git-dir"))
+    if not git_dir.is_absolute():
+        git_dir = root / git_dir
+    names = (
+        "MERGE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+        "BISECT_LOG",
+        "rebase-apply",
+        "rebase-merge",
+        "index.lock",
+        "shallow.lock",
+    )
+    return [name for name in names if (git_dir / name).exists()]
+
+
+def refresh_repository(
+    root: Path,
+    *,
+    update: bool,
+    remote_name: str,
+    remote_identity: str,
+    expected_ref: str,
+) -> dict[str, object]:
+    root = resolve_real_root(root)
+    remote_name = safe_component(remote_name, "remote name")
+    expected_ref = safe_component(expected_ref, "ref")
+    observed_root = Path(git(root, "rev-parse", "--show-toplevel")).resolve()
+    if observed_root != root:
+        raise ValueError(f"Git root differs: expected {root}, observed {observed_root}")
+
+    branch_result = run_command(
+        root,
+        "git",
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "HEAD",
+        allow_failure=True,
+    )
+    branch = branch_result.stdout.strip()
+    if branch != expected_ref:
+        raise ValueError(
+            f"checkout branch differs: expected {expected_ref}, observed {branch or 'detached'}"
+        )
+    upstream = git(
+        root,
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{upstream}",
+    )
+    expected_upstream = f"{remote_name}/{expected_ref}"
+    if upstream != expected_upstream:
+        raise ValueError(
+            f"checkout upstream differs: expected {expected_upstream}, observed {upstream}"
+        )
+    if git(root, "status", "--porcelain=v1", "--untracked-files=all"):
+        raise ValueError("checkout is dirty; repository refresh stopped before network access")
+    markers = operation_markers(root)
+    if markers:
+        raise ValueError("Git operation or lock is present: " + ", ".join(markers))
+    origin = git(root, "config", "--get", f"remote.{remote_name}.url")
+    if not remote_matches(origin, remote_identity):
+        raise ValueError(
+            "checkout remote differs: "
+            f"expected {display_remote(remote_identity)}, observed {display_remote(origin)}"
+        )
+
+    verify(root)
+    before = git(root, "rev-parse", "HEAD")
+    if update:
+        fetched = run_command(
+            root,
+            "git",
+            "fetch",
+            "--prune",
+            remote_name,
+            allow_failure=True,
+        )
+        if fetched.returncode != 0:
+            raise ValueError(f"git fetch failed for configured remote {remote_name}")
+
+    counts = git(
+        root,
+        "rev-list",
+        "--left-right",
+        "--count",
+        f"HEAD...{upstream}",
+    ).split()
+    if len(counts) != 2:
+        raise ValueError(f"unexpected ahead/behind output: {' '.join(counts)}")
+    ahead, behind = (int(counts[0]), int(counts[1]))
+    if ahead:
+        state = "diverged" if behind else "ahead"
+        raise ValueError(
+            f"checkout is {state}: ahead={ahead}, behind={behind}; no local commit was changed"
+        )
+    ancestor = run_command(
+        root,
+        "git",
+        "merge-base",
+        "--is-ancestor",
+        "HEAD",
+        upstream,
+        allow_failure=True,
+    )
+    if ancestor.returncode != 0:
+        raise ValueError("checkout cannot fast-forward to its upstream")
+    if update and behind:
+        git(root, "merge", "--ff-only", upstream)
+
+    after = git(root, "rev-parse", "HEAD")
+    if update:
+        upstream_head = git(root, "rev-parse", upstream)
+        if after != upstream_head:
+            raise ValueError(
+                f"post-update HEAD differs from upstream: {after} != {upstream_head}"
+            )
+        if git(root, "status", "--porcelain=v1", "--untracked-files=all"):
+            raise ValueError("checkout became dirty during repository refresh")
+        current_validator = root / "scripts" / "verify_release.py"
+        verified = run_command(
+            root,
+            sys.executable,
+            "-B",
+            str(current_validator),
+            str(root),
+        )
+        if '"status": "verified"' not in verified.stdout:
+            raise ValueError("updated repository returned no verified root receipt")
+
+    return {
+        "status": "ready" if not update else ("updated" if before != after else "already_current"),
+        "operation": "repository-device-refresh",
+        "mode": "check-only" if not update else "apply",
+        "repository_root": str(root),
+        "remote": display_remote(origin),
+        "branch": branch,
+        "upstream": upstream,
+        "before": before,
+        "after": after,
+        "ahead": ahead,
+        "behind": behind if not update else 0,
+        "validation": "scripts/verify_release.py",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", nargs="?", type=Path, default=Path(__file__).parents[1])
-    parser.add_argument(
+    operation = parser.add_mutually_exclusive_group()
+    operation.add_argument(
         "--rebuild-root-manifest",
         action="store_true",
         help="atomically rewrite only ROOT-MANIFEST.sha256 from the exact root-managed file set",
     )
+    operation.add_argument(
+        "--check-repository",
+        action="store_true",
+        help="validate Git state and root files without fetching or writing",
+    )
+    operation.add_argument(
+        "--update-repository",
+        action="store_true",
+        help="fetch and fast-forward a clean main checkout, then validate root files",
+    )
+    parser.add_argument("--remote", default="origin")
+    parser.add_argument("--remote-identity", default="obisoldbee/skills")
+    parser.add_argument("--ref", default="main")
     arguments = parser.parse_args()
     try:
         if arguments.rebuild_root_manifest:
             result = rebuild_manifest(arguments.root)
+        elif arguments.check_repository or arguments.update_repository:
+            result = refresh_repository(
+                arguments.root,
+                update=arguments.update_repository,
+                remote_name=arguments.remote,
+                remote_identity=arguments.remote_identity,
+                expected_ref=arguments.ref,
+            )
         else:
             result = verify(arguments.root)
     except ValueError as exc:

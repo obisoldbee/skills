@@ -17,6 +17,7 @@ Constraints:
 - A repository-root manifest PASS verifies only root-owned files. Validate a named package separately.
 - Package-change authority is not implied by repository-root maintenance authority.
 - Update-only may fast-forward this checkout and validate one named package; it must not initialize wrappers, edit local indexes/records, scan siblings, or relink Agent consumers.
+- Repository-wide device refresh is a separate root operation. It may fast-forward this one checkout and reconcile only missing links declared by the repository-root allowlists in already existing Agent roots; it must not modify member packages, local wrappers, indexes, records, or export policy.
 - Never create missing Agent parents or replace real paths, wrong links, or dangling links without explicit conflict-preservation authority.
 - Do not expose credentials, caches, local inventories, or machine-specific paths.
 - Base completion claims on current Git/disk/link readback and reply in the user's language.
@@ -26,9 +27,10 @@ Lifecycle routing:
 1. **Clone/bootstrap only**: clone to the exact named destination, verify Git identity, run root validation and the named package validator, report commit, and stop.
 2. **Fresh shared Skills collection**: clone this repository as `<collection>/GitHub`, then run `project-conventions/scripts/initialize_skills_control_project.py` dry-run and apply from that checkout. It creates the collection overlay, complete control project, stable member wrapper, and member projection. It creates no Agent links.
 3. **Update-only**: run the requested package's `scripts/update_shared_checkout.py`. It permits only clean, attached, ahead-zero fast-forward behavior, validates that named package, and stops.
-4. **Package maintenance**: modify only the explicitly authorized top-level package and run its validators/tests.
-5. **Repository-root maintenance**: modify only root-owned files, rebuild `ROOT-MANIFEST.sha256`, verify it, and do not modify package content.
-6. **Agent installation**: separately scan and apply only exact authorized consumers using the collection control scripts or this checkout's scoped link scripts.
+4. **Device refresh**: for “本机全量同步 Skills”, run `scripts/link-macos.sh --sync-device` or `scripts/link-windows.ps1 -SyncDevice` without apply first. Apply may update this checkout and create only missing allowlisted public Skill links in existing compatible Agent roots.
+5. **Package maintenance**: modify only the explicitly authorized top-level package and run its validators/tests.
+6. **Repository-root maintenance**: modify only root-owned files, rebuild `ROOT-MANIFEST.sha256`, verify it, and do not modify package content.
+7. **Agent installation**: separately scan and apply only exact authorized consumers using the collection control scripts or this checkout's scoped link scripts.
 
 Shared collection invariants:
 
@@ -104,7 +106,7 @@ Entry points:
 |---|---|
 | `README.md` | Bootstrap, update, validation, and linking overview |
 | `ROOT-MANIFEST.sha256` | Digests for repository-root files only |
-| `scripts/verify_release.py` | Offline root verifier |
+| `scripts/verify_release.py` | Offline root verifier and strict repository check/fast-forward gate |
 | `scripts/link-macos.sh` | Scoped Unix Agent consumer link tool |
 | `scripts/link-windows.ps1` | Scoped Windows Agent consumer junction tool |
 | `project-conventions/SKILL.md` | Lifecycle and filesystem-governance package |

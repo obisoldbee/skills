@@ -62,6 +62,75 @@ jobs:
           python -B scripts/verify_release.py .
           git diff --exit-code -- ROOT-MANIFEST.sha256
 
+      - name: Verify repository device-refresh workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/link-macos.sh
+          fixture="$RUNNER_TEMP/obisoldbee-device-refresh"
+          seed="$fixture/seed"
+          origin="$fixture/origin.git"
+          checkout="$fixture/checkout"
+          home="$fixture/home"
+
+          python -c 'import shutil, sys; shutil.copytree(sys.argv[1], sys.argv[2], ignore=shutil.ignore_patterns(".git", ".DS_Store", "__pycache__", "*.pyc"))' "$PWD" "$seed"
+          git -C "$seed" init -q -b main
+          git -C "$seed" config user.name Fixture
+          git -C "$seed" config user.email fixture@example.invalid
+          git -C "$seed" config core.autocrlf false
+          git -C "$seed" add .
+          git -C "$seed" commit -q -m fixture
+          git clone -q --bare "$seed" "$origin"
+          git clone -q "$origin" "$checkout"
+          git -C "$seed" remote add origin "$origin"
+
+          observed_remote="$(git -C "$checkout" remote get-url origin)"
+          python -B "$checkout/scripts/verify_release.py" "$checkout" \
+            --check-repository --remote-identity "$observed_remote"
+
+          echo keep > "$checkout/local-untracked.txt"
+          if python -B "$checkout/scripts/verify_release.py" "$checkout" \
+            --check-repository --remote-identity "$observed_remote"; then
+            echo "dirty repository check unexpectedly succeeded" >&2
+            exit 1
+          fi
+          rm "$checkout/local-untracked.txt"
+
+          python -c 'from pathlib import Path; p=Path(__import__("sys").argv[1]); p.write_text(p.read_text(encoding="utf-8") + "\n", encoding="utf-8")' "$seed/project-conventions/README.md"
+          git -C "$seed" add project-conventions/README.md
+          git -C "$seed" commit -q -m remote-package-byte
+          git -C "$seed" push -q origin main
+          python -B "$checkout/scripts/verify_release.py" "$checkout" \
+            --update-repository --remote-identity "$observed_remote"
+          test "$(git -C "$checkout" rev-parse HEAD)" = "$(git -C "$seed" rev-parse HEAD)"
+
+          git -C "$checkout" remote set-url origin https://github.com/obisoldbee/skills.git
+          origin_uri="$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$origin")"
+          git -C "$checkout" config "url.$origin_uri.insteadOf" https://github.com/obisoldbee/skills.git
+          mkdir -p "$home/.codex/skills"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            home_native="$(cygpath -w "$home")"
+            USERPROFILE="$home_native" powershell.exe -NoProfile -ExecutionPolicy Bypass \
+              -File "$checkout/scripts/link-windows.ps1" -SyncDevice -Agent codex
+          else
+            HOME="$home" bash "$checkout/scripts/link-macos.sh" --sync-device --agent codex
+          fi
+          test -z "$(find "$home/.codex/skills" -mindepth 1 -print -quit)"
+          python -c 'from pathlib import Path; p=Path(__import__("sys").argv[1]); p.write_text(p.read_text(encoding="utf-8") + "\n", encoding="utf-8")' "$seed/project-conventions/README.md"
+          git -C "$seed" add project-conventions/README.md
+          git -C "$seed" commit -q -m remote-package-byte-again
+          git -C "$seed" push -q origin main
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            USERPROFILE="$home_native" powershell.exe -NoProfile -ExecutionPolicy Bypass \
+              -File "$checkout/scripts/link-windows.ps1" -SyncDevice -Apply -Agent codex
+          else
+            HOME="$home" bash "$checkout/scripts/link-macos.sh" --sync-device --apply --agent codex
+          fi
+          expected="$(awk -F '\t' 'NR > 1 && ($3 == "all" || ("," $3 ",") ~ /,codex,/) { count++ } END { print count + 0 }' "$checkout/config/skill-exports.tsv")"
+          observed="$(find "$home/.codex/skills" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')"
+          test "$observed" = "$expected"
+          test "$(git -C "$checkout" rev-parse HEAD)" = "$(git -C "$seed" rev-parse HEAD)"
+
       - name: Verify project-conventions package behavior
         shell: bash
         run: |

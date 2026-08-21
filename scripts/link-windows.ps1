@@ -4,13 +4,143 @@ param(
     [string]$Target,
     [switch]$AllAgents,
     [string]$Skill,
-    [switch]$AllSkills
+    [switch]$AllSkills,
+    [switch]$SyncDevice
 )
 
 # Scan or explicitly create Skill junctions from this checkout on Windows.
 # Default is read-only. No target parent or conflicting path is changed.
 
 $ErrorActionPreference = 'Stop'
+
+if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
+    throw "invalid-agent: $Agent"
+}
+
+$ScriptDir = $PSScriptRoot
+$ScriptPath = Join-Path $ScriptDir 'link-windows.ps1'
+$RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
+$ExportsFile = Join-Path $RepoRoot 'config\skill-exports.tsv'
+$TargetsFile = Join-Path $RepoRoot 'config\agent-paths.tsv'
+$Verifier = Join-Path $RepoRoot 'scripts\verify_release.py'
+
+if (-not (Test-Path -LiteralPath $ExportsFile -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $TargetsFile -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $Verifier -PathType Leaf)) {
+    throw "repository-root-input-missing: $RepoRoot"
+}
+
+if ($SyncDevice) {
+    if ($Target -or $AllAgents -or $Skill -or $AllSkills) {
+        throw 'sync-device-allows-only-optional-agent'
+    }
+    if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+        throw 'python-not-found: python'
+    }
+    if (-not $env:USERPROFILE) {
+        throw 'USERPROFILE-is-not-set'
+    }
+
+    $Mode = if ($Apply) { 'apply' } else { 'plan' }
+    Write-Host "operation=repository-device-refresh mode=$Mode repository=$RepoRoot"
+    if ($Apply -and $env:OBISOLDBEE_SKILLS_REFRESHED -ne '1') {
+        & python -B $Verifier $RepoRoot --update-repository
+        if ($LASTEXITCODE -ne 0) {
+            throw "repository-refresh-failed: $LASTEXITCODE"
+        }
+        $env:OBISOLDBEE_SKILLS_REFRESHED = '1'
+        $ReentryArguments = @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath,
+            '-SyncDevice', '-Apply'
+        )
+        if ($Agent) { $ReentryArguments += @('-Agent', $Agent) }
+        & powershell.exe @ReentryArguments
+        exit $LASTEXITCODE
+    }
+    & python -B $Verifier $RepoRoot --check-repository
+    if ($LASTEXITCODE -ne 0) {
+        throw "repository-refresh-failed: $LASTEXITCODE"
+    }
+
+    $ConfiguredTargets = @(
+        Import-Csv -LiteralPath $TargetsFile -Delimiter "`t" |
+            Where-Object {
+                $_.platform -eq 'windows' -and (-not $Agent -or $_.agent -eq $Agent)
+            } |
+            ForEach-Object {
+                [PSCustomObject]@{
+                    agent = $_.agent
+                    path = $_.path.Replace('%USERPROFILE%', $env:USERPROFILE)
+                }
+            }
+    )
+    if ($ConfiguredTargets.Count -eq 0) {
+        throw "agent-not-configured: $Agent"
+    }
+
+    $SelectedTargets = @()
+    $MissingParents = 0
+    foreach ($ConfiguredTarget in $ConfiguredTargets) {
+        if (-not (Test-Path -LiteralPath $ConfiguredTarget.path -PathType Container)) {
+            Write-Host "target-parent-missing $($ConfiguredTarget.agent) $($ConfiguredTarget.path)"
+            $MissingParents++
+            continue
+        }
+        $SelectedTargets += $ConfiguredTarget
+    }
+    if ($Agent -and $SelectedTargets.Count -eq 0) {
+        throw "selected-agent-parent-missing: $Agent"
+    }
+    if ($SelectedTargets.Count -eq 0) {
+        throw 'no-existing-agent-targets'
+    }
+
+    $PreflightFailures = 0
+    foreach ($SelectedTarget in $SelectedTargets) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath `
+            -Agent $SelectedTarget.agent -AllSkills
+        if ($LASTEXITCODE -ne 0) { $PreflightFailures++ }
+    }
+    if ($PreflightFailures -gt 0) {
+        throw "device-refresh-preflight-failed: $PreflightFailures consumer roots"
+    }
+
+    $Exports = @(Import-Csv -LiteralPath $ExportsFile -Delimiter "`t")
+    $Pairs = 0
+    $ApplyOperations = 0
+    foreach ($SelectedTarget in $SelectedTargets) {
+        foreach ($Export in $Exports) {
+            $Consumers = if ($Export.consumers) { $Export.consumers } else { 'all' }
+            if ($Consumers -ne 'all') {
+                $ConsumerSet = @($Consumers.Split(',') | ForEach-Object { $_.Trim() })
+                if ($SelectedTarget.agent -notin $ConsumerSet) { continue }
+            }
+            $Pairs++
+            if ($Apply) {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath `
+                    -Apply -Agent $SelectedTarget.agent -Skill $Export.skill_name
+                if ($LASTEXITCODE -ne 0) {
+                    throw "consumer-apply-failed: $($SelectedTarget.agent)/$($Export.skill_name) exit=$LASTEXITCODE"
+                }
+                $ApplyOperations++
+            }
+        }
+    }
+
+    if ($Apply) {
+        foreach ($SelectedTarget in $SelectedTargets) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath `
+                -Agent $SelectedTarget.agent -AllSkills
+            if ($LASTEXITCODE -ne 0) {
+                throw "consumer-readback-failed: $($SelectedTarget.agent) exit=$LASTEXITCODE"
+            }
+        }
+    } else {
+        Write-Host 'plan-ready rerun-with=-SyncDevice -Apply'
+    }
+    Write-Host "summary operation=repository-device-refresh mode=$Mode agents=$($SelectedTargets.Count) pairs=$Pairs apply_operations=$ApplyOperations skipped_missing_parents=$MissingParents"
+    exit 0
+}
 
 $TargetSelectorCount = 0
 if ($Agent) { $TargetSelectorCount++ }
@@ -31,21 +161,8 @@ if ($Apply -and $AllAgents) {
 if ($Apply -and $AllSkills) {
     throw 'apply-does-not-allow-all-skills'
 }
-if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
-    throw "invalid-agent: $Agent"
-}
 if ($Skill -and $Skill -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw "invalid-skill: $Skill"
-}
-
-$ScriptDir = $PSScriptRoot
-$RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
-$ExportsFile = Join-Path $RepoRoot 'config\skill-exports.tsv'
-$TargetsFile = Join-Path $RepoRoot 'config\agent-paths.tsv'
-
-if (-not (Test-Path -LiteralPath $ExportsFile -PathType Leaf) -or
-    -not (Test-Path -LiteralPath $TargetsFile -PathType Leaf)) {
-    throw "config-missing: $RepoRoot\config"
 }
 
 $Targets = @()

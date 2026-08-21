@@ -100,6 +100,34 @@ The helper resolves the shared checkout, permits only a clean fast-forward, vali
 
 Git advances the repository as one commit, so bytes in other published packages may also advance. That does not authorize editing, installing, or governing their local wrappers.
 
+## Refresh this device's public Skills
+
+In the recommended collection layout, the local `skills/` Project Root manages and records repository-wide maintenance, while this checkout remains the only versioned file source. The exact requests “本机全量同步 Skills”, “更新 GitHub 并让本机 Agent 使用”, and “同步共享 Skill 根” use this repository-root operation, not a member package.
+
+Run plan mode first. It performs no fetch and creates no link:
+
+```bash
+bash scripts/link-macos.sh --sync-device
+bash scripts/link-macos.sh --sync-device --agent codex
+```
+
+Apply only when the request authorizes both the repository refresh and allowlisted public consumer reconciliation:
+
+```bash
+bash scripts/link-macos.sh --sync-device --apply
+```
+
+Windows:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 -SyncDevice
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 -SyncDevice -Apply
+```
+
+The operation requires this exact checkout to be a clean attached `main` tracking `origin/main` with no local-ahead commits or Git operation in progress. Apply fetches and fast-forwards, verifies the repository-root manifest, rereads `config/skill-exports.tsv` and `config/agent-paths.tsv`, preflights every selected existing compatible Agent root, then creates only missing declared links. It skips missing Agent roots during an all-Agent run and fails for a specifically requested missing Agent.
+
+It never creates another checkout or a missing Agent root, modifies a member package, changes export policy, replaces a real path or wrong/dangling link, touches local wrappers/indexes/records, or proves runtime discovery. Packages not declared in the public export allowlist are not installed by this operation.
+
 ## Agent installation
 
 Agent installation is a separate explicit action. Exports are declared in [`config/skill-exports.tsv`](config/skill-exports.tsv), and target candidates are declared in [`config/agent-paths.tsv`](config/agent-paths.tsv).
