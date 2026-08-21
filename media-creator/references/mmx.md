@@ -89,9 +89,11 @@ mmx speech synthesize \
   --non-interactive
 ```
 
-## 音乐与翻唱
+## 音乐与翻唱：legacy API，显式且资格受限
 
-使用：
+MMX music API 不再是通用音乐默认路线。MiniMax [2026-08-20 官方音乐公告](https://platform.minimaxi.com/docs/guides/music-generation)说明：付费音乐/歌词 API 不向新用户提供；历史付费 API 用户可能继续使用，但必须在运行时确认当前账号资格；`Music-3.0-free`、`Music-2.6-free` 和 `music-cover-free` 已停止。官方网页音乐路线才是本包通用原创歌曲/纯音乐 BGM 默认，见 [minimax-web-music.md](minimax-web-music.md)。网页 Music 失败不得静默切换到本 API。
+
+只有用户明确选择 MMX music API，且运行时已经确认属于仍有资格的历史付费 API 用户时，才可使用以下当前 CLI 接口示例：
 
 ```bash
 mmx music generate --prompt "<style>" --lyrics-file <lyrics.txt> --out <song.mp3>
@@ -99,7 +101,9 @@ mmx music generate --prompt "<style>" --instrumental --out <bgm.mp3>
 mmx music cover --prompt "<target style>" --audio-file <reference.mp3> --out <cover.mp3>
 ```
 
-运行时帮助决定当前模型、歌词优化、结构化风格字段和 cover 默认模型；不要把旧 Skill 中可能过时的默认值当作事实。
+运行时帮助只证明本地 CLI 的接口表面，不证明账号 eligibility、余额、服务可用性或新用户资格。运行时模型、歌词优化、结构化风格字段和 cover 默认模型仍以当前 `mmx --help` 与账号响应为准；不要把本地帮助或历史文档当成可提交授权。
+
+MMX 仍是外置、可升级依赖：本包不复制它的 Skill、CLI、配置或凭据。音乐 API 的资格错误、余额/配额错误或内容安全错误原样报告并停止；不要切换到 Web Music 或其他 provider 来掩盖失败。语音仍是独立的 MMX speech 路线，不受这条 music eligibility 说明替代。
 
 ## 失败边界
 

@@ -13,6 +13,52 @@
       "reason": "Preserve Codex's built-in image-generation trigger and execution path."
     }
   },
+  "execution_contract": {
+    "planner": "originating_main_task",
+    "final_payload": {
+      "required_before_handoff": true,
+      "creative_authority": "originating_main_task",
+      "worker_mutation": "mechanical_mapping_only"
+    },
+    "luna_max": {
+      "route": "luna-max",
+      "model": "gpt-5.6-luna",
+      "reasoning": "max",
+      "thread": "visible",
+      "surface": "visible_thread",
+      "orchestrator": "project-handoff",
+      "created_and_validated_by": "originating_main_task"
+    },
+    "authorization": {
+      "selected_browser_generation_request": "one_bounded_luna_visible_task",
+      "plan_or_prompt_only_request": "no_dispatch",
+      "additional_task_or_submission": "requires_new_authority"
+    },
+    "worker": {
+      "executor": "ego-browser",
+      "execution_role": "browser_worker",
+      "handoff_depth": 1,
+      "recursive_dispatch": false,
+      "action": "execute_envelope_directly"
+    },
+    "cross_harness": {
+      "local_execution_allowed_when": [
+        "visible_task_dispatch_absent",
+        "verified_browser_executor_capability"
+      ],
+      "local_execution_requires_all": true,
+      "preferred_local_executor": "ego-browser",
+      "is_fallback_after_luna_creation_failure": false,
+      "explicit_luna_request_may_downgrade": false
+    },
+    "submission": {
+      "pre_submission_manual_or_login_check": "handoff_and_pause",
+      "nonzero_or_ambiguous_cost": "pause_before_submission",
+      "duplicate_submission": false,
+      "post_submission_provider_switch": false,
+      "download_retry": "same_submitted_result_only"
+    }
+  },
   "policies": {
     "non_codex_text_to_image": {
       "primary": "chatgpt-web-image",
@@ -26,11 +72,17 @@
       "fallback_when": [
         "platform_is_not_Darwin",
         "ego_browser_missing",
-        "chatgpt_login_not_confirmed",
-        "browser_preflight_failed"
+        "visible_task_dispatch_absent_and_verified_local_ego_browser_missing"
+      ],
+      "fallback_exclusions": [
+        "login_or_manual_check_required",
+        "luna_creation_failed",
+        "visible_task_handoff_failed",
+        "explicit_luna_request",
+        "prompt_or_task_submitted"
       ],
       "agnes_selection": "explicit_or_user_confirmed",
-      "post_submission_cross_provider_fallback": "ask_user"
+      "post_submission_cross_provider_fallback": "none"
     },
     "image_to_image": {
       "never_route_to": [
@@ -61,6 +113,15 @@
       },
       "h3_quota_authoritative": false,
       "h3_note": "The Token Plan quota result is not authoritative for pay-as-you-go H3 usage."
+    },
+    "music": {
+      "primary": "minimax-web-music",
+      "selection": "default_for_generic_original_song_or_instrumental_bgm",
+      "default_count": 1,
+      "web_music_failure": "stop_and_report",
+      "post_submission_fallback": "none",
+      "mmx_music_api": "explicit_and_runtime_eligibility_gated",
+      "speech_route": "minimax-mmx-speech"
     }
   },
   "routes": [
@@ -70,24 +131,54 @@
       "status": "active_if_available",
       "selection": "non_codex_default_when_preconditions_hold",
       "executor": {
-        "kind": "external_browser_cli",
-        "command": "ego-browser",
-        "vendored": false
+        "kind": "project_handoff_visible_thread",
+        "orchestrator": "project-handoff",
+        "route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "worker": {
+          "kind": "external_browser_cli",
+          "command": "ego-browser",
+          "vendored": false
+        }
       },
       "runtime_preconditions": {
         "platform": "Darwin",
         "ego_browser": true,
         "chatgpt_login": true,
-        "login_check": "runtime_only"
+        "login_check": "runtime_only",
+        "visible_task_dispatch": "required_when_available"
       },
       "alternative_executor": {
         "kind": "harness_builtin_browser",
         "status": "capability_probe_required",
+        "selection": "only_when_visible_task_dispatch_absent",
+        "capability": "verified_equivalent_browser_executor",
         "requirements": [
           "authenticated_ChatGPT_session",
           "stable_semantic_controls",
           "authenticated_image_download"
         ]
+      },
+      "browser_handoff": {
+        "required_when_visible_task_surface_available": true,
+        "orchestrator": "project-handoff",
+        "luna_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "thread": "visible",
+        "surface": "visible_thread",
+        "worker_executor": "ego-browser",
+        "execution_role": "browser_worker",
+        "handoff_depth": 1,
+        "recursive_dispatch": false,
+        "payload_author": "originating_main_task",
+        "worker_creative_rewrite": false
+      },
+      "payload": {
+        "required_before_handoff": ["final_image_prompt", "inputs", "output_path"],
+        "worker_creative_rewrite": false
       },
       "capabilities": {
         "image": {
@@ -206,10 +297,101 @@
       }
     },
     {
+      "id": "minimax-web-music",
+      "provider": "minimax_web",
+      "status": "active_if_available",
+      "selection": "default_for_generic_music",
+      "url": "https://www.minimaxi.com/audio/music",
+      "executor": {
+        "kind": "project_handoff_visible_thread",
+        "orchestrator": "project-handoff",
+        "route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "worker": {
+          "kind": "external_browser_cli",
+          "command": "ego-browser",
+          "vendored": false
+        }
+      },
+      "alternative_executor": {
+        "kind": "harness_builtin_browser",
+        "status": "capability_probe_required",
+        "selection": "only_when_visible_task_dispatch_absent",
+        "capability": "verified_equivalent_browser_executor",
+        "requirements": [
+          "authenticated_MiniMax_session",
+          "stable_music_controls",
+          "browser_context_download",
+          "nonzero_mp3_readback"
+        ]
+      },
+      "runtime_preconditions": {
+        "platform": "Darwin",
+        "ego_browser": true,
+        "minimax_web_login": true,
+        "output_path": "caller_authorized_absolute_path",
+        "visible_task_dispatch": "required_when_available"
+      },
+      "browser_handoff": {
+        "required_when_visible_task_surface_available": true,
+        "orchestrator": "project-handoff",
+        "luna_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "thread": "visible",
+        "surface": "visible_thread",
+        "worker_executor": "ego-browser",
+        "execution_role": "browser_worker",
+        "handoff_depth": 1,
+        "recursive_dispatch": false,
+        "payload_author": "originating_main_task",
+        "worker_creative_rewrite": false
+      },
+      "payload": {
+        "required_before_handoff": [
+          "title",
+          "mode",
+          "style_prompt",
+          "lyrics",
+          "count",
+          "output_path"
+        ],
+        "default_count": 1,
+        "worker_creative_rewrite": false
+      },
+      "runtime_controls": ["model", "cost", "count", "login", "output_path"],
+      "completion": {
+        "wait_for": "full_completion",
+        "download_format": "mp3",
+        "verify": ["regular_file", "nonzero_size", "mp3_type", "sha256"]
+      },
+      "capabilities": {
+        "music": {
+          "original_song": true,
+          "instrumental_bgm": true,
+          "vocal_song": true,
+          "voice_cloning": false,
+          "reference_audio_editing": false,
+          "cover": false,
+          "exact_duration": false,
+          "commercial_license": "not_claimed"
+        }
+      }
+    },
+    {
       "id": "minimax-mmx-music",
       "provider": "minimax",
-      "status": "active_if_available",
-      "selection": "default_for_music",
+      "status": "legacy_if_explicit_and_eligible",
+      "selection": "explicit_only_after_runtime_eligibility_confirmation",
+      "eligibility": {
+        "official_notice_date": "2026-08-20",
+        "new_users_paid_music_api": "not_offered",
+        "historical_paid_api_users": "may_continue_after_runtime_confirmation",
+        "free_music_models": "stopped",
+        "local_cli_help": "interface_evidence_only"
+      },
       "executor": {
         "kind": "external_cli",
         "command": "mmx",
