@@ -79,6 +79,7 @@ TYPE_BY_EXTENSION = {
     ".doc": "document",
     ".docx": "document",
     ".odt": "document",
+    ".wps": "document",
     ".pdf": "pdf",
     ".csv": "spreadsheet",
     ".tsv": "spreadsheet",
@@ -364,9 +365,15 @@ def classify_file(path_or_relative: os.PathLike[str] | str) -> str:
     if result is None:
         raise WorkspaceError(
             "unsupported_file_type",
-            f"Unsupported file extension {suffix or '<none>'!r}; preserve the conflict and choose an explicit conversion or scope.",
+            f"Unsupported work-product extension {suffix or '<none>'!r}; preserve received bytes as unclassified raw material, then use an explicit format route before artifact or formal use.",
         )
     return result
+
+
+def classify_received_file(path_or_relative: os.PathLike[str] | str) -> str:
+    """Classify received bytes without turning an unknown suffix into data-loss authority."""
+    suffix = Path(path_or_relative).suffix.casefold()
+    return TYPE_BY_EXTENSION.get(suffix, "unclassified")
 
 
 def _check_readable_mode(info: os.stat_result, path: Path) -> None:
@@ -461,7 +468,7 @@ def inventory_tree(root: Path) -> list[dict[str, Any]]:
                 records.append({"node": "directory", "path": relative_text})
                 visit(Path(entry.path), relative)
             elif stat.S_ISREG(info.st_mode):
-                type_class = classify_file(relative_text)
+                type_class = classify_received_file(relative_text)
                 size, sha256 = hash_regular_file(Path(entry.path))
                 records.append(
                     {
@@ -1507,7 +1514,6 @@ def _validate_explicit_source(source_raw: os.PathLike[str] | str) -> Path:
             status="not_preserved",
         )
     try:
-        classify_file(source)
         hash_regular_file(source)
     except WorkspaceError as exc:
         if exc.status == "not_preserved":
@@ -1611,7 +1617,7 @@ def plan_preserve(
     _validate_source_options(source_class, reliability)
     links = _validate_derivation_links(root, derivation_links)
     size, sha256 = hash_regular_file(source)
-    type_class = classify_file(source)
+    type_class = classify_received_file(source)
     record = _new_source_record(
         original_relative_path=original,
         current_relative_path=f"raw/as-received/imported/pending/{source.name}",
@@ -1709,6 +1715,7 @@ def apply_preserve(
         "workspace": os.fspath(root),
         "source_id": record["source_id"],
         "current_relative_path": record["current_relative_path"],
+        "type_class": record["type_class"],
         "sha256": record["sha256"],
         "plan_token": token,
         "validation_summary": validation["summary"],
@@ -2502,7 +2509,8 @@ def _validate_source_record(root: Path, record_path: Path, record: dict[str, Any
     size, sha256 = hash_regular_file(file_path)
     if (size, sha256) != (record["byte_size"], record["sha256"]):
         raise WorkspaceError("raw_immutability_violation", f"Raw bytes changed after preservation: {current}")
-    if classify_file(file_path) != record["type_class"]:
+    current_class = classify_received_file(file_path)
+    if record["type_class"] != "unclassified" and current_class != record["type_class"]:
         raise WorkspaceError("record_schema_error", f"Source type-class mismatch: {record_path}")
     return current
 

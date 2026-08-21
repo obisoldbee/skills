@@ -36,6 +36,14 @@ therefore require a known timestamp. The examples use synthetic placeholders onl
 Do not combine shell discovery, moves, deletions, or glob expansion with these commands. Pass one
 exact workspace and explicit paths.
 
+An operation refusal is a zero-mutation stop, not permission to make the plan pass by moving a
+file, narrowing the root, creating a sibling folder, converting bytes, or editing a decision
+record. Obtain explicit user authority for any such separate action.
+
+If an editing request names `raw/as-received/...`, pass those bytes only as the authorized input
+to the owning format Skill. Never `chmod`, edit, or save over raw. Require a distinct versioned
+output under `work/` and register it before downstream use.
+
 ## 2. Initialize or adopt
 
 First inventory:
@@ -63,8 +71,10 @@ Review `workspace`, `mode`, inventory counts, every classification, every copy/w
 `provider_calls=false`. Apply with the emitted token and identical classification arguments.
 
 Empty folders receive the complete layout. Populated folders retain originals and receive
-byte-identical raw copies plus source records. A second identical initialization returns
-`already_initialized` after full readback.
+byte-identical raw copies plus source records. `.wps` is classified as `document`; any other
+unknown regular-file suffix is preserved as `unclassified`. Neither classification authorizes
+semantic reading or conversion. A second identical initialization returns `already_initialized`
+after full readback.
 
 ## 3. Preserve an attachment
 
@@ -85,8 +95,10 @@ The stored `original-path` is a portable receipt label, never the external absol
 AI/phone-generated summary use `--source-class upstream-derived --reliability unverified`; add
 known source/artifact IDs with repeated `--derived-from` or use no flag when none is known.
 
-If the file is missing, unreadable, linked, not regular, or unsupported, the result is
+If the file is missing, unreadable, linked, or not regular, the result is
 `status=not_preserved`. Do not quote, analyze, transform, or cite that attachment afterward.
+If only its suffix is unknown, preserve the bytes with `type_class=unclassified`; stop semantic
+use until an explicitly authorized format route produces a supported work artifact.
 
 After apply, compare the returned SHA-256 and `current_relative_path`; then run `validate`.
 
@@ -121,6 +133,8 @@ will be refused if no matching record exists. If lineage is genuinely unavailabl
 
 `artifact` permits drafts only under `work/drafts/`; other kinds only under `work/derived/`.
 Changing a registered file invalidates validation. Write a new versioned path instead.
+Raw `unclassified` material cannot itself be registered as a work artifact. Route any authorized
+conversion to the owning format Skill and register the new output outside raw.
 
 ## 5. Approve a current formal version
 
@@ -171,6 +185,8 @@ python3 -B scripts/document_workspace.py archive <workspace> \
 
 The superseded apply moves managed current copies into the archive batch, verifies every hash,
 then clears `control/current.json`. It never touches raw or draft source bytes.
+Do not use `archive/versions/` for received, unsupported, or unclassified intake; it represents
+only rejected or superseded deliverable versions.
 
 ## 7. Validate and report
 

@@ -61,7 +61,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     initialize = subparsers.add_parser(
         "initialize",
-        help="Initialize an empty folder or adopt a populated folder without moving originals.",
+        help=(
+            "Initialize an empty folder or adopt a populated folder without moving originals; "
+            "unknown regular-file suffixes are preserved as unclassified raw material."
+        ),
     )
     initialize.add_argument("workspace")
     initialize.add_argument("--timestamp", required=True)
@@ -76,7 +79,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     preserve = subparsers.add_parser(
         "preserve",
-        help="Byte-preserve one explicitly named attachment before depending on it.",
+        help=(
+            "Byte-preserve one explicitly named attachment before depending on it; "
+            "an unknown regular-file suffix alone is not a refusal."
+        ),
     )
     preserve.add_argument("workspace")
     preserve.add_argument("--source", required=True)
