@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
@@ -765,6 +766,39 @@ def package_path(package_root: Path, package: Path, relative: str, *, kind: str 
     return confined(package, relative, kind=kind, field=relative)
 
 
+def is_windows_junction(path: Path) -> bool:
+    native = getattr(os.path, "isjunction", None)
+    if native is not None:
+        try:
+            return bool(native(path))
+        except OSError:
+            return False
+    if os.name != "nt":
+        return False
+    try:
+        observed = os.lstat(path)
+    except OSError:
+        return False
+    return getattr(observed, "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003
+    )
+
+
+def is_link_or_junction(path: Path) -> bool:
+    return path.is_symlink() or is_windows_junction(path)
+
+
+def normalize_windows_link_target(raw_target: str) -> str:
+    """Remove the NT namespace prefix returned by os.readlink on Windows."""
+    for unc_prefix in ("\\\\?\\UNC\\", "\\??\\UNC\\"):
+        if raw_target.startswith(unc_prefix):
+            return "\\\\" + raw_target[len(unc_prefix) :]
+    for device_prefix in ("\\\\?\\", "\\??\\"):
+        if raw_target.startswith(device_prefix):
+            return raw_target[len(device_prefix) :]
+    return raw_target
+
+
 def validate_runtime(runtime_value: Any) -> dict[str, Any]:
     runtime = require_object(runtime_value, "manifest.runtime")
     kind = require_nonempty_string(runtime.get("kind"), "manifest.runtime.kind")
@@ -834,7 +868,9 @@ def validate_acquisition_executor(value: Any, plugin_root: Path) -> dict[str, An
     expected_realpath = canonical_root.resolve()
     registered_package = registered_lexical_path.parent
     try:
-        raw_target = Path(os.readlink(registered_package))
+        raw_target = Path(
+            normalize_windows_link_target(os.readlink(registered_package))
+        )
     except OSError as error:
         fail(
             "acquisition_executor_unavailable",
@@ -846,7 +882,7 @@ def validate_acquisition_executor(value: Any, plugin_root: Path) -> dict[str, An
         raw_target = registered_package.parent / raw_target
     direct_target = Path(os.path.abspath(raw_target))
     if (
-        direct_target.is_symlink()
+        is_link_or_junction(direct_target)
         or not direct_target.is_dir()
         or direct_target.resolve() != expected_realpath
     ):
