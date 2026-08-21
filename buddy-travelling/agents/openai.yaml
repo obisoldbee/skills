@@ -1,0 +1,4 @@
+interface:
+  display_name: "Buddy Daily Travel"
+  short_description: "每日领取 Buddy 礼物并安全处理一次旅行状态检查"
+  default_prompt: "Use $buddy-travelling to run today's Buddy travel check: claim any returned gift, close the gift modal, dispatch only if today's trip is enabled, otherwise report the daily limit and wait until tomorrow."
