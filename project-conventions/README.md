@@ -8,6 +8,7 @@ Filesystem-governance Skill with strict lifecycle boundaries, deterministic ordi
 |---|---|
 | Full initialization | Clone once to the final shared Repository Root, materialize complete wrappers/control files, verify projections, then optionally install exact Agent consumers |
 | Update-only | Safely fast-forward the resolved checkout, validate the named package, and stop |
+| Device refresh | Plan first, then update the one existing checkout and add only missing public allowlisted links in existing Agent roots when authorized |
 | Governance maintenance | Audit or migrate only exact authorized paths and mappings |
 | Bootstrap-only | Clone, validate, and stop |
 
@@ -18,7 +19,7 @@ Update-only never initializes directories, rewrites indexes, scans siblings, or 
 ```text
 <collection>/GitHub/project-conventions                  # true source
 <collection>/project-conventions/src/project-conventions # stable projection
-<collection>/skills                                      # local control project
+<collection>/skills/src/{AGENTS.md,README.md,config,scripts} # four root projections
 <agent-root>/project-conventions                         # direct consumer link
 ```
 
@@ -49,7 +50,7 @@ Publication class and runtime eligibility are independent. Environment-bound Ski
 
 The ordinary Project Root initializer installs only a small `.project-conventions/` control entry. Cooperating Agents in Codex, WorkBuddy, Qoder, Trae, or another Harness use the same project-local command, so no external dispatcher or Agent messaging is required to discover active readers/writers. Multiple readers may coexist; a shared writer is exclusive; clean linked-worktree writers may coexist only for declared non-overlapping paths.
 
-The shared Skills initializer creates a complete `skills/` control project, a stable member wrapper, and a relative Unix symlink or Windows junction. Control exports point directly to the true Git package so Agent consumers never form a link chain.
+The shared Skills initializer creates a complete `skills/` control project, four independent projections of the public repository-root management entries, and a stable member wrapper. It never projects the whole checkout as `skills/src/skills` and never copies repository-root files into the control project. Control exports point directly to true Git packages so Agent consumers never form a link chain.
 
 ## Validate
 

@@ -17,7 +17,16 @@ The shared Repository Root is collection infrastructure. It owns Git history and
 
 Never make the collection root a Git repository. Never copy a package into the control project. Never treat the member projection as a second source.
 
-The control project's root-overlay builder reads allowlisted files directly from `<collection>/GitHub`; it must not maintain an editable `src/public-repo` copy.
+The control project's `src/` is a real directory containing exactly four independent management projections:
+
+```text
+skills/src/AGENTS.md -> ../../GitHub/AGENTS.md
+skills/src/README.md -> ../../GitHub/README.md
+skills/src/config    -> ../../GitHub/config
+skills/src/scripts   -> ../../GitHub/scripts
+```
+
+On Unix all four are exact relative symlinks. On Windows `config` and `scripts` are directory junctions, while `AGENTS.md` and `README.md` are file symbolic links. If file-symlink creation is unavailable, initialization fails and rolls back; it never falls back to copies or hard links. `skills/src/skills -> ../../GitHub`, package projections under `skills/src/`, and real repository files under the control `src/` are invalid.
 
 ## Multiple owned distributions
 
@@ -27,7 +36,7 @@ The public `GitHub` checkout is the standard distribution initialized by this pa
 - every member row names its collection-relative `repository_root`, remote identity, and `managed_scope`;
 - each normalized remote identity has only one checkout in the collection;
 - private visibility is read back before the first push or private export;
-- public root overlays continue to read only the public distribution;
+- public-root management projections continue to target only the public distribution;
 - initialization, update, publication, and consumer links stay repository- and package-scoped.
 
 The standard public initializer never creates or clones an additional private root. Add it only through an explicitly scoped governance-maintenance or bootstrap workflow.
@@ -65,7 +74,7 @@ For a new or explicitly cleared collection, the allowed initial write order is:
 4. Validate repository-root manifest and named package separately.
 5. Run `initialize_skills_control_project.py` dry-run.
 6. Run the same initializer with `--apply`.
-7. Read back root files, control project, wrapper, both project-local access entries, projection, index, and direct export.
+7. Read back root files, control project, its four root-management projections, wrapper, both project-local access entries, member projection, index, and direct export.
 8. Rerun the initializer and require `already_initialized`.
 9. Stop before consumer links unless exact Agent targets were also authorized.
 

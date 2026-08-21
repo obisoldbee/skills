@@ -17,9 +17,34 @@ if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw "invalid-agent: $Agent"
 }
 
-$ScriptDir = $PSScriptRoot
+# The collection-control wrapper may invoke this script through src\scripts.
+# Resolve that directory junction before deriving the physical Git root.
+function Resolve-ProjectedScriptDirectory([string]$Path) {
+    $Item = Get-Item -LiteralPath $Path -Force
+    if (-not [bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        return $Item.FullName
+    }
+
+    $RawTarget = $null
+    if ($null -ne $Item.PSObject.Properties['Target']) {
+        $RawTarget = @($Item.Target)[0]
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$RawTarget) -and
+        $null -ne $Item.PSObject.Properties['LinkTarget']) {
+        $RawTarget = @($Item.LinkTarget)[0]
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$RawTarget)) {
+        throw "script-directory-target-unavailable: $Path"
+    }
+    if (-not [IO.Path]::IsPathRooted([string]$RawTarget)) {
+        $RawTarget = Join-Path $Item.Parent.FullName $RawTarget
+    }
+    return (Resolve-Path -LiteralPath $RawTarget).Path
+}
+
+$ScriptDir = Resolve-ProjectedScriptDirectory $PSScriptRoot
 $ScriptPath = Join-Path $ScriptDir 'link-windows.ps1'
-$RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
+$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $ScriptDir '..')).Path
 $ExportsFile = Join-Path $RepoRoot 'config\skill-exports.tsv'
 $TargetsFile = Join-Path $RepoRoot 'config\agent-paths.tsv'
 $Verifier = Join-Path $RepoRoot 'scripts\verify_release.py'

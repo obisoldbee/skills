@@ -31,7 +31,7 @@ REQUIRED_FILES = {
     "references/project-root-initialization.md",
     "references/shared-repository.md",
 }
-REQUIRED_DIRECTORIES = {"agents", "assets", "references", "scripts"}
+REQUIRED_DIRECTORIES = {"agents", "references", "scripts"}
 TEXT_SUFFIXES = {".json", ".md", ".ps1", ".py", ".sh", ".toml", ".tsv", ".yaml", ".yml"}
 FORBIDDEN_NAMES = {".DS_Store", "__pycache__"}
 FILE_URI_MARKER = "file" + "://"

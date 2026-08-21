@@ -27,7 +27,6 @@ from urllib.parse import urlsplit
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_ROOT = PACKAGE_ROOT / "assets" / "skills-control"
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 REMOTE_IDENTITY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 PUBLIC_ROOT_FILES = (
@@ -51,11 +50,11 @@ WINDOWS_RESERVED_NAMES = {
     *(f"COM{number}" for number in range(1, 10)),
     *(f"LPT{number}" for number in range(1, 10)),
 }
-TEMPLATE_FILES = (
-    "src/scripts/build_public_root_overlay.py",
-    "src/scripts/link-macos.sh",
-    "src/scripts/link-windows.ps1",
-    "src/tests/test_public_root_overlay.py",
+CONTROL_PROJECTIONS = (
+    ("AGENTS.md", "file"),
+    ("README.md", "file"),
+    ("config", "directory"),
+    ("scripts", "directory"),
 )
 CONTROL_DIRECTORIES = (
     ".project-conventions",
@@ -70,9 +69,7 @@ CONTROL_DIRECTORIES = (
     "memory",
     "release",
     "runtime",
-    "src/config",
-    "src/scripts",
-    "src/tests",
+    "src",
 )
 MEMBER_DIRECTORIES = (
     ".project-conventions",
@@ -375,9 +372,6 @@ def validate_distribution(
             )
     for relative in PUBLIC_ROOT_FILES:
         validate_source_file(distribution_root / relative, "public-root")
-    for relative in TEMPLATE_FILES:
-        validate_source_file(TEMPLATE_ROOT / relative, "control template")
-
     verification = subprocess.run(
         [
             sys.executable,
@@ -434,7 +428,7 @@ def render_members(
 
 | key | name | path | role | source | repository_root | vcs | remote | managed_scope | category | status | tags |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| {control_project} | Skills Collection Control | {control_project} | collection-control | src | - | none | - | local control files | local-only | active | collection,links |
+| {control_project} | Skills Collection Control | {control_project} | collection-control | src | - | none | - | repository-root public projections | local-only | active | collection,links |
 | {member_project} | Project Conventions | {member_project} | member | src/{member_project} | {repository_project} | git | {remote_identity} | {package_subpath}/ | {member_category} | active | skill,governance |
 """
 
@@ -463,7 +457,7 @@ def render_control_files(
 
 ## Project
 
-`{control_project}` owns device-local membership, explicit Skill exports, safe link utilities, and a root-overlay builder that reads the shared checkout directly. It does not own member source or a second root-file copy.
+`{control_project}` owns repository-level records and the management view of the public repository root. `{repository_project}/` remains the only Git worktree and file source of truth; this Project Root owns no repository source bytes.
 
 {render_access_block()}
 
@@ -471,9 +465,10 @@ def render_control_files(
 
 - Canonical membership lives at `docs/indexes/members.md`; collection-root `MEMBERS.md` is its readable mirror.
 - `{repository_project}/` is the one shared Repository Root for `{remote_identity}`. It is infrastructure, not another Project Root.
+- `src/` is a real directory containing exactly four independent projections: `AGENTS.md`, `README.md`, `config`, and `scripts`, each pointing to the matching path under `../{repository_project}`.
+- Never replace those four entries with one `src/skills` projection, and never put copied repository files, member packages, or tests under this control project's `src/`.
 - `{member_project}/src/{member_project}` is only a stable projection to `{repository_project}/{package_subpath}`.
 - Link sources come only from `src/config/skill-exports.tsv` and point directly into `{repository_project}/`, never through a member projection.
-- The public-root builder reads allowlisted files directly from `../{repository_project}`; do not recreate `src/public-repo`.
 - Link scripts require an explicit Agent/target and Skill for apply, never create target parents, and never replace conflicts.
 - Updating `{member_project}` means running its update-only helper against `{repository_project}/{package_subpath}` and stopping after validation. Do not regenerate indexes or links.
 - Do not clone, pull, push, publish, or apply links without authorization for that exact action.
@@ -483,9 +478,10 @@ def render_control_files(
 | Path | Purpose |
 |---|---|
 | `docs/indexes/members.md` | Canonical device-local member index |
-| `src/config/` | Explicit Skill exports and Agent path candidates |
-| `src/scripts/` | Collection-aware link and publication utilities |
-| `src/tests/` | Deterministic control-project tests |
+| `src/AGENTS.md` | Projection to `{repository_project}/AGENTS.md` |
+| `src/README.md` | Projection to `{repository_project}/README.md` |
+| `src/config/` | Projection to `{repository_project}/config/` |
+| `src/scripts/` | Projection to `{repository_project}/scripts/` |
 | `conversation/`, `memory/` | Collection-control continuity records |
 | `release/`, `runtime/` | Generated and ignored local output |
 """,
@@ -493,13 +489,16 @@ def render_control_files(
 
 This is the complete portable collection-control Project Root for its parent Project Collection.
 
-The Git source of truth is `../{repository_project}`. Stable member wrappers and Agent consumers do not contain copies: they project or link directly to named packages in that checkout.
-
-## Validation
+The Git source of truth is `../{repository_project}`. This management Project Root exposes exactly four repository-root entries under `src/` without copying their bytes:
 
 ```text
-python -B src/tests/test_public_root_overlay.py
+src/AGENTS.md -> ../../{repository_project}/AGENTS.md
+src/README.md -> ../../{repository_project}/README.md
+src/config    -> ../../{repository_project}/config
+src/scripts   -> ../../{repository_project}/scripts
 ```
+
+Do not replace this bounded view with `src/skills -> ../../{repository_project}`, add package projections, or copy repository files into `src/`.
 
 Initialization creates no Agent links. Linking is a later, separately authorized action using one exact Agent/target and Skill.
 
@@ -508,9 +507,9 @@ Initialization creates no Agent links. Linking is a later, separately authorized
 | Path | Purpose |
 |---|---|
 | `docs/indexes/members.md` | Canonical member and Repository Root mapping |
-| `src/config/` | Direct exports from `{repository_project}/` plus Agent candidates |
-| `src/scripts/` | Link and public-root overlay tools |
-| `src/tests/` | Deterministic validation |
+| `src/AGENTS.md`, `src/README.md` | Projected public repository instructions |
+| `src/config/` | Projected public exports and Agent candidates |
+| `src/scripts/` | Projected repository link and validation utilities |
 | `conversation/`, `memory/` | Initially empty device-local records |
 | `release/`, `runtime/` | Initially empty generated output |
 
@@ -525,16 +524,6 @@ Updating one Skill is update-only: refresh `../{repository_project}` safely, val
         "memory/MEMORY.md": (
             "# Project Memory\n\n"
             "Durable collection-control facts belong here after substantive work.\n"
-        ),
-        "src/README.md": f"""# Collection-Control Source
-
-This directory contains deterministic control assets only. Member source is not copied here.
-
-`src/config/skill-exports.tsv` exports `{repository_project}/{package_subpath}` directly, so every Agent consumer has one true source and does not depend on a wrapper-link chain.
-""",
-        "src/config/skill-exports.tsv": (
-            "skill_name\tsource\tconsumers\n"
-            f"project-conventions\t{repository_project}/{package_subpath}\tall\n"
         ),
     }
     files.update(
@@ -644,7 +633,8 @@ def render_root_files(
 
 - This directory is a Project Collection, not a Git repository or monorepo.
 - `{repository_project}/` is the single shared Repository Root for `{remote_identity}`; it is infrastructure, not a Project Root.
-- `{control_project}/` owns local membership and link utilities, not member source.
+- `{control_project}/` owns repository-level records and manages the public root through exactly four independent projections: `src/AGENTS.md`, `src/README.md`, `src/config`, and `src/scripts` to the matching `{repository_project}/` entries.
+- `{control_project}/src` must not contain a whole-repository `src/skills` projection, Skill package projections, copied repository files, or any additional source entry.
 - `{member_project}/src/{member_project}` projects to `{repository_project}/{package_subpath}`.
 - Agent consumers link directly to `{repository_project}/{package_subpath}`.
 - Updating `{member_project}` only refreshes `{repository_project}` with the package update helper, validates the named package, and stops. Do not regenerate wrappers, indexes, records, or links.
@@ -656,7 +646,11 @@ def render_root_files(
 |---|---|
 | `{repository_project}/` | Shared Git source of truth |
 | `{member_project}/` | Stable Project Root and package projection |
-| `{control_project}/` | Collection-control Project Root |
+| `{control_project}/` | Collection-control and repository-management Project Root |
+| `{control_project}/src/AGENTS.md` | Projection to `{repository_project}/AGENTS.md` |
+| `{control_project}/src/README.md` | Projection to `{repository_project}/README.md` |
+| `{control_project}/src/config` | Projection to `{repository_project}/config` |
+| `{control_project}/src/scripts` | Projection to `{repository_project}/scripts` |
 | `{control_project}/docs/indexes/members.md` | Canonical member and Repository Root index |
 | `MEMBERS.md` | Readable mirror |
 """,
@@ -668,10 +662,15 @@ This collection separates stable project organization from one shared Git source
 {repository_project}/                              # one Git checkout
 {repository_project}/{package_subpath}/            # true Skill source
 {member_project}/src/{member_project}              # stable projection
-{control_project}/                                 # local index and link tools
+{control_project}/src/AGENTS.md                     # -> ../../{repository_project}/AGENTS.md
+{control_project}/src/README.md                     # -> ../../{repository_project}/README.md
+{control_project}/src/config                       # -> ../../{repository_project}/config
+{control_project}/src/scripts                      # -> ../../{repository_project}/scripts
 ```
 
 Clone `https://github.com/{remote_identity}.git` exactly once as `{repository_project}/`. The collection root and member wrapper are not Git repositories.
+
+The control project contains repository-level records, not repository source bytes. Its `src/` contains only the four bounded projections above—never one aggregate `src/skills` projection and never member package projections.
 
 Agent consumer links point directly to `{repository_project}/{package_subpath}`. Updating a Skill fast-forwards the shared checkout and validates the named package; it does not trigger initialization, migration, cataloging, or relinking.
 """,
@@ -702,20 +701,8 @@ def write_atomic(path: Path, content: str) -> None:
             temporary.unlink()
 
 
-def copy_required(source_root: Path, target_root: Path, relatives: tuple[str, ...]) -> None:
-    for relative in relatives:
-        source = source_root / relative
-        validate_source_file(source, "copy source")
-        destination = target_root / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-
-
 def expected_control_files(dynamic: dict[str, str]) -> set[str]:
-    expected = set(dynamic)
-    expected.add("src/config/agent-paths.tsv")
-    expected.update(TEMPLATE_FILES)
-    return expected
+    return set(dynamic)
 
 
 def observed_files(
@@ -748,24 +735,118 @@ def observed_files(
     return observed
 
 
-def verify_control_tree(control_root: Path, dynamic: dict[str, str]) -> None:
+def projection_raw_target(repository_project: str, name: str) -> str:
+    return f"../../{repository_project}/{name}"
+
+
+def describe_control_projections(
+    control_root: Path,
+    distribution_root: Path,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "kind": (
+                "junction"
+                if os.name == "nt" and kind == "directory"
+                else "file-symlink"
+                if os.name == "nt"
+                else "symlink"
+            ),
+            "path": str(control_root / "src" / name),
+            "target": str(distribution_root / name),
+        }
+        for name, kind in CONTROL_PROJECTIONS
+    ]
+
+
+def verify_control_projection(
+    projection: Path,
+    target: Path,
+    raw_posix_target: str,
+    kind: str,
+) -> None:
+    raw_link_required = not (os.name == "nt" and kind == "directory")
+    if os.name == "nt":
+        if kind == "directory":
+            if not is_windows_junction(projection):
+                raise ControlInitializationError(
+                    f"control projection is not a Windows directory junction: {projection}"
+                )
+        elif not projection.is_symlink():
+            raise ControlInitializationError(
+                f"control projection is not a Windows file symlink: {projection}"
+            )
+    else:
+        if not projection.is_symlink():
+            raise ControlInitializationError(
+                f"control projection is not a Unix symlink: {projection}"
+            )
+    if raw_link_required:
+        observed_raw_target = os.readlink(projection).replace(os.sep, "/")
+        if observed_raw_target != raw_posix_target:
+            raise ControlInitializationError(
+                "control projection raw target differs: "
+                f"{projection}: expected {raw_posix_target}, observed {observed_raw_target}"
+            )
+    if not projection.exists() or projection.resolve() != target.resolve():
+        raise ControlInitializationError(
+            f"control projection target differs: {projection} -> {projection.resolve()}"
+        )
+    if kind == "file" and not projection.is_file():
+        raise ControlInitializationError(
+            f"control file projection has wrong target type: {projection}"
+        )
+    if kind == "directory" and not projection.is_dir():
+        raise ControlInitializationError(
+            f"control directory projection has wrong target type: {projection}"
+        )
+
+
+def verify_control_tree(
+    control_root: Path,
+    dynamic: dict[str, str],
+    distribution_root: Path,
+    repository_project: str,
+) -> None:
     if is_link_or_junction(control_root) or not control_root.is_dir():
         raise ControlInitializationError(f"control path is not a real directory: {control_root}")
     for relative in CONTROL_DIRECTORIES:
         path = control_root / relative
         if is_link_or_junction(path) or not path.is_dir():
             raise ControlInitializationError(f"control directory readback failed: {path}")
+    expected_src_entries = {name for name, _kind in CONTROL_PROJECTIONS}
+    observed_src_entries = {path.name for path in (control_root / "src").iterdir()}
+    if observed_src_entries != expected_src_entries:
+        raise ControlInitializationError(
+            "control src entry set differs: "
+            f"missing={sorted(expected_src_entries - observed_src_entries)} "
+            f"extra={sorted(observed_src_entries - expected_src_entries)}"
+        )
     for relative, content in dynamic.items():
         path = control_root / relative
         validate_source_file(path, "generated control")
         if path.read_text(encoding="utf-8") != content:
             raise ControlInitializationError(f"generated control file differs: {path}")
+    projection_paths: set[str] = set()
+    for name, kind in CONTROL_PROJECTIONS:
+        relative = f"src/{name}"
+        projection_paths.add(relative)
+        verify_control_projection(
+            control_root / relative,
+            distribution_root / name,
+            projection_raw_target(repository_project, name),
+            kind,
+        )
     expected = expected_control_files(dynamic)
     runtime = control_root / ".project-conventions" / "runtime"
     if is_link_or_junction(runtime) or (runtime.exists() and not runtime.is_dir()):
         raise ControlInitializationError(f"control runtime path is not a real directory: {runtime}")
     ignored_runtime = {".project-conventions/runtime"} if runtime.is_dir() else set()
-    observed = observed_files(control_root, ignored_directories=ignored_runtime)
+    observed = observed_files(
+        control_root,
+        ignored_links=projection_paths,
+        ignored_directories=ignored_runtime,
+    )
     if observed != expected:
         raise ControlInitializationError(
             f"control file set differs: missing={sorted(expected - observed)} "
@@ -773,8 +854,15 @@ def verify_control_tree(control_root: Path, dynamic: dict[str, str]) -> None:
         )
 
 
-def create_member_projection(link_path: Path, target: Path, raw_posix_target: str) -> None:
-    if os.name == "nt":
+def create_projection(
+    link_path: Path,
+    target: Path,
+    raw_posix_target: str,
+    kind: str,
+) -> None:
+    if link_path.exists() or is_link_or_junction(link_path):
+        raise ControlInitializationError(f"projection destination already exists: {link_path}")
+    if os.name == "nt" and kind == "directory":
         result = subprocess.run(
             ["cmd", "/d", "/c", "mklink", "/J", str(link_path), str(target)],
             check=False,
@@ -785,7 +873,15 @@ def create_member_projection(link_path: Path, target: Path, raw_posix_target: st
             detail = result.stderr.strip() or result.stdout.strip()
             raise ControlInitializationError(f"junction creation failed: {detail}")
     else:
-        os.symlink(raw_posix_target, link_path, target_is_directory=True)
+        os.symlink(
+            raw_posix_target,
+            link_path,
+            target_is_directory=kind == "directory",
+        )
+
+
+def create_member_projection(link_path: Path, target: Path, raw_posix_target: str) -> None:
+    create_projection(link_path, target, raw_posix_target, "directory")
 
 
 def verify_member_tree(
@@ -989,13 +1085,21 @@ def initialize(
     if control_exists:
         if root_state != root_files:
             raise ControlInitializationError("initialized paths exist but root routing files do not match")
-        verify_control_tree(control_root, control_files)
+        verify_control_tree(
+            control_root,
+            control_files,
+            distribution_root,
+            repository_project,
+        )
         verify_member_tree(member_root, member_files, package_root, member_project)
         return {
             "status": "already_initialized",
             "collection_root": str(collection_root),
             "repository": repository_state,
             "control_root": str(control_root),
+            "control_projections": describe_control_projections(
+                control_root, distribution_root
+            ),
             "member_root": str(member_root),
             "member_projection": str(member_root / "src" / member_project),
             "created": [],
@@ -1017,6 +1121,9 @@ def initialize(
             "would_create_root_files": sorted(root_files),
             "would_create_control_directories": list(CONTROL_DIRECTORIES),
             "would_create_control_files": planned_control_files,
+            "would_create_control_projections": describe_control_projections(
+                control_root, distribution_root
+            ),
             "would_create_member_directories": list(MEMBER_DIRECTORIES),
             "would_create_member_files": planned_member_files,
             "would_create_member_projection": {
@@ -1039,14 +1146,21 @@ def initialize(
     try:
         for relative in CONTROL_DIRECTORIES:
             (control_staging / relative).mkdir(parents=True, exist_ok=True)
-        copy_required(TEMPLATE_ROOT, control_staging, TEMPLATE_FILES)
-        shutil.copy2(
-            distribution_root / "config" / "agent-paths.tsv",
-            control_staging / "src" / "config" / "agent-paths.tsv",
-        )
         for relative, content in control_files.items():
             write_text(control_staging / relative, content)
-        verify_control_tree(control_staging, control_files)
+        for name, kind in CONTROL_PROJECTIONS:
+            create_projection(
+                control_staging / "src" / name,
+                distribution_root / name,
+                projection_raw_target(repository_project, name),
+                kind,
+            )
+        verify_control_tree(
+            control_staging,
+            control_files,
+            distribution_root,
+            repository_project,
+        )
 
         for relative in MEMBER_DIRECTORIES:
             (member_staging / relative).mkdir(parents=True, exist_ok=True)
@@ -1082,7 +1196,12 @@ def initialize(
         if control_staging.exists():
             shutil.rmtree(control_staging)
 
-    verify_control_tree(control_root, control_files)
+    verify_control_tree(
+        control_root,
+        control_files,
+        distribution_root,
+        repository_project,
+    )
     verify_member_tree(member_root, member_files, package_root, member_project)
     for name, content in root_files.items():
         if (collection_root / name).read_text(encoding="utf-8") != content:
@@ -1093,6 +1212,9 @@ def initialize(
         "collection_root": str(collection_root),
         "repository": repository_state,
         "control_root": str(control_root),
+        "control_projections": describe_control_projections(
+            control_root, distribution_root
+        ),
         "member_root": str(member_root),
         "member_projection": {
             "path": str(projection),

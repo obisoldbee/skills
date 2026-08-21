@@ -4,13 +4,14 @@ Background:
 This is the portable Git source for published Skill packages. In the standard local Skills Project Collection, clone this repository exactly once as `<collection>/GitHub`.
 
 Materials:
-- `<checkout-root>` is the Git worktree containing this file.
+- `<checkout-root>` is the real Git worktree that owns this file. The same bytes may be read through `<collection>/skills/src/AGENTS.md`; that projection path is not a Git root.
 - Root-owned publication files are `.gitattributes`, `.github/workflows/verify.yml`, `.gitignore`, `AGENTS.md`, `README.md`, `ROOT-MANIFEST.sha256`, `config/`, and `scripts/`.
 - Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, `paper-downloader/`, `buddy-travelling/`, `media-creator/`, `project-handoff/`, or `document-workspace/`, is an independently validated managed scope.
 - A local collection wrapper, control project, member records, and Agent links live outside this repository.
 
 Constraints:
 - Resolve the lifecycle before any write: clone/bootstrap, update-only, package maintenance, or repository-root maintenance.
+- When entered through a `skills/src/{AGENTS.md,README.md,config,scripts}` projection, resolve the matching physical entry under `<collection>/GitHub` before running Git or repository validation.
 - Do not initialize Git at the surrounding Project Collection root.
 - Do not clone this repository into a member package path when the target uses the shared collection profile; use the exact collection-local `GitHub` path.
 - Do not create application-data or user-global source directories in place of a user-selected target.
@@ -25,7 +26,7 @@ Constraints:
 Lifecycle routing:
 
 1. **Clone/bootstrap only**: clone to the exact named destination, verify Git identity, run root validation and the named package validator, report commit, and stop.
-2. **Fresh shared Skills collection**: clone this repository as `<collection>/GitHub`, then run `project-conventions/scripts/initialize_skills_control_project.py` dry-run and apply from that checkout. It creates the collection overlay, complete control project, stable member wrapper, and member projection. It creates no Agent links.
+2. **Fresh shared Skills collection**: clone this repository as `<collection>/GitHub`, then run `project-conventions/scripts/initialize_skills_control_project.py` dry-run and apply from that checkout. It creates the collection overlay, the control project's four root-management projections, the stable member wrapper, and the member projection. It creates no Agent links.
 3. **Update-only**: run the requested package's `scripts/update_shared_checkout.py`. It permits only clean, attached, ahead-zero fast-forward behavior, validates that named package, and stops.
 4. **Device refresh**: for “本机全量同步 Skills”, run `scripts/link-macos.sh --sync-device` or `scripts/link-windows.ps1 -SyncDevice` without apply first. Apply may update this checkout and create only missing allowlisted public Skill links in existing compatible Agent roots.
 5. **Package maintenance**: modify only the explicitly authorized top-level package and run its validators/tests.
@@ -35,6 +36,11 @@ Lifecycle routing:
 Shared collection invariants:
 
 ```text
+<collection>/skills/src/AGENTS.md -> ../../GitHub/AGENTS.md
+<collection>/skills/src/README.md -> ../../GitHub/README.md
+<collection>/skills/src/config    -> ../../GitHub/config
+<collection>/skills/src/scripts   -> ../../GitHub/scripts
+
 <collection>/GitHub/project-conventions                  # true source
 <collection>/project-conventions/src/project-conventions # member projection
 <agent-root>/project-conventions                         # direct consumer link to true source
@@ -64,6 +70,7 @@ Shared collection invariants:
 <agent-root>/project-handoff                                    # direct consumer link to true source
 ```
 
+- The control project has exactly those four repository-root management projections. It has no aggregate `src/skills` link and no package projection.
 - Unix member projection: relative symlink `../../GitHub/<package>`.
 - Windows member projection: junction to the final absolute package path.
 - Agent consumer links point directly to the true source, not through the member projection.

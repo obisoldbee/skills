@@ -1,6 +1,6 @@
 ---
 name: project-conventions
-description: "Initialize, organize, migrate, or update project filesystems without confusing a workspace, collection, project wrapper, Git checkout, Agent Skill root, or temporary worktree. Provides deterministic ordinary Project Root initialization and a project-local, Harness-neutral reader/writer admission protocol, plus owned public/private Skill distributions, third-party checkout pools, stable member projections, device/network boundaries, scoped Agent links, and a strict update-only path. Use for 项目目录初始化, 任意 Agent 安全进入, 多 Agent 并发, 跨 Harness, worktree, obisoldbee-skills 初始化, 克隆最新版技能, 更新某个 Skill, 多设备同步, 私有 Skill 仓库, GitHub-private, GitHub-others, 设备或网络限定 Skill, 项目合集, 项目根目录, AGENTS.md, README.md, repository mapping, symlink or junction, and directory migration."
+description: "Initialize and maintain project filesystems and the obisoldbee Skills collection. Use for Project Root adoption, safe cross-Harness access, exact clone/update/device-refresh lifecycles, repository and wrapper projections, private or third-party repository boundaries, and directory migration—not for unrelated implementation work."
 ---
 
 # Project Conventions
@@ -13,6 +13,7 @@ For clone, initialization, sync, pull, or update work, read `references/lifecycl
 |---|---|---|
 | Build a new governed target and make it usable | **Full initialization** | Target, repository mapping, validation, then separately authorized consumer links |
 | Refresh an existing checkout or named Skill | **Update-only** | Fetch/fast-forward, validate the requested package, report, stop |
+| Refresh this device's existing public Skill consumers | **Device refresh** | Plan first; when authorized, update the one checkout and add only missing allowlisted links in existing Agent roots |
 | Reorganize or audit existing paths | **Governance maintenance** | Only the exact authorized paths and selected governance layer |
 | Clone/download now for a later task | **Bootstrap-only** | Validate the clone and stop |
 
@@ -41,7 +42,11 @@ The standard shape is:
 │   └── src/project-conventions              # symlink/junction projection
 └── skills/                                  # collection-control Project Root
     ├── .project-conventions/                 # independent control-project access entry
-    └── src/config/skill-exports.tsv          # direct source: GitHub/project-conventions
+    └── src/                                  # four public-root management projections
+        ├── AGENTS.md -> ../../GitHub/AGENTS.md
+        ├── README.md -> ../../GitHub/README.md
+        ├── config -> ../../GitHub/config
+        └── scripts -> ../../GitHub/scripts
 ```
 
 Six path roles are distinct:
@@ -52,6 +57,8 @@ Six path roles are distinct:
 4. **Member Project Root**: `<collection>/project-conventions`; it owns documents and continuity records.
 5. **Member projection**: `<collection>/project-conventions/src/project-conventions`; relative symlink on Unix, junction on Windows.
 6. **Agent consumer**: an existing Agent-specific Skill root; it links directly to the true source, never through the member projection.
+
+The `skills/src/` management view is not another member projection. It is a real directory containing exactly four independent projections to public repository-root entries: `AGENTS.md`, `README.md`, `config`, and `scripts`. Never replace them with `skills/src/skills -> ../../GitHub`, never place Skill packages there, and never copy those four sources into the control project.
 
 `GitHub` is a collection-local infrastructure name. Never replace an exact user-selected collection with an application-data or user-global source directory.
 
@@ -87,7 +94,7 @@ python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_cont
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-8. Read back the three collection files, complete `skills/` control project, member wrapper, projection target, member index, and direct export source.
+8. Read back the three collection files, complete `skills/` control project, all four control projections, member wrapper, member projection target, member index, and direct export source.
 9. Confirm the collection root and member wrapper contain no second `.git`.
 10. Stop before Agent installation unless the user separately authorized exact consumers.
 
@@ -106,6 +113,22 @@ The helper resolves the shared Git worktree, requires clean/attached/tracked/ahe
 If dirty, ahead, detached, diverged, locked, wrong-remote, or wrong-upstream, stop. Never auto-stash, merge a divergence, rebase, reset, preserve/rename branches, move files, rebuild wrappers, edit indexes, scan siblings, or relink during update-only.
 
 One repository commit may contain changes to more than one published package. That is a Git fact, not permission to govern, install, or edit sibling Project Roots. Validate and report the requested package only.
+
+### Device refresh
+
+The exact intents “本机全量同步 Skills”, “更新 GitHub 并让本机 Agent 使用”, and “同步共享 Skill 根” select **Device refresh**, not update-only or full initialization. Run the checked-out platform script in plan mode first. If the request authorizes synchronization and the plan is conflict-free, apply without asking the user to restate the same authorization.
+
+```text
+bash <collection>/GitHub/scripts/link-macos.sh --sync-device
+bash <collection>/GitHub/scripts/link-macos.sh --sync-device --apply
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
+  <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
+  <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice -Apply
+```
+
+Apply may fast-forward only the one existing `GitHub` checkout and add only missing public allowlisted Skill links under already existing configured Agent roots. It never creates a checkout or Agent root, regenerates wrappers/indexes/records, changes export policy, or replaces a real path, wrong link, or dangling link. Link readback proves linked state only, not runtime discovery or execution. Unlike update-only, Device refresh intentionally reconciles consumers; unlike full initialization, it never materializes the collection.
 
 ### Agent consumers
 
@@ -231,6 +254,7 @@ A successful shared Skills initialization has:
 - a true package at `GitHub/project-conventions`;
 - a Unix relative symlink or Windows junction at `project-conventions/src/project-conventions` resolving to that package;
 - a complete `skills/` control project;
+- a real `skills/src/` containing exactly four independent projections to `GitHub/AGENTS.md`, `GitHub/README.md`, `GitHub/config`, and `GitHub/scripts`, with no `skills/src/skills` aggregate projection or copied repository bytes;
 - a canonical index separating `source`, `repository_root`, and `managed_scope`;
 - direct Agent exports from `GitHub/project-conventions`;
 - no Agent links created unless separately authorized;
@@ -259,7 +283,7 @@ A successful shared Skills initialization has:
 
 Materials: Use only the request, exact named paths, current disk/Git/link evidence, and routed references. Never invent a local path, repository state, Agent root, or remote fact.
 
-Task: Select one lifecycle. For a shared Skills initialization, create or verify the final `GitHub` checkout, run the deterministic initializer, validate the member projection, and handle only separately authorized Agent consumers. For update-only, run the narrow updater and stop.
+Task: Select one lifecycle. For a shared Skills initialization, create or verify the final `GitHub` checkout, run the deterministic initializer, validate the four control projections and member projection, and handle only separately authorized Agent consumers. For update-only, run the narrow updater and stop. For Device refresh, plan first, then apply an already authorized conflict-free refresh of the one checkout and missing public allowlisted links in existing Agent roots.
 
 Constraints: Stay within named paths; preserve conflicts and rollback evidence; never create a second source copy; never turn update-only into governance or link work.
 

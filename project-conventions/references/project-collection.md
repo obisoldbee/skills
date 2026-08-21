@@ -22,7 +22,7 @@ A Project Collection groups related but independently governed Project Roots. It
     └── src/
 ```
 
-The three collection-root files route; they do not absorb member documents or source. Exactly one **collection-control Project Root** owns the canonical member index and collection-wide deterministic tools.
+The three collection-root files route; they do not absorb member documents or source. Exactly one **collection-control Project Root** owns the canonical member index and manages collection-wide repository utilities through declared projections rather than copies.
 
 An Agent entering the collection first routes to the exact control/member Project Root, then runs that Project Root's local access helper before substantive work. A separate Harness conversation is not admission, and no orchestration Skill is required.
 
@@ -32,7 +32,7 @@ Use one table:
 
 | key | name | path | role | source | repository_root | vcs | remote | managed_scope | category | status | tags |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| skills | Skills Collection Control | skills | collection-control | src | - | none | - | local control files | local-only | active | collection,links |
+| skills | Skills Collection Control | skills | collection-control | src | - | none | - | repository-root public projections | local-only | active | collection,links |
 | project-conventions | Project Conventions | project-conventions | member | src/project-conventions | GitHub | git | obisoldbee/skills | project-conventions/ | personal-open | active | skill,governance |
 
 Field semantics:
@@ -107,10 +107,10 @@ The control project may own:
 - explicit Skill export allowlist;
 - known Agent path candidates;
 - scan-first link utilities;
-- deterministic public-repository root overlay tools that read the shared checkout directly;
+- four independent projections at `src/AGENTS.md`, `src/README.md`, `src/config`, and `src/scripts` to the matching public repository-root entries;
 - collection-level plans, reviews, decisions, conversation, and memory.
 
-It must not own member package source, member-specific research, another member's Git history, or Agent runtime state.
+It must not own repository source bytes, member package source, member-specific research, another member's Git history, or Agent runtime state. A whole-repository `src/skills` projection is not a substitute for the four bounded management projections.
 
 For a fresh shared Skills collection, use `scripts/initialize_skills_control_project.py`. It creates the complete control project, wrapper, projection, and routing overlay after the shared checkout is validated. Do not run `initialize_project_collection.py` first and do not handwrite a reduced control project.
 
@@ -156,6 +156,7 @@ Run it before and after changing collection membership, paths, repository mappin
 
 - collection root has no `.git`;
 - exactly one control Project Root;
+- the shared Skills control `src/` is real and contains exactly the four declared public-root projections, with no whole-repository projection or copied root files;
 - canonical index exists and root mirror agrees;
 - every active member path exists;
 - `source`, `repository_root`, and `managed_scope` have distinct meanings;

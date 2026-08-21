@@ -38,6 +38,11 @@ Use one checkout per device and keep local project governance outside Git:
 ├── project-handoff/                          # stable local Project Root
 │   └── src/project-handoff                   # projection to GitHub package
 └── skills/                                  # local collection-control project
+    └── src/
+        ├── AGENTS.md -> ../../GitHub/AGENTS.md
+        ├── README.md -> ../../GitHub/README.md
+        ├── config -> ../../GitHub/config
+        └── scripts -> ../../GitHub/scripts
 ```
 
 This avoids copied package trees and nested paths such as `project-conventions/src/skills/project-conventions`.
@@ -77,7 +82,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/initialize_skills_con
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional package directories present in a checkout, such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `paper-downloader`, `buddy-travelling`, `media-creator`, `document-workspace`, and `project-handoff`, require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members or imply that uncommitted bytes are published.
+The initializer creates the routing files, complete `skills/` control project, its four projections to the repository-root `AGENTS.md`, `README.md`, `config/`, and `scripts/`, the stable `project-conventions/` wrapper, and its package projection. The control project never receives an aggregate `src/skills` link or package projections. It does not install the Skill into any Agent. Additional package directories present in a checkout, such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `paper-downloader`, `buddy-travelling`, `media-creator`, `document-workspace`, and `project-handoff`, require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members or imply that uncommitted bytes are published.
 
 On macOS/Linux the projection is the relative link:
 
@@ -86,6 +91,8 @@ project-conventions/src/project-conventions -> ../../GitHub/project-conventions
 ```
 
 On Windows it is a directory junction to the final package path.
+
+For the four control-project projections, macOS/Linux uses the exact relative links shown above. Windows uses file symbolic links for `AGENTS.md` and `README.md` and directory junctions for `config` and `scripts`; initialization fails clearly instead of copying files when file-symlink creation is unavailable.
 
 ## Update one Skill
 

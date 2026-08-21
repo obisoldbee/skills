@@ -253,6 +253,20 @@ class LifecycleWorkflowTests(unittest.TestCase):
         self.assertIn("never through the member projection", combined)
         self.assertNotIn("App" + "Data", combined)
         self.assertNotIn("src/skills/project-conventions", combined)
+        for device_refresh_text in (
+            "Device refresh",
+            "本机全量同步 Skills",
+            "更新 GitHub 并让本机 Agent 使用",
+            "同步共享 Skill 根",
+            "--sync-device",
+            "only missing public allowlisted Skill links",
+            "never materializes the collection",
+        ):
+            self.assertIn(device_refresh_text, combined)
+        self.assertIn(
+            "never a whole-repository `src/skills` projection or copied root files",
+            self.lifecycle,
+        )
 
     def test_contract_distinguishes_optional_repository_infrastructure(self) -> None:
         combined = "\n".join(
@@ -309,6 +323,13 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.assertFalse((collection / "skills").exists())
             self.assertFalse((collection / "project-conventions").exists())
             self.assertEqual(dry_payload["agent_links_created"], [])
+            self.assertEqual(
+                {
+                    Path(item["path"]).name
+                    for item in dry_payload["would_create_control_projections"]
+                },
+                {"AGENTS.md", "README.md", "config", "scripts"},
+            )
 
             applied = self.run_command([*command, "--apply"])
             self.assertEqual(applied.returncode, 0, applied.stderr)
@@ -335,16 +356,44 @@ class LifecycleWorkflowTests(unittest.TestCase):
             control = collection / "skills"
             self.assertEqual(
                 {path.name for path in (control / "src").iterdir()},
-                {"README.md", "config", "scripts", "tests"},
+                {"AGENTS.md", "README.md", "config", "scripts"},
             )
+            for name, kind in (
+                ("AGENTS.md", "file"),
+                ("README.md", "file"),
+                ("config", "directory"),
+                ("scripts", "directory"),
+            ):
+                root_projection = control / "src" / name
+                root_target = checkout / name
+                if os.name == "nt" and kind == "directory":
+                    self.assertTrue(is_windows_junction(root_projection))
+                else:
+                    self.assertTrue(root_projection.is_symlink())
+                if os.name != "nt" or kind == "file":
+                    self.assertEqual(
+                        os.readlink(root_projection).replace(os.sep, "/"),
+                        f"../../GitHub/{name}",
+                    )
+                self.assertEqual(root_projection.resolve(), root_target.resolve())
+                if kind == "file":
+                    self.assertTrue(root_projection.is_file())
+                else:
+                    self.assertTrue(root_projection.is_dir())
+            self.assertFalse((control / "src" / "skills").exists())
+            self.assertFalse((control / "src" / "tests").exists())
             exports = (control / "src" / "config" / "skill-exports.tsv").read_text(
                 encoding="utf-8"
             )
-            self.assertIn("project-conventions\tGitHub/project-conventions\tall", exports)
+            self.assertIn("project-conventions\tproject-conventions\tall", exports)
             members = (control / "docs" / "indexes" / "members.md").read_text(
                 encoding="utf-8"
             )
             self.assertIn("| source | repository_root | vcs |", members)
+            self.assertIn(
+                "| collection-control | src | - | none | - | repository-root public projections |",
+                members,
+            )
             self.assertIn("| GitHub | git | obisoldbee/skills | project-conventions/ |", members)
             for portable in (
                 collection / "AGENTS.md",
@@ -360,15 +409,20 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 self.assertNotIn("C:" + "\\Users\\", text)
                 self.assertNotIn("file" + "://", text.lower())
 
-            generated_tests = self.run_command(
+            projected_root_validation = self.run_command(
                 [
                     sys.executable,
                     "-B",
-                    str(control / "src" / "tests" / "test_public_root_overlay.py"),
+                    str(control / "src" / "scripts" / "verify_release.py"),
+                    str(checkout),
                 ],
                 cwd=control,
             )
-            self.assertEqual(generated_tests.returncode, 0, generated_tests.stderr)
+            self.assertEqual(
+                projected_root_validation.returncode,
+                0,
+                projected_root_validation.stderr,
+            )
 
             project_root_validator = target / "scripts" / "validate_project_root.py"
             for generated_root in (control, wrapper):
@@ -590,6 +644,76 @@ class LifecycleWorkflowTests(unittest.TestCase):
             repeated = self.run_command(command)
             self.assertEqual(repeated.returncode, 2)
             self.assertIn("member projection raw target differs", repeated.stderr)
+
+    @unittest.skipIf(os.name == "nt", "Unix raw symlink contract")
+    def test_initializer_rejects_control_projection_conflicts_without_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            collection, checkout, _remote = self.create_shared_fixture(Path(raw))
+            initializer = (
+                checkout
+                / "project-conventions"
+                / "scripts"
+                / "initialize_skills_control_project.py"
+            )
+            command = [
+                sys.executable,
+                "-B",
+                str(initializer),
+                str(collection),
+                "--distribution-root",
+                str(checkout),
+                "--apply",
+            ]
+            first = self.run_command(command)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            source = collection / "skills" / "src"
+
+            agents = source / "AGENTS.md"
+            agents.unlink()
+            agents.write_text("duplicate bytes\n", encoding="utf-8")
+            real_path = self.run_command(command)
+            self.assertEqual(real_path.returncode, 2)
+            self.assertIn("control projection is not a Unix symlink", real_path.stderr)
+            self.assertEqual(agents.read_text(encoding="utf-8"), "duplicate bytes\n")
+            agents.unlink()
+            agents.symlink_to("../../GitHub/AGENTS.md")
+
+            readme = source / "README.md"
+            readme.unlink()
+            readme.symlink_to("../../GitHub/AGENTS.md")
+            wrong_link = self.run_command(command)
+            self.assertEqual(wrong_link.returncode, 2)
+            self.assertIn("control projection raw target differs", wrong_link.stderr)
+            self.assertEqual(os.readlink(readme), "../../GitHub/AGENTS.md")
+            readme.unlink()
+            readme.symlink_to("../../GitHub/README.md")
+
+            config = source / "config"
+            config.unlink()
+            config.symlink_to("../../missing", target_is_directory=True)
+            dangling = self.run_command(command)
+            self.assertEqual(dangling.returncode, 2)
+            self.assertIn("control projection raw target differs", dangling.stderr)
+            self.assertEqual(os.readlink(config), "../../missing")
+            config.unlink()
+            config.symlink_to("../../GitHub/config", target_is_directory=True)
+
+            whole_repository = source / "skills"
+            whole_repository.symlink_to("../../GitHub", target_is_directory=True)
+            extra_projection = self.run_command(command)
+            self.assertEqual(extra_projection.returncode, 2)
+            self.assertIn("control src entry set differs", extra_projection.stderr)
+            self.assertIn("extra=['skills']", extra_projection.stderr)
+            self.assertTrue(whole_repository.is_symlink())
+            whole_repository.unlink()
+
+            extra_directory = source / "tests"
+            extra_directory.mkdir()
+            empty_extra = self.run_command(command)
+            self.assertEqual(empty_extra.returncode, 2)
+            self.assertIn("control src entry set differs", empty_extra.stderr)
+            self.assertIn("extra=['tests']", empty_extra.stderr)
+            self.assertTrue(extra_directory.is_dir())
 
     def test_initializer_validates_package_and_redacts_remote_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -999,7 +1123,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
             (outside / "outside-secret.md").write_text(
                 "/" + "Users" + "/example/private\n", encoding="utf-8"
             )
-            self.create_directory_link(package / "assets" / "nested-link", outside)
+            self.create_directory_link(package / "references" / "nested-link", outside)
             result = self.run_command(
                 [
                     sys.executable,
@@ -1009,7 +1133,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(result.returncode, 1)
-            self.assertIn("link:assets/nested-link", result.stderr)
+            self.assertIn("link:references/nested-link", result.stderr)
             self.assertNotIn("outside-secret.md", result.stderr)
             self.assertNotIn("personal-path", result.stderr)
 

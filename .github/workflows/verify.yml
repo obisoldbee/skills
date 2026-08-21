@@ -110,8 +110,20 @@ jobs:
           mkdir -p "$home/.codex/skills"
           if [ "$RUNNER_OS" = "Windows" ]; then
             home_native="$(cygpath -w "$home")"
+            mkdir -p "$fixture/control/src"
+            control_src_native="$(cygpath -w "$fixture/control/src")"
+            checkout_scripts_native="$(cygpath -w "$checkout/scripts")"
+            checkout_config_native="$(cygpath -w "$checkout/config")"
+            CONTROL_SRC_NATIVE="$control_src_native" \
+              CHECKOUT_SCRIPTS_NATIVE="$checkout_scripts_native" \
+              CHECKOUT_CONFIG_NATIVE="$checkout_config_native" \
+              powershell.exe -NoProfile -Command '
+                New-Item -ItemType Junction -Path (Join-Path $env:CONTROL_SRC_NATIVE "scripts") -Target $env:CHECKOUT_SCRIPTS_NATIVE | Out-Null
+                New-Item -ItemType Junction -Path (Join-Path $env:CONTROL_SRC_NATIVE "config") -Target $env:CHECKOUT_CONFIG_NATIVE | Out-Null
+              '
+            projected_windows_script="$control_src_native\scripts\link-windows.ps1"
             USERPROFILE="$home_native" powershell.exe -NoProfile -ExecutionPolicy Bypass \
-              -File "$checkout/scripts/link-windows.ps1" -SyncDevice -Agent codex
+              -File "$projected_windows_script" -SyncDevice -Agent codex
           else
             HOME="$home" bash "$checkout/scripts/link-macos.sh" --sync-device --agent codex
           fi
@@ -122,7 +134,7 @@ jobs:
           git -C "$seed" push -q origin main
           if [ "$RUNNER_OS" = "Windows" ]; then
             USERPROFILE="$home_native" powershell.exe -NoProfile -ExecutionPolicy Bypass \
-              -File "$checkout/scripts/link-windows.ps1" -SyncDevice -Apply -Agent codex
+              -File "$projected_windows_script" -SyncDevice -Apply -Agent codex
           else
             HOME="$home" bash "$checkout/scripts/link-macos.sh" --sync-device --apply --agent codex
           fi
@@ -257,12 +269,21 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $script = Join-Path $PWD 'scripts\link-windows.ps1'
+          $directScript = Join-Path $PWD 'scripts\link-windows.ps1'
+          $controlSrc = Join-Path $env:RUNNER_TEMP 'skills-control\src'
+          New-Item -ItemType Directory -Force $controlSrc | Out-Null
+          $projectedScripts = Join-Path $controlSrc 'scripts'
+          $projectedConfig = Join-Path $controlSrc 'config'
+          New-Item -ItemType Junction -Path $projectedScripts -Target (Join-Path $PWD 'scripts') | Out-Null
+          New-Item -ItemType Junction -Path $projectedConfig -Target (Join-Path $PWD 'config') | Out-Null
+          $script = Join-Path $projectedScripts 'link-windows.ps1'
           $healthy = Join-Path $env:RUNNER_TEMP 'healthy-skills'
           New-Item -ItemType Directory -Force $healthy | Out-Null
 
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $directScript -Target $healthy -Skill project-conventions
+          if ($LASTEXITCODE -ne 0) { throw "direct scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
-          if ($LASTEXITCODE -ne 0) { throw "scan failed: $LASTEXITCODE" }
+          if ($LASTEXITCODE -ne 0) { throw "projected scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions -Apply
           if ($LASTEXITCODE -ne 0) { throw "apply failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions

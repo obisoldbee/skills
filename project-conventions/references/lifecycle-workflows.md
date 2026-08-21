@@ -9,6 +9,7 @@ Use this reference before filesystem-governance references whenever a request me
 | “从零初始化这个目标，并把最新版 Skill 和目录配好” | Full initialization | Exact target, approved repository, deterministic local wrapper/control files, optional exact consumers |
 | “先 clone，到这里停止” | Bootstrap-only | Exact checkout and its validation |
 | “更新这个 Skill / 拉取最新版” | Update-only | One resolved checkout and one named package |
+| “本机全量同步 Skills / 更新 GitHub 并让本机 Agent 使用 / 同步共享 Skill 根” | Device refresh | Plan first; one existing checkout and missing public allowlisted links in existing Agent roots |
 | “迁移旧目录到新结构” | Governance maintenance | Exact old/new paths and affected current mappings |
 
 `clone` does not authorize sibling scans or Agent installation. `update` does not authorize initialization. An explicit end-to-end request naming the target, repository, migration inputs, and consumers authorizes those exact stages without making the user reconfirm the same map.
@@ -26,6 +27,7 @@ True package           = <collection>/GitHub/project-conventions
 Member Project Root    = <collection>/project-conventions
 Member projection      = <collection>/project-conventions/src/project-conventions
 Control Project Root   = <collection>/skills
+Control projections    = <collection>/skills/src/{AGENTS.md,README.md,config,scripts}
 Consumer               = zero or more explicitly authorized existing Agent Skill roots
 ```
 
@@ -79,6 +81,7 @@ The initializer accepts only the exact fresh layout. It creates:
 
 - collection `AGENTS.md`, `README.md`, and `MEMBERS.md`;
 - a complete `skills/` collection-control Project Root;
+- exactly four independent public-root management projections under `skills/src/`, never a whole-repository `src/skills` projection or copied root files;
 - a complete `project-conventions/` wrapper;
 - one relative symlink on Unix or junction on Windows from the member source entry to the true package;
 - an index that separates `source`, `repository_root`, and `managed_scope`;
@@ -148,6 +151,19 @@ Forbidden side effects in update-only:
 - auto-stash, merge, rebase, reset, cherry-pick, or delete.
 
 After validation, report before/after commit and stop. A healthy projection or consumer automatically sees new bytes and does not require relinking.
+
+## Device refresh
+
+Device refresh is an explicit end-to-end lifecycle for the current device. It is selected only by the exact synchronization intents in the decision table, not by a request to update one named Skill.
+
+1. Resolve the one existing `<collection>/GitHub` checkout; do not clone or initialize.
+2. Run the platform repository script with `--sync-device` / `-SyncDevice` and no apply flag.
+3. Require the repository safety check and a conflict-free scan of existing configured Agent roots.
+4. When the request already authorizes synchronization, rerun with `--apply` / `-Apply` without asking the user to repeat that authorization.
+5. Fast-forward only the one checkout, reread the public allowlists from the updated checkout, then create only missing allowlisted links under Agent roots that already exist.
+6. Read back checkout, links, and validation receipts; report linked separately from discovered or executed.
+
+Device refresh never creates a second checkout or missing Agent root, replaces any real/wrong/dangling path, changes export policy, regenerates wrappers, indexes, conversation, or memory, or edits member projects. A conflict stops apply. This consumer reconciliation is the intentional difference from update-only.
 
 ## Governance maintenance and migration
 
