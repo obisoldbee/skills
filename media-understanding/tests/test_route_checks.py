@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,7 +38,7 @@ class RouteCheckTests(unittest.TestCase):
                 "provider": "test",
                 "model": None,
                 "credentials": {"file": "~/.codex/secrets/minimax.env", "required_env": ["MINIMAX_API_KEY"]},
-                "executor": {"kind": "native"},
+                "executor": {"kind": "script", "path": "scripts/check_routes.py"},
             }]}
             code, stdout, stderr = self.run_checker(config, home)
             self.assertEqual(code, 0, stderr)
@@ -57,7 +58,7 @@ class RouteCheckTests(unittest.TestCase):
                 "provider": "test",
                 "model": "agnes-2.5-flash",
                 "credentials": {"file": "~/.codex/secrets/agnes.env", "required_env": ["AGNES_API_KEY", "AGNES_MODEL"]},
-                "executor": {"kind": "native"},
+                "executor": {"kind": "script", "path": "scripts/check_routes.py"},
             }]}
             code, stdout, stderr = self.run_checker(config, home)
             self.assertEqual(code, 0, stderr)
@@ -127,6 +128,74 @@ class RouteCheckTests(unittest.TestCase):
             self.assertEqual(route["readiness"], "configured_not_called")
             self.assertTrue(route["executor"]["present"])
             self.assertEqual(route["executor"]["path"], "scripts/check_routes.py")
+
+    def test_packaged_registry_contains_no_host_native_route(self) -> None:
+        routes = json.loads((ROOT / "config" / "routes.json").read_text(encoding="utf-8"))["routes"]
+        self.assertNotIn("codex-native-image", {route["id"] for route in routes})
+        self.assertFalse(any(str(route.get("provider") or "").endswith("_native") for route in routes))
+        self.assertFalse(any(route.get("authorization") == "session_native" for route in routes))
+        self.assertFalse(any(route.get("executor", {}).get("kind") == "native" for route in routes))
+
+    def test_minimax_mmx_is_scoped_nonvision_host_image_default(self) -> None:
+        routes = json.loads((ROOT / "config" / "routes.json").read_text(encoding="utf-8"))["routes"]
+        route = next(item for item in routes if item["id"] == "minimax-mmx-image")
+        self.assertIsNone(route["model"])
+        self.assertEqual(route["authorization"], "implicit_current_attachment_request")
+        self.assertEqual(route["default_for"], ["nonvision_host_single_image_understanding"])
+        self.assertEqual(route["authorization_scope"], "current_request_single_image_only")
+        self.assertEqual(route["cost_scope"], "one_default_minimax_image_call")
+        self.assertEqual(route["fallback_policy"], "requires_user_opt_in")
+
+    def test_checker_reports_route_authorization_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            config = {"routes": [{
+                "id": "default-image",
+                "status": "active_if_configured",
+                "provider": "minimax",
+                "model": None,
+                "authorization": "implicit_current_attachment_request",
+                "default_for": ["nonvision_host_single_image_understanding"],
+                "authorization_scope": "current_request_single_image_only",
+                "cost_scope": "one_default_minimax_image_call",
+                "fallback_policy": "requires_user_opt_in",
+                "executor": {"kind": "script", "path": "scripts/check_routes.py"},
+            }]}
+            code, stdout, stderr = self.run_checker(config, home)
+            self.assertEqual(code, 0, stderr)
+            route = json.loads(stdout)["routes"][0]
+            self.assertEqual(route["authorization"], "implicit_current_attachment_request")
+            self.assertEqual(route["default_for"], ["nonvision_host_single_image_understanding"])
+            self.assertEqual(route["authorization_scope"], "current_request_single_image_only")
+            self.assertEqual(route["cost_scope"], "one_default_minimax_image_call")
+            self.assertEqual(route["fallback_policy"], "requires_user_opt_in")
+
+    def test_validator_rejects_renamed_host_native_route(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary) / "media-understanding"
+            shutil.copytree(ROOT, package, ignore=shutil.ignore_patterns("__pycache__"))
+            registry = package / "config" / "routes.json"
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            data["routes"].append({
+                "id": "zai-native-image",
+                "status": "active_if_configured",
+                "media": ["image"],
+                "tasks": ["description"],
+                "provider": "zai_native",
+                "model": None,
+                "authorization": "session_native",
+                "credentials": None,
+                "executor": {"kind": "none"},
+            })
+            registry.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(package / "scripts" / "validate_skill.py")],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("host-native capability must not be a portable route: zai-native-image", result.stdout)
 
 
 if __name__ == "__main__":

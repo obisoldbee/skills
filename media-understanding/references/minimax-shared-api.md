@@ -35,7 +35,7 @@ model: MiniMax-M3
 
 MiniMax-M3 官方支持图像与视频。图片/视频默认通过 Anthropic Messages 合同发送。视频可直接 URL/Base64（≤50MB）或先通过 Files 上传并用 `mm_file://file_id` 引用（≤512MB、文件默认保留 7 天）；文档/PDF 无原生合同，应先本地解析/OCR 再给文本。
 
-`mmx-cli` 的 `vision describe` 对快速单图最方便，但走 `/v1/coding_plan/vlm` 且不暴露底层 model id，不能把输出归因于 `MiniMax-VL-01`。M3 视频/结构化生产调用继续使用 Anthropic direct API；本包的课程视频/音频脚本就是该端点，旧同名独立 Skills 已退役。普通 MiniMax MCP 当前侧重生成、TTS、音乐等工具，不是本总路由的通用理解入口；MCP 文档存在不等于能力已安装或执行。
+`mmx-cli` 的 `vision describe` 对快速单图最方便，也是无视觉宿主收到单张图片理解请求时的默认路线；用户附图并要求理解即授权本次图片，除非用户指定其他 provider 或禁止外发。该命令走 `/v1/coding_plan/vlm` 且不暴露底层 model id，不能把输出归因于 `MiniMax-VL-01`。M3 视频/结构化生产调用继续使用 Anthropic direct API；本包的课程视频/音频脚本就是该端点，旧同名独立 Skills 已退役。普通 MiniMax MCP 当前侧重生成、TTS、音乐等工具，不是本总路由的通用理解入口；MCP 文档存在不等于能力已安装或执行。
 
 ## 错误处理
 
