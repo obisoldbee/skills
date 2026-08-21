@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -55,6 +57,21 @@ def rehash_source(row: dict[str, Any]) -> None:
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def create_directory_link(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd", "/d", "/c", "mklink", "/J", str(link), str(target)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise OSError(f"junction creation failed: {detail}")
+    else:
+        link.symlink_to(target, target_is_directory=True)
 
 
 def build_plugin(root: Path) -> tuple[Path, dict[str, dict[str, Any]]]:
@@ -237,9 +254,9 @@ class RunFixture:
         self.paper_downloader_root = self.plugin.parent / validator.PAPER_DOWNLOADER_NAME
         self.paper_downloader_consumer = root / "agent-skills" / validator.PAPER_DOWNLOADER_NAME
         self.paper_downloader_consumer.parent.mkdir()
-        self.paper_downloader_consumer.symlink_to(
+        create_directory_link(
+            self.paper_downloader_consumer,
             self.paper_downloader_root,
-            target_is_directory=True,
         )
         self.reviewable_count = reviewable_count
         self.expert_reworks = expert_reworks or {}
@@ -909,6 +926,18 @@ class RunFixture:
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_windows_link_targets_drop_nt_namespace_prefixes(self) -> None:
+        self.assertEqual(
+            validator.normalize_windows_link_target(r"\\?\C:\repo\paper-downloader"),
+            r"C:\repo\paper-downloader",
+        )
+        self.assertEqual(
+            validator.normalize_windows_link_target(
+                r"\\?\UNC\server\share\paper-downloader"
+            ),
+            r"\\server\share\paper-downloader",
+        )
+
     def test_paper_downloader_binding_uses_registered_canonical_source(self) -> None:
         binding = (SKILL_ROOT / "references" / "external-executors.md").read_text(
             encoding="utf-8"
@@ -1019,10 +1048,7 @@ class ValidatorTests(unittest.TestCase):
                 / validator.PAPER_DOWNLOADER_NAME
             )
             wrapper.parent.mkdir(parents=True)
-            wrapper.symlink_to(
-                fixture.paper_downloader_root,
-                target_is_directory=True,
-            )
+            create_directory_link(wrapper, fixture.paper_downloader_root)
             receipt_path = fixture.package / "payload/receipts/run-init.json"
             receipt = read_json(receipt_path)
             receipt["acquisition_executor"]["registered_skill_path"] = str(
@@ -1047,15 +1073,12 @@ class ValidatorTests(unittest.TestCase):
                 / validator.PAPER_DOWNLOADER_NAME
             )
             wrapper.parent.mkdir(parents=True)
-            wrapper.symlink_to(
-                fixture.paper_downloader_root,
-                target_is_directory=True,
-            )
+            create_directory_link(wrapper, fixture.paper_downloader_root)
             indirect_consumer = (
                 root / "indirect-agent-skills" / validator.PAPER_DOWNLOADER_NAME
             )
             indirect_consumer.parent.mkdir()
-            indirect_consumer.symlink_to(wrapper, target_is_directory=True)
+            create_directory_link(indirect_consumer, wrapper)
             receipt = read_json(
                 fixture.package / "payload/receipts/run-init.json"
             )
