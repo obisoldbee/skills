@@ -90,6 +90,13 @@ jobs:
           python -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchestrator/tests -p 'test_*.py'
           python -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
 
+      - name: Verify paper-downloader package behavior
+        shell: bash
+        run: |
+          python -B -m unittest discover -s paper-downloader/scripts/tests -p 'test_*.py'
+          python -B -m py_compile paper-downloader/scripts/*.py
+          bash -n paper-downloader/scripts/with_playwright_python.sh
+
       - name: Verify media-creator package behavior
         shell: bash
         run: |
@@ -140,6 +147,7 @@ jobs:
           bash scripts/link-macos.sh --target "$target" --skill web-bookmark-intelligence
           bash scripts/link-macos.sh --target "$target" --skill media-understanding
           bash scripts/link-macos.sh --target "$target" --skill research-qa-orchestrator
+          bash scripts/link-macos.sh --target "$target" --skill paper-downloader
           bash scripts/link-macos.sh --target "$target" --skill media-creator
           bash scripts/link-macos.sh --target "$target" --skill project-handoff
 
@@ -196,6 +204,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "media-understanding scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill research-qa-orchestrator
           if ($LASTEXITCODE -ne 0) { throw "research-qa-orchestrator scan failed: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill paper-downloader
+          if ($LASTEXITCODE -ne 0) { throw "paper-downloader scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill media-creator
           if ($LASTEXITCODE -ne 0) { throw "media-creator scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-handoff

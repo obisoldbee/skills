@@ -13,6 +13,8 @@ Use one checkout per device and keep local project governance outside Git:
 │   ├── web-bookmark-intelligence/           # true Skill source
 │   ├── media-understanding/                  # true Skill source
 │   ├── research-qa-plugin/                   # true Agent Plugins package source
+│   ├── paper-downloader/                     # true academic PDF acquisition source
+│   ├── buddy-travelling/                     # true bounded Buddy travel workflow source
 │   ├── media-creator/                        # true cross-Agent media generation router
 │   ├── project-handoff/                      # true handoff/orchestration controller source
 │   └── document-workspace/                   # true file-based document governance source
@@ -27,6 +29,10 @@ Use one checkout per device and keep local project governance outside Git:
 │   └── src/media-understanding               # projection to GitHub package
 ├── research-qa-plugin/                       # stable local Project Root
 │   └── src/research-qa-plugin                # projection to GitHub package
+├── paper-downloader/                         # stable local Project Root
+│   └── src/paper-downloader                  # projection to GitHub package
+├── buddy-travelling/                         # stable local Project Root
+│   └── src/buddy-travelling                  # projection to GitHub package
 ├── media-creator/                            # stable local Project Root
 │   └── src/media-creator                     # projection to GitHub package
 ├── project-handoff/                          # stable local Project Root
@@ -49,6 +55,10 @@ python3 -B <collection>/GitHub/project-conventions/scripts/validate_package.py \
 python3 -B <collection>/GitHub/web-bookmark-intelligence/scripts/validate_skill.py
 python3 -B <collection>/GitHub/media-understanding/scripts/validate_skill.py
 python3 -B <collection>/GitHub/research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" \
+  <collection>/GitHub/paper-downloader
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" \
+  <collection>/GitHub/buddy-travelling
 python3 -B <collection>/GitHub/media-creator/scripts/validate_skill.py
 python3 -B <collection>/GitHub/project-handoff/scripts/validate_package.py \
   <collection>/GitHub/project-handoff
@@ -67,7 +77,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/initialize_skills_con
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional published packages such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `media-creator`, `document-workspace`, and `project-handoff` require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members.
+The initializer creates the routing files, complete `skills/` control project, stable `project-conventions/` wrapper, and member projection. It does not install the Skill into any Agent. Additional package directories present in a checkout, such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `paper-downloader`, `buddy-travelling`, `media-creator`, `document-workspace`, and `project-handoff`, require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members or imply that uncommitted bytes are published.
 
 On macOS/Linux the projection is the relative link:
 
@@ -142,6 +152,19 @@ The research QA plugin exposes one first-level Skill for the Codex consumer:
 ./scripts/link-macos.sh --apply --agent codex --skill research-qa-orchestrator
 ```
 
+Paper Downloader is exported to the shared `.agents` root plus the explicit Codex, MiniMax, and WorkBuddy roots. Scan and apply each exact consumer separately:
+
+```bash
+./scripts/link-macos.sh --agent agents --skill paper-downloader
+./scripts/link-macos.sh --apply --agent agents --skill paper-downloader
+./scripts/link-macos.sh --agent codex --skill paper-downloader
+./scripts/link-macos.sh --apply --agent codex --skill paper-downloader
+./scripts/link-macos.sh --agent minimax --skill paper-downloader
+./scripts/link-macos.sh --apply --agent minimax --skill paper-downloader
+./scripts/link-macos.sh --agent workbuddy --skill paper-downloader
+./scripts/link-macos.sh --apply --agent workbuddy --skill paper-downloader
+```
+
 The non-native media generation router is exported to every declared consumer. Codex-native generic image generation remains owned by the built-in `imagegen` Skill and bypasses this router:
 
 ```bash
@@ -177,6 +200,9 @@ python3 -B -m unittest discover -s media-understanding/tests -p 'test_*.py'
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
 python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchestrator/tests -p 'test_*.py'
 python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" paper-downloader
+python3 -B -m unittest discover -s paper-downloader/scripts/tests -p 'test_*.py'
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" buddy-travelling
 python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 python3 -B project-handoff/scripts/validate_package.py project-handoff
@@ -219,6 +245,14 @@ python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 │   ├── plugin.json
 │   ├── README.md
 │   └── skills/research-qa-orchestrator/
+├── paper-downloader/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── references/
+│   └── scripts/
+├── buddy-travelling/
+│   ├── SKILL.md
+│   └── agents/
 ├── media-creator/
 │   ├── SKILL.md
 │   ├── agents/
