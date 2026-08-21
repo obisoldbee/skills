@@ -925,6 +925,25 @@ Real workflow.
             self.assertEqual(result.returncode, 1)
             self.assertIn("digest differs", result.stderr)
 
+    def test_crlf_checkout_preserves_hash_bound_authority(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw) / "project"
+            self.initialize(root)
+            for relative in (
+                ".project-conventions/project_access.py",
+                ".project-conventions/ACCESS.md",
+            ):
+                path = root / relative
+                path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+            runtime = self.run_command(
+                [sys.executable, "-B", str(self.access(root)), "status"]
+            )
+            self.assertEqual(runtime.returncode, 0, runtime.stderr)
+            validated = self.run_command(
+                [sys.executable, "-B", str(VALIDATOR), str(root)]
+            )
+            self.assertEqual(validated.returncode, 0, validated.stderr)
+
     def test_runtime_and_validator_reject_tampered_local_authority_documents(self) -> None:
         for relative, marker in (
             ("AGENTS.md", "project-conventions:access:start"),

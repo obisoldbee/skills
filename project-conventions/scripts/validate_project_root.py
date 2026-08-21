@@ -40,6 +40,12 @@ class ProjectValidationError(RuntimeError):
     """Raised when a Project Root does not satisfy the initialized contract."""
 
 
+def portable_text_sha256(content: bytes) -> str:
+    """Hash text after canonicalizing checkout-dependent line endings."""
+    normalized = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
+
+
 def path_identity(value: str | Path) -> str:
     return unicodedata.normalize("NFC", os.path.normpath(str(value))).casefold()
 
@@ -326,7 +332,7 @@ def validate(target: Path, run_access_check: bool = True) -> dict[str, object]:
         require_real_file(root, relative)
 
     helper = root / CONTROL_DIRECTORY / "project_access.py"
-    helper_digest = hashlib.sha256(helper.read_bytes()).hexdigest()
+    helper_digest = portable_text_sha256(helper.read_bytes())
     if config["helper_sha256"] != helper_digest:
         raise ProjectValidationError("project_access.py digest differs from project.json")
 
@@ -340,7 +346,7 @@ def validate(target: Path, run_access_check: bool = True) -> dict[str, object]:
     if config["agents_block_sha256"] != agents_block_digest:
         raise ProjectValidationError("AGENTS.md managed access block differs from project.json")
     access_readme = root / CONTROL_DIRECTORY / "ACCESS.md"
-    if config["access_readme_sha256"] != hashlib.sha256(access_readme.read_bytes()).hexdigest():
+    if config["access_readme_sha256"] != portable_text_sha256(access_readme.read_bytes()):
         raise ProjectValidationError("ACCESS.md digest differs from project.json")
     if "$project-handoff" in managed_block or "<skills-dir>" in managed_block:
         raise ProjectValidationError("AGENTS.md access block has an external Skill dependency")
