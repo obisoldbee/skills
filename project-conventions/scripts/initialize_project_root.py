@@ -43,6 +43,12 @@ class ProjectInitializationError(RuntimeError):
     """Raised when initialization cannot preserve the target safely."""
 
 
+def portable_text_sha256(content: bytes) -> str:
+    """Hash text after canonicalizing checkout-dependent line endings."""
+    normalized = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
+
+
 def is_link_or_junction(path: Path) -> bool:
     native = getattr(os.path, "isjunction", None)
     junction = False
@@ -549,11 +555,11 @@ def initialize(
     if is_link_or_junction(helper_source) or not helper_source.is_file():
         raise ProjectInitializationError("packaged project_access.py is missing or linked")
     helper = helper_source.read_bytes()
-    helper_digest = hashlib.sha256(helper).hexdigest()
+    helper_digest = portable_text_sha256(helper)
     managed_block = render_access_block(project_profile, skill_name)
     access_readme = render_access_readme()
     config = {
-        "access_readme_sha256": hashlib.sha256(access_readme.encode("utf-8")).hexdigest(),
+        "access_readme_sha256": portable_text_sha256(access_readme.encode("utf-8")),
         "agents_block_sha256": hashlib.sha256(managed_block.encode("utf-8")).hexdigest(),
         "coordination_id": None,
         "coordination_root": None,

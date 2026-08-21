@@ -70,6 +70,12 @@ class AccessConflict(AccessError):
     """Raised when an active claim blocks the requested mode."""
 
 
+def portable_text_sha256(content: bytes) -> str:
+    """Hash text after canonicalizing checkout-dependent line endings."""
+    normalized = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
+
+
 def safe_config_relative(value: object, label: str) -> str | None:
     if value is None:
         return None
@@ -220,7 +226,7 @@ def resolve_control(script_path: Path) -> tuple[Path, Path, dict[str, object]]:
         raise AccessError("coordination binding is valid only for shared collection profiles")
     helper_digest = config.get("helper_sha256")
     if not isinstance(helper_digest, str) or not secrets.compare_digest(
-        helper_digest, hashlib.sha256(script_path.read_bytes()).hexdigest()
+        helper_digest, portable_text_sha256(script_path.read_bytes())
     ):
         raise AccessError("project access helper digest differs from project configuration")
     agents_path = project_root / "AGENTS.md"
@@ -239,7 +245,7 @@ def resolve_control(script_path: Path) -> tuple[Path, Path, dict[str, object]]:
         managed_block.encode("utf-8")
     ).hexdigest():
         raise AccessError("project AGENTS.md managed access block digest differs")
-    if config.get("access_readme_sha256") != hashlib.sha256(access_path.read_bytes()).hexdigest():
+    if config.get("access_readme_sha256") != portable_text_sha256(access_path.read_bytes()):
         raise AccessError("project ACCESS.md digest differs from project configuration")
     return project_root.resolve(), control.resolve(), config
 
