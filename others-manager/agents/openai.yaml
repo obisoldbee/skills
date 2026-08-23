@@ -1,0 +1,4 @@
+interface:
+  display_name: "Others Manager"
+  short_description: "Safely clone and update third-party repositories"
+  default_prompt: "Use $others-manager to safely update every managed GitHub-others repository and return a blocker-aware report."
