@@ -5,10 +5,10 @@
 ```text
 媒体：image | document | video | audio | mixed
 任务：holistic | OCR | layout | grounding | GUI | timeline | ASR | speakers | semantics | benchmark
-路线：一个 config/routes.json route id
+执行路径：host_native | 一个 config/routes.json route id
 ```
 
-`host_native` 是当前会话已确认可读取本次附件时的宿主旁路，不是 portable route。用户未点名本 Skill 且任务仅为普通单图描述、粗略读字或直接问答时，可在进入本表前使用该旁路。用户显式调用本 Skill，或宿主/模型不能读取本次附件、能力未知时，必须进入本路由；不要从附件存在、模型名称或静态配置推断原生能力。
+`host_native` 是当前会话已确认可读取本次附件时的宿主执行路径，不是 portable route。原生可读宿主上的普通单图或多图描述、粗略读字、分类、核价和直接问答不应仅因图片数量而隐式触发本 Skill；直接用宿主原生能力。用户显式调用本 Skill 时必须进入路由，但进入后仍可选择 `host_native`，并不强制外部 provider。只有宿主/模型不能可靠读取所需附件、能力未知，或任务明确要求专项路线时才继续选择 portable route；不要从附件存在、模型名称或静态配置推断原生能力。
 
 ## 无视觉宿主的单图默认
 

@@ -197,6 +197,25 @@ class RouteCheckTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn("host-native capability must not be a portable route: zai-native-image", result.stdout)
 
+    def test_validator_rejects_global_explicit_only_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary) / "media-understanding"
+            shutil.copytree(ROOT, package, ignore=shutil.ignore_patterns("__pycache__"))
+            openai = package / "agents" / "openai.yaml"
+            openai.write_text(
+                openai.read_text(encoding="utf-8")
+                + "\npolicy:\n  allow_implicit_invocation: false\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(package / "scripts" / "validate_skill.py")],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("must preserve native-first routing and non-vision implicit entry", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

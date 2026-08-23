@@ -38,10 +38,11 @@
 
 ## 普通图片与表情包的宿主旁路/路由
 
-- 只有当前宿主/模型已确认具备原生视觉并实际读到本次附件，且用户未点名本 Skill、外部 provider/model、精确 OCR、坐标、批量、证据产物或评测时，单张普通照片或截图的描述、理解、粗略读字或直接问答才走 `host_native` 会话旁路，不触发本 Skill。
-- 用户明确点名本 Skill 时必须进入本 Skill。当前宿主/模型不能读取本次附件或能力未知时也必须进入；不要把 `host_native` 写进 portable registry。
+- 当前宿主/模型已确认具备原生视觉并实际读到所需附件时，普通单图或多图的描述、理解、粗略读字、分类、核价或直接问答默认走 `host_native`，不因图片数量而隐式触发本 Skill。
+- 多张普通图片不自动等于 `batch understanding`。只有用户明确要求批处理工作流、manifest、逐项结构化证据或媒体模型评测，才按批量专项任务进入。
+- 用户明确点名本 Skill 时必须进入路由，但进入后仍优先使用已确认可用的 `host_native`；显式调用不等于指定外部 provider。当前宿主/模型不能读取本次附件或能力未知时也必须进入；不要把 `host_native` 写进 portable registry。
 - 无视觉宿主收到本次单张图片，且用户要求描述、读图或回答图片问题时，“附图 + 要求理解”即授权该图片默认走 `minimax-mmx-image`，无需重复询问 provider 或普通单次调用成本。用户指定其他 provider/model 或禁止外发时覆盖默认。
 - 该默认授权只覆盖本次图片和一次常规 MiniMax 识图；不覆盖批量、其他媒体、后续素材或失败后的其他 provider。MiniMax 未配置或失败时停止并请用户决定，不自动 fallback。
-- 表情包同样先按当前宿主的实际附件能力判断。只有宿主已确认可读且没有显式调用/专项要求时才走 `host_native`；无视觉宿主未收到其他 provider 指令时仍默认 `minimax-mmx-image`。历史排名见 [benchmark-history-and-routing.md](benchmark-history-and-routing.md)，只作评测证据，不覆盖当前运行默认。
+- 表情包同样先按当前宿主的实际附件能力判断。宿主已确认可读时走 `host_native`，即使用户显式进入本 Skill也不强制外部 provider；无视觉宿主未收到其他 provider 指令时仍默认 `minimax-mmx-image`。历史排名见 [benchmark-history-and-routing.md](benchmark-history-and-routing.md)，只作评测证据，不覆盖当前运行默认。
 - 对低清、裁切、双关或缺少上下文的表情包，先输出可见角色、文字、视角、情绪线索和不确定项；不要自动切外部 provider 或 OCR，也不要把猜测写成梗的事实。
 - OCR 只能在用户目标是转录、扫描文档、文本精确提取或 Akashic 正式入库确有需要时作为辅助；它不会在普通图片或表情包失败时自动成为 fallback。详见 [provider-routing.md](provider-routing.md) 与 [ocr-and-document-understanding.md](ocr-and-document-understanding.md)。

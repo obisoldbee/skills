@@ -1,6 +1,6 @@
 ---
 name: media-understanding
-description: 已有图片、文档、视频、音频和混合媒体的理解总路由。用户明确点名本 Skill，或当前宿主/模型不能直接可靠读取附件时使用；无视觉宿主上的单张图片默认走 MiniMax `minimax-mmx-image`，用户附图并要求理解即授权本次图片，除非用户指定其他 provider 或禁止外发。也用于精确 OCR/文档版式、批量媒体、坐标定位、视频时间线、ASR/字幕/说话人、外部 provider/成本/隐私选型、可追溯证据或多模型评测。不负责媒体生成。
+description: 仅在用户显式调用、宿主不能可靠读取附件，或任务明确要求专项 OCR/音视频、外部 provider、媒体 manifest/模型评测时使用。原生可读的普通单图或多图不要自动触发；显式进入后仍可走 `host_native`。原生不可读的单图默认用 MiniMax，除非用户另行指定或禁止外发。不负责生成。
 ---
 
 # Media Understanding
@@ -15,24 +15,25 @@ description: 已有图片、文档、视频、音频和混合媒体的理解总�
 - 当前宿主/模型的原生媒体能力未知，不能实际读取本次附件，或读取结果不可靠；
 - 精确 OCR、扫描 PDF、版式/表格/公式、grounding 或 GUI；
 - 视频时间线、音视频联合、ASR、字幕、说话人、翻译或会议纪要；
-- 批量媒体、长媒体、provider/成本/隐私选择、正式证据或模型比较。
+- 用户明确要求外部 provider/model、成本/隐私选型、批处理工作流、manifest/逐项结构化证据、正式媒体证据或媒体模型比较。
 
-显式点名保证进入本 Skill。对不能读取本次附件的宿主/模型，用户提供单张图片并要求描述、读图或回答图片问题，即视为当前请求已授权仅将这张图片交给默认 `minimax-mmx-image` 执行；无需再次询问 provider 或普通单次调用成本。用户指定其他 provider/model、禁止外发，或请求批量/其他媒体时，不适用此默认授权。
+不要仅因普通单图或多图、截图较多、需要逐张核价/分类，或结果要写入其他文件而隐式触发本 Skill。当前宿主/模型已确认能实际读取所需附件，且任务只是描述、粗略读字、分类、核价或直接问答时，直接使用宿主原生能力；图片数量本身不构成 provider 路由理由。只有当前宿主无法可靠完成所需附件读取时，才按不可读处理并进入本 Skill。
 
-只有同时满足以下条件时，才可在入口处直接使用当前宿主的原生视觉并停止：当前宿主/模型已确认具备原生视觉且实际读到本次附件；只有一张普通图片或截图；目标只是描述、粗略读字或直接问答；用户未点名本 Skill、外部 provider/model、精确 OCR、坐标、批量、正式证据或 benchmark。附件出现在界面里、模型名称看似支持视觉或 registry 中存在某项配置，都不等于本次附件已可读。
+显式点名只决定进入路由，不决定执行器，也不强制外部服务。进入后，只要当前宿主已实际读到本次所需的单张或多张附件，仍优先使用 `execution_path=host_native`；用户明确指定 provider/model 时除外。对不能读取本次附件的宿主/模型，用户提供单张图片并要求描述、读图或回答图片问题，即视为当前请求已授权仅将这张图片交给默认 `minimax-mmx-image` 执行；无需再次询问 provider 或普通单次调用成本。用户指定其他 provider/model、禁止外发，或请求批量/其他媒体时，不适用此默认授权。附件出现在界面里、模型名称看似支持视觉或 registry 中存在某项配置，都不等于本次附件已可读。
 
-## 三层执行语义
+## 执行语义
 
 1. 界面显示“已运行技能”或读取 `SKILL.md`，只表示本地加载了路由说明；没有读取图片，也没有调用 provider。
-2. `python3 scripts/check_routes.py ...` 只做本地执行器和凭据槽位检查，并明确返回 `provider_calls=false`；它不是识图。
-3. `mmx vision describe ...` 才是实际的 MiniMax 外部图片理解调用。报告时不得把前两层写成识图尝试、识图失败或 provider fallback。
+2. 宿主的 `imageView`、`view_image` 或等价原生附件工具是实际识图，报告为 `execution_path=host_native`；它没有调用 MiniMax 等外部 provider。
+3. `python3 scripts/check_routes.py ...` 只做本地执行器和凭据槽位检查，并明确返回 `provider_calls=false`；它不是识图。
+4. `mmx vision describe ...` 才是实际的 MiniMax 外部图片理解调用。报告时不得把 Skill 加载、`host_native` 或 route check 写成外部 provider 尝试、失败或 fallback。
 
 ## 路由顺序
 
 严格按以下顺序，不先选模型：
 
 ```text
-显式调用/宿主附件能力 → 媒体类型 → 理解任务 → 授权/隐私边界 → provider route → 本地绑定检查 → 执行器
+显式调用/宿主附件能力 → 媒体类型 → 理解任务 → 授权/隐私边界 → 执行路径（host_native | portable route）→ 本地绑定检查/执行器
 ```
 
 1. 识别 `image|document|video|audio|mixed` 和实际任务。
@@ -42,7 +43,7 @@ description: 已有图片、文档、视频、音频和混合媒体的理解总�
    - 视频：[video-understanding.md](references/video-understanding.md)
    - 音频：[audio-understanding.md](references/audio-understanding.md)
    - 需要核对当前 provider 合同时：[official-sources.md](references/official-sources.md)
-3. 如果使用当前宿主已确认可用的原生媒体能力，记录 `execution_path=host_native`；它是会话旁路，不是 `config/routes.json` 中的 portable route，也不由 route checker 宣称可用。否则，从 `config/routes.json` 选择一个精确 route id。调用外部 provider 前，运行：
+3. 如果使用当前宿主已确认可用的原生媒体能力，记录 `execution_path=host_native`；显式调用本 Skill 也不排除这条执行路径，且可逐张读取多张普通图片。它是会话执行路径，不是 `config/routes.json` 中的 portable route，也不由 route checker 宣称可用。否则，从 `config/routes.json` 选择一个精确 route id。调用外部 provider 前，运行：
 
    ```bash
    python3 scripts/check_routes.py --route <route-id>
@@ -93,7 +94,7 @@ description: 已有图片、文档、视频、音频和混合媒体的理解总�
 
 ## 验收
 
-- 当前宿主已确认可读且未显式点名本 Skill 的简单单图可走 `host_native`；显式调用或宿主不可读/能力未知时进入正确赛道。
+- 当前宿主已确认可读时，普通单图或多图理解不因数量而隐式触发本 Skill；若用户显式调用，进入后仍优先走 `host_native`，除非用户指定其他执行路线。
 - 无视觉宿主收到单张图片理解请求且用户未指定其他 provider/禁止外发时，唯一默认 route 为 `minimax-mmx-image`，无需重复询问授权；授权不延伸到其他素材、后续任务或 fallback。
 - `host_native` 与 portable route 分开报告；需要外部或本地执行器的任务选择唯一 route id。
 - 每个外部 route 指向明确执行器和独立凭据槽位，且没有秘密泄露。

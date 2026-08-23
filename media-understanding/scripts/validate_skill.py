@@ -65,27 +65,43 @@ def main() -> None:
             errors.append(f"stale active binding remains: {stale}")
 
     skill_text = (ROOT / "SKILL.md").read_text(encoding="utf-8") if (ROOT / "SKILL.md").is_file() else ""
-    for stale_entry in ("这类请求由 Codex 原生视觉直接完成", "直接用 Codex 原生视觉回答并停止"):
+    for stale_entry in (
+        "这类请求由 Codex 原生视觉直接完成",
+        "直接用 Codex 原生视觉回答并停止",
+        "只有一张普通图片或截图",
+    ):
         if stale_entry in skill_text:
             errors.append(f"host-specific entry rule remains in SKILL.md: {stale_entry}")
     for required_entry in (
         "用户明确点名 `$media-understanding`",
         "不假定宿主是 Codex",
         "不能实际读取本次附件",
+        "不要仅因普通单图或多图",
+        "显式点名只决定进入路由",
+        "仍优先使用 `execution_path=host_native`",
         "用户提供单张图片并要求",
         "当前请求已授权",
     ):
         if required_entry not in skill_text:
             errors.append(f"missing host-neutral entry contract in SKILL.md: {required_entry}")
+    frontmatter = re.match(r"\A---\n(?P<body>.*?)\n---", skill_text, re.DOTALL)
+    description = ""
+    if frontmatter:
+        description_match = re.search(r"^description:\s*(.+)$", frontmatter.group("body"), re.MULTILINE)
+        description = description_match.group(1).strip() if description_match else ""
+    for required_description in ("普通单图或多图", "不要", "host_native", "MiniMax"):
+        if required_description not in description:
+            errors.append(f"frontmatter description misses native-first routing: {required_description}")
     openai_text = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8") if (ROOT / "agents" / "openai.yaml").is_file() else ""
     if "不要调用本 Skill" in openai_text or "Codex 原生视觉" in openai_text:
         errors.append("agents/openai.yaml still exposes a host-specific image-entry rule")
     if (
-        "显式调用必须进入本 Skill" not in openai_text
-        or "当前宿主/模型" not in openai_text
-        or "默认走 MiniMax" not in openai_text
+        "原生可读时走 host_native" not in openai_text
+        or "显式调用也不强制外部服务" not in openai_text
+        or "原生不可读的单图才默认走 MiniMax" not in openai_text
+        or "allow_implicit_invocation: false" in openai_text
     ):
-        errors.append("agents/openai.yaml must expose the host-neutral explicit-invocation contract")
+        errors.append("agents/openai.yaml must preserve native-first routing and non-vision implicit entry")
     for target in re.findall(r"\[[^]]+\]\((references/[^)]+)\)", skill_text):
         if not (ROOT / target).is_file():
             errors.append(f"broken SKILL reference: {target}")
