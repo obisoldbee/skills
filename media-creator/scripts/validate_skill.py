@@ -22,7 +22,9 @@ REQUIRED_FILES = {
     "references/mmx.md",
     "references/routing-policy.md",
     "scripts/check_routes.py",
+    "scripts/validate_browser_envelope.py",
     "scripts/validate_skill.py",
+    "tests/browser-envelope-cases.json",
 }
 TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".sh", ".txt"}
 SECRET_FILE_SUFFIXES = {".env", ".key", ".pem", ".p12", ".pfx"}
@@ -60,6 +62,15 @@ def route_by_id(registry: dict[str, Any], route_id: str) -> dict[str, Any]:
     return next(
         (route for route in routes if isinstance(route, dict) and route.get("id") == route_id),
         {},
+    )
+
+
+def is_exact_string_set(value: Any, expected: set[str]) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) == len(expected)
+        and all(isinstance(item, str) for item in value)
+        and set(value) == expected
     )
 
 
@@ -142,17 +153,76 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         or luna_max.get("thread") != "visible"
         or luna_max.get("surface") != "visible_thread"
         or luna_max.get("orchestrator") != "project-handoff"
+        or luna_max.get("enabled_when")
+        != "visible_task_creation_authority_explicit"
+        or luna_max.get("created_and_validated_by")
+        != "originating_main_task"
     ):
         errors.append("visible browser routes must use the exact visible luna-max thread")
     authorization = execution.get("authorization", {})
+    provider_authority = (
+        authorization.get("provider_execution_authority", {})
+        if isinstance(authorization, dict)
+        else {}
+    )
+    visible_authority = (
+        authorization.get("visible_task_creation_authority", {})
+        if isinstance(authorization, dict)
+        else {}
+    )
+    non_execution = (
+        authorization.get("non_execution_modes", {})
+        if isinstance(authorization, dict)
+        else {}
+    )
+    authority_decision = (
+        authorization.get("decision", {})
+        if isinstance(authorization, dict)
+        else {}
+    )
     if (
-        not isinstance(authorization, dict)
-        or authorization.get("selected_browser_generation_request")
-        != "one_bounded_luna_visible_task"
-        or authorization.get("plan_or_prompt_only_request") != "no_dispatch"
-        or authorization.get("additional_task_or_submission") != "requires_new_authority"
+        provider_authority.get("ordinary_browser_generation_request")
+        != "one_bounded_provider_submission"
+        or provider_authority.get("prompt_planning_preview_dry_run")
+        != "not_granted"
+        or provider_authority.get("does_not_grant")
+        != "visible_task_creation_authority"
     ):
-        errors.append("browser dispatch authority must be bounded to one selected generation task")
+        errors.append("provider execution authority must not imply visible task creation")
+    if (
+        visible_authority.get("ordinary_browser_generation_request") != "not_granted"
+        or not is_exact_string_set(
+            visible_authority.get("granted_only_by_explicit_request"),
+            {"new_task", "new_thread", "handoff", "luna_visible_task"},
+        )
+        or visible_authority.get("create_thread_without_authority") is not False
+    ):
+        errors.append("create_thread must require explicit visible-task creation authority")
+    if (
+        not is_exact_string_set(
+            non_execution.get("modes"),
+            {"prompt", "planning", "preview", "dry_run"},
+        )
+        or non_execution.get("open_browser") is not False
+        or non_execution.get("provider_call") is not False
+        or non_execution.get("create_thread") is not False
+    ):
+        errors.append(
+            "prompt, planning, preview, and dry-run modes must have no execution side effects"
+        )
+    if (
+        authority_decision.get("explicit_visible_task_authority")
+        != "create_one_bounded_luna_visible_task"
+        or authority_decision.get("current_task_browser_available")
+        != "execute_in_current_task"
+        or authority_decision.get(
+            "current_task_browser_unavailable_without_visible_authority"
+        )
+        != "needs_visible_task_authority"
+        or authorization.get("additional_task_or_submission")
+        != "requires_new_authority"
+    ):
+        errors.append("browser authority decision table is incomplete")
     worker = execution.get("worker", {})
     if (
         not isinstance(worker, dict)
@@ -163,15 +233,39 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         or worker.get("action") != "execute_envelope_directly"
     ):
         errors.append("browser worker contract must forbid recursive handoff")
+    current_task_browser = execution.get("current_task_browser", {})
+    if (
+        not isinstance(current_task_browser, dict)
+        or current_task_browser.get("capability")
+        != "runtime_verified_browser_executor"
+        or current_task_browser.get("executor_preference") != "ego-browser"
+        or current_task_browser.get("execution_role") != "browser_executor"
+        or current_task_browser.get("handoff_depth") != 0
+        or current_task_browser.get("recursive_dispatch") is not False
+        or current_task_browser.get("action")
+        != "execute_envelope_in_current_task"
+    ):
+        errors.append("current-task browser execution must be direct and non-recursive")
     cross_harness = execution.get("cross_harness", {})
     if (
         not isinstance(cross_harness, dict)
-        or cross_harness.get("local_execution_requires_all") is not True
+        or not is_exact_string_set(
+            cross_harness.get("current_task_execution_requires"),
+            {"provider_execution_authority", "verified_browser_executor_capability"},
+        )
+        or not is_exact_string_set(
+            cross_harness.get("visible_task_creation_requires"),
+            {
+                "explicit_visible_task_creation_authority",
+                "project_handoff_visible_task_surface",
+            },
+        )
+        or cross_harness.get("requirements_are_conjunctive") is not True
         or cross_harness.get("preferred_local_executor") != "ego-browser"
         or cross_harness.get("is_fallback_after_luna_creation_failure") is not False
         or cross_harness.get("explicit_luna_request_may_downgrade") is not False
     ):
-        errors.append("cross-Harness browser execution must not downgrade a Luna request")
+        errors.append("browser executor selection must preserve split authority and Luna failures")
     submission = execution.get("submission", {})
     if (
         not isinstance(submission, dict)
@@ -179,6 +273,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         or submission.get("nonzero_or_ambiguous_cost") != "pause_before_submission"
         or submission.get("duplicate_submission") is not False
         or submission.get("post_submission_provider_switch") is not False
+        or submission.get("download_retry") != "same_submitted_result_only"
     ):
         errors.append("browser submission contract must pause safely and prevent duplicates/switches")
 
@@ -198,8 +293,12 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         or "visible_task_handoff_failed" not in fallback_exclusions
         or "explicit_luna_request" not in fallback_exclusions
         or "login_or_manual_check_required" not in fallback_exclusions
+        or "browser_route_selected_without_visible_task_authority"
+        not in fallback_exclusions
     ):
-        errors.append("ChatGPT Web fallback must exclude Luna failure and login/manual handoff states")
+        errors.append(
+            "ChatGPT Web fallback must exclude authority, Luna failure, and login/manual states"
+        )
 
     routes = registry.get("routes", [])
     if not isinstance(routes, list):
@@ -216,6 +315,10 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         or chatgpt_preconditions.get("ego_browser") is not True
         or chatgpt_preconditions.get("chatgpt_login") is not True
         or chatgpt_preconditions.get("login_check") != "runtime_only"
+        or chatgpt_preconditions.get("current_task_browser_capability")
+        != "runtime_verified"
+        or chatgpt_preconditions.get("visible_task_dispatch")
+        != "explicit_authority_only"
     ):
         errors.append("ChatGPT Web must require Darwin, ego-browser, and a runtime-confirmed login")
 
@@ -223,23 +326,35 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
     for route_id in browser_route_ids:
         route = route_by_id(registry, route_id)
         executor = route.get("executor", {})
-        worker_executor = executor.get("worker", {})
+        current_executor = executor.get("current_task", {})
+        visible_executor = executor.get("visible_task", {})
+        worker_executor = visible_executor.get("worker", {})
         handoff = route.get("browser_handoff", {})
         payload = route.get("payload", {})
         if (
-            executor.get("kind") != "project_handoff_visible_thread"
-            or executor.get("orchestrator") != "project-handoff"
-            or executor.get("route") != "luna-max"
-            or executor.get("model") != "gpt-5.6-luna"
-            or executor.get("reasoning") != "max"
-            or executor.get("surface") != "visible_thread"
+            executor.get("kind") != "authority_gated_browser_execution"
+            or current_executor.get("kind") != "verified_browser_executor"
+            or current_executor.get("preferred_command") != "ego-browser"
+            or current_executor.get("requires_visible_task_creation_authority")
+            is not False
+            or visible_executor.get("kind") != "project_handoff_visible_thread"
+            or visible_executor.get("orchestrator") != "project-handoff"
+            or visible_executor.get("route") != "luna-max"
+            or visible_executor.get("model") != "gpt-5.6-luna"
+            or visible_executor.get("reasoning") != "max"
+            or visible_executor.get("surface") != "visible_thread"
+            or visible_executor.get("requires_visible_task_creation_authority")
+            is not True
             or worker_executor.get("kind") != "external_browser_cli"
             or worker_executor.get("command") != "ego-browser"
             or worker_executor.get("vendored") is not False
         ):
-            errors.append(f"browser route executor must be project-handoff -> Luna -> ego-browser: {route_id}")
+            errors.append(
+                f"browser route executor must prefer current task and gate Luna creation: {route_id}"
+            )
         if (
-            handoff.get("required_when_visible_task_surface_available") is not True
+            handoff.get("required_when")
+            != "visible_task_creation_authority_explicit"
             or handoff.get("orchestrator") != "project-handoff"
             or handoff.get("luna_route") != "luna-max"
             or handoff.get("model") != "gpt-5.6-luna"
@@ -250,6 +365,8 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
             or handoff.get("execution_role") != "browser_worker"
             or handoff.get("handoff_depth") != 1
             or handoff.get("recursive_dispatch") is not False
+            or handoff.get("ordinary_generation_request_grants_creation")
+            is not False
             or handoff.get("payload_author") != "originating_main_task"
             or handoff.get("worker_creative_rewrite") is not False
         ):
@@ -289,7 +406,10 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         web_preconditions.get("platform") != "Darwin"
         or web_preconditions.get("ego_browser") is not True
         or web_preconditions.get("minimax_web_login") is not True
-        or web_preconditions.get("visible_task_dispatch") != "required_when_available"
+        or web_preconditions.get("current_task_browser_capability")
+        != "runtime_verified"
+        or web_preconditions.get("visible_task_dispatch")
+        != "explicit_authority_only"
     ):
         errors.append("MiniMax Web Music must require eligible macOS/ego-browser runtime conditions")
     web_payload = web_music.get("payload", {})

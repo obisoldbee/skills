@@ -1,6 +1,6 @@
 interface:
   display_name: "Media Creator"
   short_description: "Route media through bounded browser and provider contracts"
-  default_prompt: "Use $media-creator for non-native media. Keep Codex ordinary images native; author the final payload in the main task and use the required browser handoff contract for ChatGPT Web or MiniMax Web Music."
+  default_prompt: "Use $media-creator for non-native media. Keep Codex ordinary images native; separate provider execution from visible-task authority, execute with the current task browser when available, and create a Luna task only on an explicit new-task or handoff request."
 policy:
   allow_implicit_invocation: true

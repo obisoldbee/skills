@@ -1,0 +1,260 @@
+{
+  "bases": {
+    "current-image": {
+      "schema": "media-creator-browser-envelope/v1",
+      "mode": "execute",
+      "request_authority": "ordinary_browser_generation",
+      "execution_role": "browser_executor",
+      "handoff_depth": 0,
+      "project": "current-verified-project",
+      "route": "chatgpt-web-image",
+      "authority": {
+        "provider_execution_authority": true,
+        "visible_task_creation_authority": false
+      },
+      "execution_location": "current_task",
+      "executor": "ego-browser",
+      "payload_author": "originating_main_task",
+      "worker_creative_rewrite": false,
+      "final_provider_payload": {
+        "final_image_prompt": "A precise final image prompt.",
+        "inputs": [],
+        "output_path": "/tmp/media-creator-output.png"
+      },
+      "submission_limit": 1,
+      "provider_switch_after_submission": false,
+      "download_retry": "same_submitted_result_only",
+      "recursive_dispatch": false
+    },
+    "visible-music": {
+      "schema": "media-creator-browser-envelope/v1",
+      "mode": "execute",
+      "request_authority": "explicit_visible_task",
+      "execution_role": "browser_worker",
+      "handoff_depth": 1,
+      "project": "current-verified-project",
+      "route": "minimax-web-music",
+      "authority": {
+        "provider_execution_authority": true,
+        "visible_task_creation_authority": true
+      },
+      "execution_location": "luna_visible_task",
+      "executor": "ego-browser",
+      "payload_author": "originating_main_task",
+      "worker_creative_rewrite": false,
+      "final_provider_payload": {
+        "title": "Night Transit",
+        "mode": "instrumental",
+        "style_prompt": "Warm analog synths and restrained percussion.",
+        "lyrics": "",
+        "count": 1,
+        "output_path": "/tmp/media-creator-output.mp3"
+      },
+      "submission_limit": 1,
+      "provider_switch_after_submission": false,
+      "download_retry": "same_submitted_result_only",
+      "recursive_dispatch": false,
+      "orchestrator": "project-handoff",
+      "created_and_validated_by": "originating_main_task",
+      "luna": {
+        "route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "thread": "visible",
+        "surface": "visible_thread"
+      }
+    },
+    "planning-image": {
+      "schema": "media-creator-browser-envelope/v1",
+      "mode": "planning",
+      "request_authority": "non_execution",
+      "execution_role": "planner",
+      "handoff_depth": 0,
+      "project": "current-verified-project",
+      "route": "chatgpt-web-image",
+      "authority": {
+        "provider_execution_authority": false,
+        "visible_task_creation_authority": false
+      },
+      "execution_location": "none",
+      "executor": null,
+      "payload_author": "originating_main_task",
+      "worker_creative_rewrite": false,
+      "final_provider_payload": {
+        "final_image_prompt": "A precise final image prompt.",
+        "inputs": [],
+        "output_path": "/tmp/media-creator-output.png"
+      },
+      "submission_limit": 0,
+      "provider_switch_after_submission": false,
+      "download_retry": "not_applicable",
+      "recursive_dispatch": false,
+      "side_effects": {
+        "open_browser": false,
+        "provider_call": false,
+        "create_thread": false
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "valid-current-task-depth-zero",
+      "base": "current-image",
+      "expected": {"valid": true}
+    },
+    {
+      "id": "valid-visible-worker-depth-one",
+      "base": "visible-music",
+      "expected": {"valid": true}
+    },
+    {
+      "id": "valid-planning-zero-side-effects",
+      "base": "planning-image",
+      "expected": {"valid": true}
+    },
+    {
+      "id": "valid-prompt-zero-side-effects",
+      "base": "planning-image",
+      "set": {"mode": "prompt"},
+      "expected": {"valid": true}
+    },
+    {
+      "id": "valid-preview-zero-side-effects",
+      "base": "planning-image",
+      "set": {"mode": "preview"},
+      "expected": {"valid": true}
+    },
+    {
+      "id": "valid-dry-run-zero-side-effects",
+      "base": "planning-image",
+      "set": {"mode": "dry_run"},
+      "expected": {"valid": true}
+    },
+    {
+      "id": "reject-ordinary-request-expands-visible-authority",
+      "base": "current-image",
+      "set": {"authority.visible_task_creation_authority": true},
+      "expected": {
+        "valid": false,
+        "error_contains": "authority.visible_task_creation_authority must be false"
+      }
+    },
+    {
+      "id": "reject-current-task-depth-one",
+      "base": "current-image",
+      "set": {"handoff_depth": 1},
+      "expected": {
+        "valid": false,
+        "error_contains": "current-task execution requires handoff_depth=0"
+      }
+    },
+    {
+      "id": "reject-visible-worker-depth-zero",
+      "base": "visible-music",
+      "set": {"handoff_depth": 0},
+      "expected": {
+        "valid": false,
+        "error_contains": "visible execution requires handoff_depth=1"
+      }
+    },
+    {
+      "id": "reject-visible-worker-without-provider-authority",
+      "base": "visible-music",
+      "set": {"authority.provider_execution_authority": false},
+      "expected": {
+        "valid": false,
+        "error_contains": "authority.provider_execution_authority must be true"
+      }
+    },
+    {
+      "id": "reject-worker-created-visible-task",
+      "base": "visible-music",
+      "set": {"created_and_validated_by": "browser_worker"},
+      "expected": {
+        "valid": false,
+        "error_contains": "created_and_validated_by=originating_main_task"
+      }
+    },
+    {
+      "id": "reject-second-submission",
+      "base": "current-image",
+      "set": {"submission_limit": 2},
+      "expected": {
+        "valid": false,
+        "error_contains": "execute mode requires submission_limit=1"
+      }
+    },
+    {
+      "id": "reject-recursive-dispatch",
+      "base": "visible-music",
+      "set": {"recursive_dispatch": true},
+      "expected": {
+        "valid": false,
+        "error_contains": "recursive_dispatch must be false"
+      }
+    },
+    {
+      "id": "reject-provider-switch-after-submission",
+      "base": "current-image",
+      "set": {"provider_switch_after_submission": true},
+      "expected": {
+        "valid": false,
+        "error_contains": "provider_switch_after_submission must be false"
+      }
+    },
+    {
+      "id": "reject-download-retry-resubmission",
+      "base": "visible-music",
+      "set": {"download_retry": "resubmit"},
+      "expected": {
+        "valid": false,
+        "error_contains": "download_retry=same_submitted_result_only"
+      }
+    },
+    {
+      "id": "reject-planning-provider-authority",
+      "base": "planning-image",
+      "set": {"authority.provider_execution_authority": true},
+      "expected": {
+        "valid": false,
+        "error_contains": "authority.provider_execution_authority must be false"
+      }
+    },
+    {
+      "id": "reject-planning-opens-browser",
+      "base": "planning-image",
+      "set": {"side_effects.open_browser": true},
+      "expected": {
+        "valid": false,
+        "error_contains": "side_effects.open_browser must be false"
+      }
+    },
+    {
+      "id": "reject-worker-creative-rewrite",
+      "base": "visible-music",
+      "set": {"worker_creative_rewrite": true},
+      "expected": {
+        "valid": false,
+        "error_contains": "worker_creative_rewrite must be false"
+      }
+    },
+    {
+      "id": "reject-visible-luna-route-drift",
+      "base": "visible-music",
+      "set": {"luna.reasoning": "high"},
+      "expected": {
+        "valid": false,
+        "error_contains": "luna must exactly match the luna-max visible-thread route"
+      }
+    },
+    {
+      "id": "reject-web-music-count-two",
+      "base": "visible-music",
+      "set": {"final_provider_payload.count": 2},
+      "expected": {
+        "valid": false,
+        "error_contains": "final_provider_payload.count must be exactly 1"
+      }
+    }
+  ]
+}

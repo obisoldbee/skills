@@ -21,13 +21,15 @@
 
 ## Planner 与浏览器 worker
 
-发起任务的主任务必须先冻结最终图片 payload：最终 prompt、已确认的输入文件和顺序（没有输入图时为空列表），以及调用方授权的绝对输出路径。本路线的 worker 只把这个 payload 映射到页面、发送一次、等待、下载和验证；不得重写 prompt、补创意或丢弃输入。
+发起任务的主任务必须先冻结最终图片 payload：最终 prompt、已确认的输入文件和顺序（没有输入图时为空列表），以及调用方授权的绝对输出路径。本路线的浏览器执行器只把这个 payload 映射到页面、发送一次、等待、下载和验证；不得重写 prompt、补创意或丢弃输入。
 
-如果 live `project-handoff` visible-task surface 可用，主任务创建并校验精确的 `luna-max` visible thread（`gpt-5.6-luna`、`max`），再把带有 `execution_role=browser_worker`、`handoff_depth=1` 的 envelope 交给 ego-browser worker。worker 直接执行，不得再次 dispatch Luna。若 Harness 确实没有 visible-task dispatch，但自身已验证等价浏览器执行能力，才可在本地执行同一 envelope；ego-browser 仍是首选。这是 capability absence path，不是 Luna 创建失败后的 fallback，显式 Luna 请求不能降级。
+普通生成请求只授予 `provider_execution_authority`，不授予 `visible_task_creation_authority`。用户未明确说“新任务/新线程/交接/Luna 可见任务”时，当前任务有已验证浏览器能力就在当前任务执行；没有则返回 `needs_visible_task_authority`，不创建 thread。只有明确授权新可见任务时，主任务才创建并校验精确的 `luna-max` visible thread（`gpt-5.6-luna`、`max`），再把带有 `execution_role=browser_worker`、`handoff_depth=1`、`created_and_validated_by=originating_main_task` 的 envelope 交给 ego-browser worker。worker 直接执行，不得递归 handoff 或再次 dispatch Luna。显式 Luna 请求创建失败时不能降级。任何浏览器或 task 动作前先运行 `scripts/validate_browser_envelope.py`。
+
+若用户只要求 prompt、规划、预览或 dry-run，只返回 payload：不打开浏览器、不调用 provider、不创建可见任务。
 
 ## Executor 选择
 
-当前首选 executor 是 macOS 上的 ego-browser，因为它提供隔离 task space，并继承用户登录态。若 live visible-task surface 存在，必须使用上述 `luna-max` visible thread；普通隐藏/未校验 thread 不能替代它。
+当前首选 executor 是 macOS 上的 ego-browser，因为它提供隔离 task space，并继承用户登录态。但 executor 存在不等于可创建新任务：当前任务可直接使用已验证的 ego-browser；只有具有显式可见任务授权时才使用上述 `luna-max` visible thread，普通隐藏/未校验 thread 不能替代它。
 
 提交前确认：
 
@@ -51,7 +53,7 @@
 
 严格遵守 ego-browser Skill：浏览器操作使用 heredoc，不先写 `.js` 文件。
 
-1. 主任务先完成 handoff envelope，并校验/创建 visible `luna-max` thread；worker 在该 thread 提供的 task space 中执行。仅在没有 visible-task dispatch 且本地 ego-browser capability 已验证时，才由本地 Harness 使用与用户目标相关的短名称调用 `useOrCreateTaskSpace`；同一目标跨轮次复用返回的数值 ID。
+1. 主任务先完成 envelope 和分轴授权判定。当前任务有已验证 ego-browser 能力且用户未明确要求新可见任务时，使用与用户目标相关的短名称调用 `useOrCreateTaskSpace`；同一目标跨轮次复用返回的数值 ID。只有具有显式 `visible_task_creation_authority` 时才先校验/创建 visible `luna-max` thread，再由 worker 在该 thread 提供的 task space 中执行。
 2. `openOrReuseTab('https://chatgpt.com/', { wait: true })`。
 3. 用 `snapshotText()`、`pageInfo()` 和必要的 `js()` 观察当前界面，不假定按钮文案、模型、质量或 DOM 选择器仍与旧 Skill 相同。
 4. 确认登录。若需要人工登录，调用 `handOffTaskSpace(id)` 并停止；用户明确“继续”后才 `takeOverTaskSpace(id)`。
@@ -93,7 +95,7 @@ await uploadFile('input[type="file"]', '/absolute/path/to/input.png')
 
 ## 失败与清理
 
-- 未登录：通过 ego-browser handoff 给用户正常登录并暂停，不读取凭据或绕过验证；不要把登录 handoff 当作 Luna 创建失败后的 MMX fallback。
+- 未登录：对已有的当前任务 task space 使用 ego-browser 人工接管；若需要新可见任务交接，必须先有用户明确授权。暂停时不读取凭据或绕过验证，也不把登录/创建失败当作 MMX fallback。
 - DOM/按钮未知：保存去敏截图和语义快照，停止并更新合同。
 - 发送状态不明：不得重发；先确认是否出现 assistant turn、停止按钮、任务状态或生成结果。
 - 下载 403：改用浏览器上下文 fetch，不重新生成。

@@ -21,9 +21,11 @@
 
 ## 共享浏览器执行合同
 
-ChatGPT Web 图片和 MiniMax Web Music 先由发起任务的主任务完成创意规划，再交给浏览器执行器。主任务必须在交接前冻结最终 provider payload；ChatGPT Web 的 payload 是最终图片 prompt、输入顺序和调用方授权的输出路径，MiniMax Web Music 的 payload 是标题、纯音乐/人声模式、style prompt、歌词（如有）、数量和调用方授权的输出路径。worker 只做页面映射、一次提交、同一任务等待、下载和文件验证，不重写这些字段。
+ChatGPT Web 图片和 MiniMax Web Music 先由发起任务的主任务完成创意规划，再交给获授权的浏览器执行器。主任务必须在执行前冻结最终 provider payload；ChatGPT Web 的 payload 是最终图片 prompt、输入顺序和调用方授权的输出路径，MiniMax Web Music 的 payload 是标题、纯音乐/人声模式、style prompt、歌词（如有）、数量和调用方授权的输出路径。执行器只做页面映射、一次提交、同一任务等待、下载和文件验证，不重写这些字段。
 
-live `project-handoff` visible-task surface 存在时，两条路线都必须使用精确的 `luna-max` visible thread：`gpt-5.6-luna` + `max` + `visible_thread`。主任务按 `$project-handoff` 创建和校验 thread，worker 使用 `ego-browser`，并接收 `execution_role=browser_worker`、`handoff_depth=1`。worker 直接执行 envelope，禁止递归 dispatch Luna。选定浏览器生成路线授权一个有界可见任务；提示词/规划/预览请求不授权派发。Harness 缺少 visible-task dispatch 时，只有它自身已验证等价浏览器执行能力，才可本地执行同一 envelope；ego-browser 仍是首选。这只表示能力缺失，不能作为 Luna 创建失败后的 fallback，显式 Luna 请求不得降级。详见 [browser-handoff-envelope.md](browser-handoff-envelope.md)。
+`provider_execution_authority` 与 `visible_task_creation_authority` 互不推导。普通浏览器生成请求只授权一次 provider 提交，不授权 `create_thread`。仅当用户明确说“新任务”、“新线程/对话”、“交接”或“Luna 可见任务”时，才有可见任务创建权。只要请求是提示词、规划、预览或 dry-run，就规范化为 `prompt`、`planning`、`preview` 或 `dry_run`，两条 authority 均为 `false`，不打开浏览器、不调用 provider、不创建任务。浏览器路线在任何动作前必须通过 `scripts/validate_browser_envelope.py` 的联合 envelope 校验。
+
+对已授权执行的生成请求：当前任务有已验证浏览器能力且用户未显式要求新可见任务时，在当前任务按同一 envelope 执行，ego-browser 仍是首选；当前任务无浏览器且无可见任务授权时，返回 `needs_visible_task_authority`。只有显式授权时才用 `$project-handoff` 创建并校验精确的 `luna-max` visible thread（`gpt-5.6-luna` + `max` + `visible_thread`）。worker 接收 `execution_role=browser_worker`、`handoff_depth=1` 后直接执行，禁止递归 handoff 或 dispatch Luna。显式 Luna 请求创建失败时不得降级。详见 [browser-handoff-envelope.md](browser-handoff-envelope.md)。
 
 登录、验证码、人工接管、当前非零费用、费用不明确或未获授权的支付均在提交前 handoff 并暂停。提交后不切换 provider、不重复提交；下载失败只能重试同一已提交结果的下载。
 
@@ -64,7 +66,8 @@ Codex + generic image + native imagegen available
 
 non-Codex + text-to-image
   => eligible macOS + ego-browser + inherited ChatGPT login
-       ? main-authored payload -> luna-max visible thread -> ego-browser ChatGPT Web
+       ? main-authored payload -> current-task ego-browser
+         (or explicit visible-task authority -> luna-max thread -> ego-browser)
        : MMX only when the browser capability is absent before handoff
 
 non-Codex + image edit / multi-image
@@ -109,6 +112,7 @@ MiniMax Web Music 使用 <https://www.minimaxi.com/audio/music>，默认数量�
 ## Fallback 边界
 
 - 允许：在选择/交接前确认所需 browser capability 根本不存在时，文生图改走 MMX。
+- 已选定浏览器路线后，当前任务无浏览器且用户未授权新可见任务 => `needs_visible_task_authority`，不自行创建 thread。
 - 登录或人工检查应先按 ego-browser handoff 暂停，不以“未确认登录”自动切换 provider。
 - 不允许：Luna thread 创建失败、visible handoff 失败或显式 Luna 请求时降级到本地 ego-browser、MMX 或其他 provider。
 - 不允许：ChatGPT 已发送提示词或 MMX/Agnes 已返回任务 ID 后自动改投其他供应商。
@@ -132,4 +136,7 @@ MiniMax Web Music 使用 <https://www.minimaxi.com/audio/music>，默认数量�
 11. MiniMax Web Music 页面费用非零/不明确、登录或人工确认未完成 => handoff 并暂停，不提交。
 12. MiniMax Web Music 已提交后等待或下载失败 => 继续同一任务/同一作品，不重复提交、不切 MMX。
 13. MMX music API => 只有显式选择且运行时确认历史付费 API 资格时可用；`mmx --help` 单独不足以证明资格。
-14. ChatGPT Web 或 MiniMax Web Music visible thread => `luna-max` + visible + ego-browser + `execution_role=browser_worker` + `handoff_depth=1`；worker 不得递归 dispatch。
+14. 普通 ChatGPT Web 或 MiniMax Web Music 生成请求 + 当前任务有浏览器 => 当前任务执行一次，不 `create_thread`。
+15. 普通浏览器生成请求 + 当前任务无浏览器 + 无显式新任务授权 => `needs_visible_task_authority`。
+16. 显式要求新任务/线程/交接/Luna 可见任务 => `luna-max` + visible + ego-browser + `execution_role=browser_worker` + `handoff_depth=1`；worker 不得递归 dispatch。
+17. prompt/规划/预览/dry-run => 不打开浏览器、不调用 provider、不创建任务。

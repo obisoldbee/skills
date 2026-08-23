@@ -27,11 +27,36 @@
       "thread": "visible",
       "surface": "visible_thread",
       "orchestrator": "project-handoff",
+      "enabled_when": "visible_task_creation_authority_explicit",
       "created_and_validated_by": "originating_main_task"
     },
     "authorization": {
-      "selected_browser_generation_request": "one_bounded_luna_visible_task",
-      "plan_or_prompt_only_request": "no_dispatch",
+      "provider_execution_authority": {
+        "ordinary_browser_generation_request": "one_bounded_provider_submission",
+        "prompt_planning_preview_dry_run": "not_granted",
+        "does_not_grant": "visible_task_creation_authority"
+      },
+      "visible_task_creation_authority": {
+        "ordinary_browser_generation_request": "not_granted",
+        "granted_only_by_explicit_request": [
+          "new_task",
+          "new_thread",
+          "handoff",
+          "luna_visible_task"
+        ],
+        "create_thread_without_authority": false
+      },
+      "non_execution_modes": {
+        "modes": ["prompt", "planning", "preview", "dry_run"],
+        "open_browser": false,
+        "provider_call": false,
+        "create_thread": false
+      },
+      "decision": {
+        "explicit_visible_task_authority": "create_one_bounded_luna_visible_task",
+        "current_task_browser_available": "execute_in_current_task",
+        "current_task_browser_unavailable_without_visible_authority": "needs_visible_task_authority"
+      },
       "additional_task_or_submission": "requires_new_authority"
     },
     "worker": {
@@ -41,12 +66,24 @@
       "recursive_dispatch": false,
       "action": "execute_envelope_directly"
     },
+    "current_task_browser": {
+      "capability": "runtime_verified_browser_executor",
+      "executor_preference": "ego-browser",
+      "execution_role": "browser_executor",
+      "handoff_depth": 0,
+      "recursive_dispatch": false,
+      "action": "execute_envelope_in_current_task"
+    },
     "cross_harness": {
-      "local_execution_allowed_when": [
-        "visible_task_dispatch_absent",
+      "current_task_execution_requires": [
+        "provider_execution_authority",
         "verified_browser_executor_capability"
       ],
-      "local_execution_requires_all": true,
+      "visible_task_creation_requires": [
+        "explicit_visible_task_creation_authority",
+        "project_handoff_visible_task_surface"
+      ],
+      "requirements_are_conjunctive": true,
       "preferred_local_executor": "ego-browser",
       "is_fallback_after_luna_creation_failure": false,
       "explicit_luna_request_may_downgrade": false
@@ -72,13 +109,14 @@
       "fallback_when": [
         "platform_is_not_Darwin",
         "ego_browser_missing",
-        "visible_task_dispatch_absent_and_verified_local_ego_browser_missing"
+        "browser_capability_absent_before_browser_route_selection"
       ],
       "fallback_exclusions": [
         "login_or_manual_check_required",
         "luna_creation_failed",
         "visible_task_handoff_failed",
         "explicit_luna_request",
+        "browser_route_selected_without_visible_task_authority",
         "prompt_or_task_submitted"
       ],
       "agnes_selection": "explicit_or_user_confirmed",
@@ -131,16 +169,25 @@
       "status": "active_if_available",
       "selection": "non_codex_default_when_preconditions_hold",
       "executor": {
-        "kind": "project_handoff_visible_thread",
-        "orchestrator": "project-handoff",
-        "route": "luna-max",
-        "model": "gpt-5.6-luna",
-        "reasoning": "max",
-        "surface": "visible_thread",
-        "worker": {
-          "kind": "external_browser_cli",
-          "command": "ego-browser",
-          "vendored": false
+        "kind": "authority_gated_browser_execution",
+        "current_task": {
+          "kind": "verified_browser_executor",
+          "preferred_command": "ego-browser",
+          "requires_visible_task_creation_authority": false
+        },
+        "visible_task": {
+          "kind": "project_handoff_visible_thread",
+          "orchestrator": "project-handoff",
+          "route": "luna-max",
+          "model": "gpt-5.6-luna",
+          "reasoning": "max",
+          "surface": "visible_thread",
+          "requires_visible_task_creation_authority": true,
+          "worker": {
+            "kind": "external_browser_cli",
+            "command": "ego-browser",
+            "vendored": false
+          }
         }
       },
       "runtime_preconditions": {
@@ -148,12 +195,13 @@
         "ego_browser": true,
         "chatgpt_login": true,
         "login_check": "runtime_only",
-        "visible_task_dispatch": "required_when_available"
+        "current_task_browser_capability": "runtime_verified",
+        "visible_task_dispatch": "explicit_authority_only"
       },
       "alternative_executor": {
         "kind": "harness_builtin_browser",
         "status": "capability_probe_required",
-        "selection": "only_when_visible_task_dispatch_absent",
+        "selection": "current_task_execution_when_runtime_verified",
         "capability": "verified_equivalent_browser_executor",
         "requirements": [
           "authenticated_ChatGPT_session",
@@ -162,7 +210,7 @@
         ]
       },
       "browser_handoff": {
-        "required_when_visible_task_surface_available": true,
+        "required_when": "visible_task_creation_authority_explicit",
         "orchestrator": "project-handoff",
         "luna_route": "luna-max",
         "model": "gpt-5.6-luna",
@@ -173,6 +221,7 @@
         "execution_role": "browser_worker",
         "handoff_depth": 1,
         "recursive_dispatch": false,
+        "ordinary_generation_request_grants_creation": false,
         "payload_author": "originating_main_task",
         "worker_creative_rewrite": false
       },
@@ -303,22 +352,31 @@
       "selection": "default_for_generic_music",
       "url": "https://www.minimaxi.com/audio/music",
       "executor": {
-        "kind": "project_handoff_visible_thread",
-        "orchestrator": "project-handoff",
-        "route": "luna-max",
-        "model": "gpt-5.6-luna",
-        "reasoning": "max",
-        "surface": "visible_thread",
-        "worker": {
-          "kind": "external_browser_cli",
-          "command": "ego-browser",
-          "vendored": false
+        "kind": "authority_gated_browser_execution",
+        "current_task": {
+          "kind": "verified_browser_executor",
+          "preferred_command": "ego-browser",
+          "requires_visible_task_creation_authority": false
+        },
+        "visible_task": {
+          "kind": "project_handoff_visible_thread",
+          "orchestrator": "project-handoff",
+          "route": "luna-max",
+          "model": "gpt-5.6-luna",
+          "reasoning": "max",
+          "surface": "visible_thread",
+          "requires_visible_task_creation_authority": true,
+          "worker": {
+            "kind": "external_browser_cli",
+            "command": "ego-browser",
+            "vendored": false
+          }
         }
       },
       "alternative_executor": {
         "kind": "harness_builtin_browser",
         "status": "capability_probe_required",
-        "selection": "only_when_visible_task_dispatch_absent",
+        "selection": "current_task_execution_when_runtime_verified",
         "capability": "verified_equivalent_browser_executor",
         "requirements": [
           "authenticated_MiniMax_session",
@@ -332,10 +390,11 @@
         "ego_browser": true,
         "minimax_web_login": true,
         "output_path": "caller_authorized_absolute_path",
-        "visible_task_dispatch": "required_when_available"
+        "current_task_browser_capability": "runtime_verified",
+        "visible_task_dispatch": "explicit_authority_only"
       },
       "browser_handoff": {
-        "required_when_visible_task_surface_available": true,
+        "required_when": "visible_task_creation_authority_explicit",
         "orchestrator": "project-handoff",
         "luna_route": "luna-max",
         "model": "gpt-5.6-luna",
@@ -346,6 +405,7 @@
         "execution_role": "browser_worker",
         "handoff_depth": 1,
         "recursive_dispatch": false,
+        "ordinary_generation_request_grants_creation": false,
         "payload_author": "originating_main_task",
         "worker_creative_rewrite": false
       },

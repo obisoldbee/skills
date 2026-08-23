@@ -4,7 +4,9 @@
 
 通用音乐请求默认走 <https://www.minimaxi.com/audio/music>，只承诺原创歌曲和纯音乐 BGM。它是需要登录态的网页执行路线，不是 MMX API 的包装，也不是 voice cloning、reference-audio editing 或 cover 路线。
 
-主任务先按 [browser-handoff-envelope.md](browser-handoff-envelope.md) 冻结最终 payload；ego-browser worker 只把这些字段映射到页面，不改变创意内容。若 live `project-handoff` visible-task surface 可用，使用 `luna-max` visible thread（`gpt-5.6-luna`、`max`）；没有该 surface 但当前 Harness 已验证等价浏览器执行能力时，才按同一 envelope 本地执行，ego-browser 仍是首选。显式 Luna 请求不能因 thread 创建失败而降级。
+主任务先按 [browser-handoff-envelope.md](browser-handoff-envelope.md) 冻结最终 payload，并在任何浏览器或 task 动作前运行 `scripts/validate_browser_envelope.py`；浏览器执行器只把这些字段映射到页面，不改变创意内容。普通 Web Music 生成请求授予一次 `provider_execution_authority`，但不授予 `visible_task_creation_authority`：当前任务有已验证 ego-browser 能力就在当前任务执行；没有则返回 `needs_visible_task_authority`。只有用户明确要求新任务、新线程/对话、交接或 Luna 可见任务时，才使用 `luna-max` visible thread（`gpt-5.6-luna`、`max`），并记录 `created_and_validated_by=originating_main_task`。显式 Luna 请求不能因 thread 创建失败而降级。
+
+若用户只要 prompt、风格/歌词规划、预览或 dry-run，只返回 payload，不打开网页、不调用 provider、不创建任务。
 
 ## 预检与表单
 

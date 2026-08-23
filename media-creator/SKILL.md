@@ -17,13 +17,15 @@ description: Route non-native media generation for video, speech, music, and pro
 - 请求是视频、语音、音乐或翻唱；
 - 当前宿主明确没有原生图片生成能力。
 
-## 共享执行合同：planner → Luna → ego-browser
+## 共享执行合同：planner → 获授权的浏览器执行器
 
-ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行分开：发起任务的主任务负责理解意图，并在交接前创建完整、最终的 provider payload。ChatGPT Web payload 至少包含最终图片提示词、输入文件及顺序（没有输入图时为空列表）和调用方授权的输出路径；MiniMax Web Music payload 至少包含标题、纯音乐/人声模式、风格提示词、歌词（如有）、数量和调用方授权的输出路径。网页 worker 只能按 payload 填表、提交、等待、下载和验证，不能重新创作、改写或补齐创意字段。
+ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行分开：发起任务的主任务负责理解意图，并在执行前创建完整、最终的 provider payload。ChatGPT Web payload 至少包含最终图片提示词、输入文件及顺序（没有输入图时为空列表）和调用方授权的输出路径；MiniMax Web Music payload 至少包含标题、纯音乐/人声模式、风格提示词、歌词（如有）、数量和调用方授权的输出路径。浏览器执行器只能按 payload 填表、提交、等待、下载和验证，不能重新创作、改写或补齐创意字段。
 
-当 live `project-handoff` visible-task surface 可用时，主任务必须按 `$project-handoff` 创建并校验精确的 `luna-max` visible thread：model=`gpt-5.6-luna`、reasoning=`max`、surface=`visible_thread`。交接 envelope 标记 `execution_role=browser_worker`、`handoff_depth=1`，并指定 `ego-browser`；worker 收到这个 envelope 后直接执行，禁止再次 dispatch Luna。用户请求并选定这条浏览器生成路线时，授权的是一个有界 Luna 可见任务和一次提交；只要用户要求的是规划、提示词或预览，就不得派发。若某个 Harness 确实没有 visible-task dispatch，但自身已验证有等价浏览器执行能力，可以在本地按同一最终 payload 合同执行；ego-browser 仍是首选。这只是能力缺失路径，不是 Luna 创建失败后的 fallback，显式 Luna 请求不得降级。
+必须把 `provider_execution_authority` 与 `visible_task_creation_authority` 分开判定：普通浏览器生成请求可授权一次有界 provider 提交，但不授权 `create_thread`。仅当用户明确要求“新任务”、“新线程/新对话”、“交接”或“Luna 可见任务”时，才具有 `visible_task_creation_authority`。用户只要 prompt/提示词、规划、preview/预览或 dry-run 时，规范化为对应非执行 mode，两种权限都为 `false`：不打开浏览器、不调用 provider、不创建任务。
 
-登录、验证码、人工确认、当前费用非零或费用/授权不明确时，在提交前通过 ego-browser handoff 暂停。一次提交后保留任务状态，不切换 provider、不重复提交；下载失败只处理同一结果。完整字段和停止条件见 [browser-handoff-envelope.md](references/browser-handoff-envelope.md)。
+对已授权的生成请求，先检查当前任务的已验证浏览器能力：有能力且用户未明确要求新可见任务时，在当前任务按同一 envelope 执行，`ego-browser` 仍是首选。当前任务无可用浏览器且缺少可见任务授权时，返回 `needs_visible_task_authority`，不自行扩大请求。只有获得显式可见任务授权后，才按 `$project-handoff` 创建并校验精确的 `luna-max` visible thread：model=`gpt-5.6-luna`、reasoning=`max`、surface=`visible_thread`。交接 envelope 标记 `execution_role=browser_worker`、`handoff_depth=1`，worker 收到后直接执行，禁止递归 handoff 或再次 dispatch Luna。显式 Luna 请求失败时不得降级。
+
+登录、验证码、人工确认、当前费用非零或费用/授权不明确时，在提交前通过 ego-browser handoff 暂停。一次提交后保留任务状态，不切换 provider、不重复提交；下载失败只处理同一结果。任何浏览器操作或可见任务创建前，必须让 `scripts/validate_browser_envelope.py` 接受完整 JSON envelope；完整字段和停止条件见 [browser-handoff-envelope.md](references/browser-handoff-envelope.md)。
 
 ## 选择路线
 
@@ -38,7 +40,7 @@ ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行�
 
 ## 图片
 
-- 非 Codex 文生图：在 eligible macOS、ego-browser 可用且 ChatGPT 登录态可复用时优先 ChatGPT Web，并按上面的 `luna-max`/最终 payload 合同执行；只有在提交前确认所需 browser capability 根本不存在时才可使用 MMX。
+- 非 Codex 文生图：在 eligible macOS、ego-browser 可用且 ChatGPT 登录态可复用时优先 ChatGPT Web，并按上面的分轴授权/最终 payload 合同执行；只有在选定浏览器路线之前就确认所需 browser capability 根本不存在时，才可按未指定 provider 的预提交 fallback 使用 MMX；已选定浏览器路线但缺少可见任务授权时返回 `needs_visible_task_authority`。
 - 非 Codex 通用图生图、编辑或多图合成：ChatGPT Web 当前只观察到可用的多文件上传控件，端到端编辑尚未验证；先做运行时验证。不可用或验证失败时询问是否改用 Agnes。MMX 当前不是通用图生图 fallback。
 - Agnes 图片：仅在用户显式指定，或能力不匹配后用户确认切换时使用。
 - MMX 图片：仅承诺文生图和单主体参考，不承诺 mask、通用编辑或多图合成。
@@ -87,9 +89,10 @@ MMX H3 的参考视频是参考条件生成，不等于确定性的原视频编�
 ```bash
 python3 -B scripts/check_routes.py
 python3 -B scripts/validate_skill.py
+python3 -B scripts/validate_browser_envelope.py <envelope.json>
 ```
 
-这两个命令不得调用供应商或读取密钥值。只有明确执行 Agnes 时才使用：
+这些验证命令不得调用供应商或读取密钥值。只有明确执行 Agnes 时才使用：
 
 ```bash
 python3 -B scripts/agnes_media.py <subcommand> ... --execute
