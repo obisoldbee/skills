@@ -17,6 +17,22 @@ ${HOME}/Documents/Akashic/12-agent-submissions/YYYY/MM/DD/<new-package-id>/
 
 Use an exactly four-digit `YYYY`, exactly two-digit `MM` and `DD`, and a real Gregorian calendar date. Preflight the nonexistent destination with `scripts/validate_research_qa.py destination --package <absolute-package-path>`, then reserve it through the Akashic v2 ordinary-submission workflow. Require `.reservation.json`, `manifest.yaml` with `status: pending`, and `formal_absorption: false`. Never reuse, merge, append to, or overwrite an existing package. Do not escape this hierarchy or write any other Akashic path. A completed QA run remains a candidate submission; it is not formal absorption, Wiki publication, Skill installation, or policy adoption.
 
+## Literal run handoff
+
+Before any write, resolve and record `plugin_root` as the directory containing `plugin.json`, `skill_root` as `<plugin_root>/skills/research-qa-orchestrator`, and `output_package` as one new reserved Akashic package. Treat `<plugin_root>/**`, the live Akashic registry and rule, exact reused Akashic source files, and the registered Paper Downloader Skill as read-only. Write only inside `output_package`; do not modify the plugin, registry, rule, reused sources, executor, or any sibling Akashic path.
+
+Lock the exact research question, exclusions, output language, `runtime.kind`, `source_rights`, medical boundary, and nonexistent destination before reservation. If any value or authority is missing or ambiguous, stop before creating the package and name the missing field.
+
+Enforce this order without skipping a gate:
+
+1. Validate the plugin and bundled manifest, preflight/reserve the destination, and lock the topic.
+2. Complete eight manifest-bound Stage 2 contributions plus the separate integrator receipt before freezing the research brief.
+3. Validate the Paper Downloader source/link/discovery bindings, complete collection and independent material audit, reach at least 30 unique reviewable publications, then freeze the source set.
+4. Deliver that exact frozen set to eight new persona contexts and obtain independent audit passes for all eight before synthesis.
+5. Independently audit synthesis, materialize `submission.md` only from the accepted attempt, then run structural validation.
+
+Do not create a later-stage artifact before the prior event, receipt, hash, and audit gate exists. There is no fallback to fewer experts, a different persona roster, Fuxi, self-audit, a different runtime/provider, or a smaller corpus. Follow the bounded same-runtime audit failure rule in `references/executor-and-audit-contract.md`; otherwise stop and preserve the completed evidence.
+
 Materials:
 
 Before planning or dispatching a real run, read these files completely:

@@ -1,7 +1,7 @@
 # OB Skills Distribution Repository
 
 Background:
-This is the portable Git source for published Skill packages. In the standard local Skills Project Collection, clone this repository exactly once as `<collection>/GitHub`.
+This is the owned portable Git source for public Skill packages. A package present only in an unpushed local commit is not remotely published. In the standard local Skills Project Collection, clone this repository exactly once as `<collection>/GitHub`.
 
 Materials:
 - `<checkout-root>` is the real Git worktree that owns this file. The same bytes may be read through `<collection>/skills/src/AGENTS.md`; that projection path is not a Git root.

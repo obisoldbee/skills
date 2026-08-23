@@ -21,11 +21,19 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 
 显式点名只决定进入路由，不决定执行器，也不强制外部服务。进入后，只要当前宿主已实际读到本次所需的单张或多张附件，仍优先使用 `execution_path=host_native`；用户明确指定 provider/model 时除外。对不能读取本次附件的宿主/模型，用户提供单张图片并要求描述、读图或回答图片问题，即视为当前请求已授权仅将这张图片交给默认 `minimax-mmx-image` 执行；无需再次询问 provider 或普通单次调用成本。用户指定其他 provider/model、禁止外发，或请求批量/其他媒体时，不适用此默认授权。附件出现在界面里、模型名称看似支持视觉或 registry 中存在某项配置，都不等于本次附件已可读。
 
+## 输入、输出与写入边界
+
+选择执行路径前，冻结本次媒体集合及顺序（当前附件、精确本地路径或 URL）、任务类型、外发/成本授权和唯一执行路径。不搜索相邻目录、不从 caller cwd 或历史任务补齐输入。原媒体始终只读。
+
+`host_native` 直接回答的本地输出路径为无；只有用户要求持久化或路线必须生成中间产物时才写文件。此时先冻结一个调用方授权的精确输出目录；凡支持 `--output-dir` 的包内 provider 适配器都必须显式传入该目录，不使用从输入路径派生的默认目录。只在该目录内保存状态、raw、normalized 和人审产物，不覆盖已有证据。
+
+从当前 `SKILL.md` 的真实路径解析 `<skill-root>`，不假定调用方 cwd。缺少执行器、本地依赖、配置或安全的凭据槽位时，在调用前报告对应 readiness 并停止；不安装、重链接、改配置或改凭据。
+
 ## 执行语义
 
 1. 界面显示“已运行技能”或读取 `SKILL.md`，只表示本地加载了路由说明；没有读取图片，也没有调用 provider。
 2. 宿主的 `imageView`、`view_image` 或等价原生附件工具是实际识图，报告为 `execution_path=host_native`；它没有调用 MiniMax 等外部 provider。
-3. `python3 scripts/check_routes.py ...` 只做本地执行器和凭据槽位检查，并明确返回 `provider_calls=false`；它不是识图。
+3. `python3 <skill-root>/scripts/check_routes.py ...` 只做本地执行器和凭据槽位检查，并明确返回 `provider_calls=false`；它不是识图。
 4. `mmx vision describe ...` 才是实际的 MiniMax 外部图片理解调用。报告时不得把 Skill 加载、`host_native` 或 route check 写成外部 provider 尝试、失败或 fallback。
 
 ## 路由顺序
@@ -46,7 +54,7 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 3. 如果使用当前宿主已确认可用的原生媒体能力，记录 `execution_path=host_native`；显式调用本 Skill 也不排除这条执行路径，且可逐张读取多张普通图片。它是会话执行路径，不是 `config/routes.json` 中的 portable route，也不由 route checker 宣称可用。否则，从 `config/routes.json` 选择一个精确 route id。调用外部 provider 前，运行：
 
    ```bash
-   python3 scripts/check_routes.py --route <route-id>
+   python3 <skill-root>/scripts/check_routes.py --route <route-id>
    ```
 
    `configured_not_called` 只证明执行器和凭据槽位存在，不证明远端鉴权、余额、模型接受或本次素材成功。
@@ -54,9 +62,9 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 5. 委派到精确执行器：
    - MiniMax 快速图片：`$mmx-cli`，命令 `mmx vision describe`；CLI 不暴露底层模型，不得写成 `MiniMax-VL-01`；
    - MiniMax-M3 图片：选择 `minimax-m3-image`；默认走官方推荐的 Anthropic-compatible `/anthropic/v1/messages`，在 direct adapter 明确绑定前保持 `needs_explicit_binding`；
-   - MiniMax 课程视频视觉：选择 `minimax-m3-course-video`，运行包内 `python3 scripts/providers/minimax_m3_course_video.py --input <video> [--analyze]`；M3 direct 默认走 Anthropic-compatible Messages；
-   - MiniMax 音频语义默认先做获授权的 ASR，再通过 Anthropic-compatible Messages 把 transcript 交给 `MiniMax-M3`；实验兼容路线 `minimax-m3-course-audio-via-video-experimental` 运行包内 `python3 scripts/providers/minimax_m3_course_audio.py --input <media> [--analyze]`，把音频装入真实低清 MP4，只能显式选择；
-   - Agnes 图片：选择 `agnes-image`，运行包内 `python3 scripts/providers/agnes_vision.py --image-url <url> --prompt <question>`，模型 `agnes-2.5-flash`；
+   - MiniMax 课程视频视觉：选择 `minimax-m3-course-video`，运行包内 `python3 <skill-root>/scripts/providers/minimax_m3_course_video.py --input <video> --output-dir <authorized-output-dir> [--analyze]`；M3 direct 默认走 Anthropic-compatible Messages；
+   - MiniMax 音频语义默认先做获授权的 ASR，再通过 Anthropic-compatible Messages 把 transcript 交给 `MiniMax-M3`；实验兼容路线 `minimax-m3-course-audio-via-video-experimental` 运行包内 `python3 <skill-root>/scripts/providers/minimax_m3_course_audio.py --input <media> --output-dir <authorized-output-dir> [--analyze]`，把音频装入真实低清 MP4，只能显式选择；
+   - Agnes 图片：选择 `agnes-image`，运行包内 `python3 <skill-root>/scripts/providers/agnes_vision.py --image-url <url> --prompt <question>`，模型 `agnes-2.5-flash`；
    - 火山生产主路由：普通 Ark Platform 的 Responses API + Files API；需要先绑定普通 Platform adapter 和非 Plan 的 Base URL/key；
    - 火山交互式配方：`arkcli +understand <recipe>`，使用 Ark CLI 自己的登录/配置，调用前核对 recipe 实际解析模型；
    - 火山 Agent/Coding Plan：只经官方支持的 AI/编程工具；不得把自定义 Python Chat/Responses 请求当作普通 Plan API；

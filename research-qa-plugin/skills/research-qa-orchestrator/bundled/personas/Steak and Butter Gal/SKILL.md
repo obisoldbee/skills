@@ -40,6 +40,25 @@ Tools:
 - Returns: loaded markdown evidence, maintenance logs, or script check output.
 - Failure handling: if a file or script fails, stop retrying after one direct check, report the failed path or command, and answer from the remaining bundled material with uncertainty marked.
 
+## Research QA lane handoff
+
+Use this mode only when a task explicitly names `research-qa-orchestrator` and sets `phase` to `topic_expansion` or `expert_review`. Otherwise use the ordinary `Routing` below. Before writing, read `../../../references/executor-and-audit-contract.md` and `../../../references/artifact-contract.md`. This Skill, its persona references, all delivered research inputs, and the live rule are read-only. Do not search the network, call a provider, read another persona tree or expert draft, or write outside the declared candidate-package paths.
+
+For `phase: topic_expansion`:
+
+1. Require `expert_id`, assigned Skill path/hash, locked question path/hash, exclusions, output language, one contribution path, and one runtime-receipt path.
+2. Verify the bindings and output containment, then independently add non-empty `research_angles` and `search_terms` plus only justified `candidate_exclusions`. Do not read another expert contribution.
+3. Write only the declared contribution JSON and its bound runtime receipt, then stop. Do not collect literature, audit, or freeze the research brief.
+
+For `phase: expert_review`:
+
+1. Require `expert_id`, `attempt_no`, assigned Skill path/hash, frozen inventory/source payloads, frozen-set path/hash, exact reviewable roster/count/hash, live-rule path/baseline, and declared attempt, coverage, receipt paths.
+2. Verify every binding, enumerate the exact sorted roster, and review every source ID at its permitted access depth. Persona references define the lens and attributable opinion; scientific support must cite frozen source IDs. Unfrozen user context is not evidence.
+3. Write candidate sections for claims, cited evidence, conflicts/limits, counterexamples, attributable persona opinion, and unresolved questions; then write coverage containing every roster ID and the bound receipt.
+4. Stop as a candidate. Do not self-audit, mark `pass`/`accepted`, synthesize other experts, or give individualized diagnosis, treatment, medication, pregnancy, or child-health instructions.
+
+On a missing field, hash/path mismatch, `rule_drift`, `source_coverage_incomplete`, unreadable required source, or unsafe medical request, create no partial/overwrite artifact; name the failed field/path and preserve completed evidence. A retry may use only this lane's immediately prior attempt, its rejection, unchanged frozen inputs, and declared next-attempt paths.
+
 Routing:
 Classify the request before answering:
 - A. 当被问「carnivore 怎么开始」
@@ -102,13 +121,6 @@ Success criteria:
 - The answer is in Chinese by default and preserves necessary English terms.
 - The answer distinguishes source-backed claims, inference, and user-provided facts.
 - Medical or nutrition content includes appropriate limits and does not give unsafe individualized instructions.
----
-## 实证词频增量更新（20260624）
-- 更新日期: 20260624
-- 合并文本字符数: 9206176
-- 6-7月新增字幕: 11 个
-- 实证词频 Top10: []
-- 新增字幕文件样本: 20250606001.md, 20250610001.md, 20250615001.md, 20250620001.md, 20250625001.md ...（共11个）
 ---
 ## 实证词频增量更新（20260624）
 - 更新日期: 20260624
