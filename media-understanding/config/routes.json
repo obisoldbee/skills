@@ -5,6 +5,16 @@
     "default_root": "~/.codex/secrets",
     "never_copy_or_print_secrets": true
   },
+  "provider_request_contract": {
+    "schema": "media-understanding/provider-operation/v1",
+    "states": ["not_sent", "rejected", "accepted", "acceptance_unknown", "completed"],
+    "automatic_retry_requires": ["proven_not_sent", "proven_not_accepted"],
+    "acceptance_unknown_no_resubmit": true,
+    "accepted_empty_result_no_resubmit": true,
+    "resume_preserves_no_resubmit": true,
+    "provider_idempotency_key": "not_assumed",
+    "evidence": ["operation_fingerprint", "provider_request_id", "usage", "per_attempt_response", "retry_disposition"]
+  },
   "routes": [
     {
       "id": "minimax-mmx-image",

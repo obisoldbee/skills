@@ -27,5 +27,6 @@ MiniMax-M3 官方合同未记录独立音频输入。默认流程应先通过获
 
 - 长音频按执行器合同切片，字幕与说话人任务保持连续时间轴。
 - 无语音时写 `no_speech`，不生成臆测纪要。
-- 失败段保留索引；只有当前授权允许时才重试或切换 provider。
+- 失败段保留索引，并使用与视频完全相同的请求状态：`not_sent|rejected|accepted|acceptance_unknown|completed`。只有已证明未发送或明确被拒绝的同一操作才可能有限重试；POST 后超时/中断/5xx 是 `acceptance_unknown`，2xx 空结果是 `accepted`，均不得自动重发或在 resume 时再次 POST。
+- 每个 operation 保存 fingerprint、独立 attempt response、provider request id/usage（如有）和 retry disposition；不得覆盖上一尝试，也不得假定幂等键存在。
 - Ark CLI 使用自己的认证状态；不得把火山 Plan env 当作其隐式 key 来源。

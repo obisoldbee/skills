@@ -35,9 +35,9 @@ Use track-specific evidence:
 
 ## Reconnect policy
 
-When authorized, allow at most three reconnect retries after the initial attempt, with 2/5/10-second backoff. Retry transport failures and HTTP 429/502/503/504. Do not retry HTTP 200 empty answers, content/model rejection, invalid successful output, or hallucination.
+When authorized, allow at most three attempts for one operation, with bounded backoff, but retry only after evidence proves the provider did not accept the preceding attempt. The current direct audio/video adapters treat an explicit HTTP 429 rejection as proven not accepted. A local failure before any POST may be proven not sent. POST timeout, connection reset, 5xx, and other ambiguous transport outcomes are `acceptance_unknown`; they are never resent automatically. HTTP 200 empty answers are `accepted` and likewise never resent. Content/model rejection, invalid successful output, and hallucination are terminal.
 
-Preserve each attempt. Report first-attempt success and retry-adjusted success separately.
+Preserve each attempt as an operation-local regular file referenced by relative path and SHA-256. Resume revalidates that file, its request state, status, and operation fingerprint before any safe retry or completed-result reuse. Report first-attempt success and retry-adjusted success separately.
 
 ## Price
 

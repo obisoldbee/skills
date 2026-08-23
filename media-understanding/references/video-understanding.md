@@ -41,3 +41,7 @@
 - 保存 segment manifest 与每段原始响应。
 - 合并时去除重叠重复，保留时间戳与冲突。
 - 某段失败不得伪装为整段已理解。
+
+## 提交与恢复状态
+
+视频 direct adapter 与音频使用同一矩阵：`not_sent|rejected|accepted|acceptance_unknown|completed`。自动重试只接受 `proven_not_sent` 或 `proven_not_accepted` 证据；POST 后超时、连接中断、5xx 和其他不明接收结果进入 `acceptance_unknown`，2xx 空结果进入 `accepted`。这两类状态禁止自动重发，`--resume` 只能读取并报告已有 operation，不能再 POST。每次响应保存到独立 attempt 文件，并记录 operation fingerprint、provider request id/usage（如有）和 retry disposition；不发送未被官方合同证明支持的幂等键。

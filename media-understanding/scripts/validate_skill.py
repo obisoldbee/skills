@@ -22,6 +22,7 @@ REQUIRED = [
     "references/official-sources.md",
     "scripts/check_routes.py",
     "scripts/providers/agnes_vision.py",
+    "scripts/providers/minimax_request_state.py",
     "scripts/providers/minimax_m3_course_audio.py",
     "scripts/providers/minimax_m3_course_video.py",
 ]
@@ -108,9 +109,11 @@ def main() -> None:
 
     routes_path = ROOT / "config" / "routes.json"
     routes: list[dict] = []
+    route_config: dict = {}
     if routes_path.is_file():
         try:
-            routes = json.loads(routes_path.read_text(encoding="utf-8"))["routes"]
+            route_config = json.loads(routes_path.read_text(encoding="utf-8"))
+            routes = route_config["routes"]
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             errors.append(f"invalid route registry: {exc}")
     ids = [route.get("id") for route in routes]
@@ -134,6 +137,36 @@ def main() -> None:
         credentials = route.get("credentials")
         if credentials and not str(credentials.get("file", "")).startswith("~/.codex/secrets/"):
             errors.append(f"nonstandard credential path for {route.get('id')}")
+
+    request_contract = route_config.get("provider_request_contract", {})
+    if (
+        request_contract.get("states")
+        != ["not_sent", "rejected", "accepted", "acceptance_unknown", "completed"]
+        or request_contract.get("automatic_retry_requires")
+        != ["proven_not_sent", "proven_not_accepted"]
+        or request_contract.get("acceptance_unknown_no_resubmit") is not True
+        or request_contract.get("accepted_empty_result_no_resubmit") is not True
+        or request_contract.get("resume_preserves_no_resubmit") is not True
+        or request_contract.get("provider_idempotency_key") != "not_assumed"
+    ):
+        errors.append("provider request contract must preserve the billing-safe shared state matrix")
+
+    provider_sources = [
+        ROOT / "scripts/providers/minimax_m3_course_audio.py",
+        ROOT / "scripts/providers/minimax_m3_course_video.py",
+    ]
+    for source in provider_sources:
+        text = source.read_text(encoding="utf-8") if source.is_file() else ""
+        for required_term in (
+            "operation_fingerprint",
+            "provider_request_id",
+            "retry_disposition",
+            "attempt_{attempt:02d}.json",
+        ):
+            if required_term not in text:
+                errors.append(f"provider executor misses request evidence term {required_term}: {source.name}")
+        if "Idempotency-Key" in text:
+            errors.append(f"provider executor assumes an undocumented idempotency key: {source.name}")
 
     internal_executors = {
         "agnes-image": "scripts/providers/agnes_vision.py",

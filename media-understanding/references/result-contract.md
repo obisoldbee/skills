@@ -6,11 +6,19 @@
 
 ```json
 {
-  "schema": "media-understanding/v1",
+  "schema": "media-understanding/v2",
   "request_id": "...",
   "media_kind": "image|video|audio|document|mixed",
   "task_family": "...",
   "status": "success|failed|not_run",
+  "provider_operation": {
+    "fingerprint": "...",
+    "state": "not_sent|rejected|accepted|acceptance_unknown|completed",
+    "provider_request_id": null,
+    "usage": {},
+    "retry_disposition": "...",
+    "response_evidence": []
+  },
   "route": {
     "adapter": "...",
     "provider": "...",
@@ -28,6 +36,17 @@
   "failure": null
 }
 ```
+
+每次可能发送 POST 前，adapter 必须先原子写入 `acceptance_unknown`
+pre-submit marker。只要该 marker 已落盘而响应证据尚未完成，resume
+就不得再 POST。
+
+媒体源字节必须只读取一次，并由同一份不可变内存字节同时构造 payload
+与 operation fingerprint，避免文件在两次读取间被替换。每个 response
+reference 使用 operation 目录内的相对路径和 SHA-256；completed 复用或
+429 安全重试前必须重读并核对 regular/non-symlink、hash、fingerprint、
+request state 与 HTTP status。外部路径、自报状态或漂移证据一律不得触发
+复用或重发。
 
 不在 envelope 中保存 key、token、cookie、完整 data URL 或隐私调试日志。
 

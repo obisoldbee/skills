@@ -40,7 +40,9 @@ MiniMax-M3 官方支持图像与视频。图片/视频默认通过 Anthropic Mes
 ## 错误处理
 
 - `1026` / `input new_sensitive`：不短切、不循环重试，记录终态。
-- 其他瞬时失败或空响应：按具体执行器规则进行有限尝试。
-- 保存原始响应、媒体段落和实际 model ID。
+- 音频/视频统一使用 `not_sent|rejected|accepted|acceptance_unknown|completed`。只有 provider 明确拒绝且证明未接受（当前自动重试仅限明确 429），或本地证明请求未发送时，才允许同一 operation 的有限重试。
+- POST 后 timeout、连接中断、5xx 或无法证明接收状态的失败为 `acceptance_unknown`；2xx 空结果为 `accepted`。两者都禁止自动重发与 resume 再 POST。
+- 不假设 MiniMax 支持幂等键；不发送未经包内官方合同证明的 idempotency header。
+- 保存 operation fingerprint、每次独立原始响应、媒体段落、实际 model ID、provider request id/usage（如有）和 retry disposition，禁止覆盖旧响应。
 - 未经当前授权，不从 MiniMax 自动切换火山、Agnes、MiMo 或其他 provider。
 - MiMo 当前是 disabled；MiniMax 失败只返回 `provider_fallback_requires_user_opt_in`。

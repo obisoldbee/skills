@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -14,6 +15,22 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+
+PROVIDERS_DIR = Path(__file__).resolve().parent
+if str(PROVIDERS_DIR) not in sys.path:
+    sys.path.insert(0, str(PROVIDERS_DIR))
+
+from minimax_request_state import (  # noqa: E402
+    atomic_write_json,
+    classify_response,
+    last_verified_response,
+    load_operation,
+    operation_fingerprint,
+    provider_request_id,
+    response_reference,
+    resume_disposition,
+)
 
 
 DEFAULT_ENDPOINT = "https://api.minimaxi.com/anthropic/v1/messages"
@@ -249,11 +266,22 @@ def segment_audio_as_video(input_path: Path, output_dir: Path, duration: float, 
     return segments
 
 
-def data_url(path: Path) -> str:
+def read_media_bytes(path: Path) -> bytes:
     encoded_length = 4 * ((path.stat().st_size + 2) // 3)
     if encoded_length > MAX_BASE64_CHARACTERS:
         fail(f"Base64 video payload exceeds {MAX_BASE64_CHARACTERS} characters: {path}")
-    return "data:video/mp4;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+    return path.read_bytes()
+
+
+def data_url(path: Path) -> str:
+    return data_url_bytes(read_media_bytes(path), path)
+
+
+def data_url_bytes(source_bytes: bytes, path: Path) -> str:
+    encoded_length = 4 * ((len(source_bytes) + 2) // 3)
+    if encoded_length > MAX_BASE64_CHARACTERS:
+        fail(f"Base64 video payload exceeds {MAX_BASE64_CHARACTERS} characters: {path}")
+    return "data:video/mp4;base64," + base64.b64encode(source_bytes).decode("ascii")
 
 
 def extract_text(response: dict[str, Any]) -> tuple[str, str]:
@@ -289,8 +317,14 @@ def is_1026_error(message: str | None) -> bool:
     return bool(message and ("1026" in message or "input new_sensitive" in message))
 
 
-def call_m3(api_key: str, endpoint: str, segment_file: Path, prompt: str, args: argparse.Namespace) -> dict[str, Any]:
-    payload = {
+def build_payload(
+    segment_file: Path,
+    prompt: str,
+    args: argparse.Namespace,
+    source_bytes: bytes | None = None,
+) -> dict[str, Any]:
+    media_bytes = read_media_bytes(segment_file) if source_bytes is None else source_bytes
+    return {
         "model": args.model,
         "max_tokens": args.max_tokens,
         "temperature": args.temperature,
@@ -300,11 +334,56 @@ def call_m3(api_key: str, endpoint: str, segment_file: Path, prompt: str, args: 
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "video", "source": {"type": "url", "url": data_url(segment_file)}},
+                    {"type": "video", "source": {"type": "url", "url": data_url_bytes(media_bytes, segment_file)}},
                 ],
             }
         ],
     }
+
+
+def operation_descriptor(
+    segment_file: Path,
+    prompt: str,
+    args: argparse.Namespace,
+    media_bytes: bytes | None = None,
+) -> dict[str, Any]:
+    if media_bytes is not None:
+        source_size = len(media_bytes)
+        source_sha256 = hashlib.sha256(media_bytes).hexdigest()
+    elif segment_file.is_file():
+        observed_bytes = read_media_bytes(segment_file)
+        source_size = len(observed_bytes)
+        source_sha256 = hashlib.sha256(observed_bytes).hexdigest()
+    else:
+        source_size = None
+        source_sha256 = "unavailable"
+    return {
+        "model": args.model,
+        "prompt": prompt,
+        "max_tokens": args.max_tokens,
+        "temperature": args.temperature,
+        "thinking": {"type": "disabled"},
+        "source_file": str(segment_file),
+        "source_bytes": source_size,
+        "source_sha256": source_sha256,
+        "media_type": "video/mp4",
+    }
+
+
+def call_m3(
+    api_key: str,
+    endpoint: str,
+    segment_file: Path,
+    prompt: str,
+    args: argparse.Namespace,
+    media_bytes: bytes | None = None,
+) -> dict[str, Any]:
+    source_bytes = read_media_bytes(segment_file) if media_bytes is None else media_bytes
+    payload = build_payload(segment_file, prompt, args, source_bytes)
+    fingerprint = operation_fingerprint(
+        endpoint,
+        operation_descriptor(segment_file, prompt, args, source_bytes),
+    )
     request = urllib.request.Request(
         endpoint,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -317,16 +396,39 @@ def call_m3(api_key: str, endpoint: str, segment_file: Path, prompt: str, args: 
     )
     try:
         with urllib.request.urlopen(request, timeout=args.timeout) as response:
-            return {"ok": True, "status_code": response.status, "body": json.loads(response.read().decode("utf-8", "replace"))}
+            raw_text = response.read().decode("utf-8", "replace")
+            try:
+                body: Any = json.loads(raw_text) if raw_text.strip() else {}
+            except json.JSONDecodeError:
+                body = {"raw_text": raw_text}
+            return {
+                "ok": True,
+                "status_code": response.status,
+                "body": body,
+                "operation_fingerprint": fingerprint,
+                "provider_request_id": provider_request_id(body, response.headers),
+            }
     except urllib.error.HTTPError as exc:
         text = exc.read().decode("utf-8", "replace")
         try:
             body: Any = json.loads(text)
         except json.JSONDecodeError:
             body = {"raw_text": text}
-        return {"ok": False, "status_code": exc.code, "body": body}
+        return {
+            "ok": False,
+            "status_code": exc.code,
+            "body": body,
+            "operation_fingerprint": fingerprint,
+            "provider_request_id": provider_request_id(body, exc.headers),
+        }
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": repr(exc), "body": {}}
+        return {
+            "ok": False,
+            "error": repr(exc),
+            "body": {},
+            "operation_fingerprint": fingerprint,
+            "provider_request_id": None,
+        }
 
 
 def analyze_segments(segments: list[dict[str, Any]], output_dir: Path, api_key: str, endpoint: str, args: argparse.Namespace) -> None:
@@ -338,6 +440,8 @@ def analyze_segments(segments: list[dict[str, Any]], output_dir: Path, api_key: 
     for segment in segments:
         if terminal_failure:
             segment["status"] = "not_attempted_after_terminal_failure"
+            segment["request_state"] = "not_sent"
+            segment["retry_disposition"] = "not_sent_due_to_prior_terminal_state"
             segment["attempts"] = []
             segment["text_chars"] = 0
             segment["thinking_chars"] = 0
@@ -347,51 +451,182 @@ def analyze_segments(segments: list[dict[str, Any]], output_dir: Path, api_key: 
             )
             continue
         index = segment["index"]
-        response_path = responses_dir / f"segment_{index:03d}.json"
+        operation_dir = responses_dir / f"segment_{index:03d}"
+        operation_path = operation_dir / "operation.json"
         note_text = ""
         thinking_text = ""
-        if args.resume and response_path.exists():
-            saved = json.loads(response_path.read_text(encoding="utf-8"))
-            saved_body = saved.get("body", {})
-            stop_reason = saved_body.get("stop_reason") if isinstance(saved_body, dict) else None
-            if stop_reason != "max_tokens":
-                note_text, thinking_text = extract_text(saved_body)
-                if note_text:
-                    segment["status"] = "cached"
-        attempts: list[dict[str, Any]] = []
-        if not note_text:
-            prompt = render_prompt(prompt_template, segment)
-            for attempt in range(1, args.retries + 1):
-                result = call_m3(api_key, endpoint, Path(segment["file"]), prompt, args)
+        prompt = render_prompt(prompt_template, segment)
+        segment_path = Path(segment["file"])
+        media_bytes = read_media_bytes(segment_path) if segment_path.is_file() else None
+        fingerprint = operation_fingerprint(
+            endpoint,
+            operation_descriptor(segment_path, prompt, args, media_bytes),
+        )
+        saved_operation = load_operation(operation_path)
+        if saved_operation and saved_operation.get("operation_fingerprint") != fingerprint:
+            segment["status"] = "operation_fingerprint_mismatch_no_resubmit"
+            segment["operation_fingerprint"] = fingerprint
+            segment["saved_operation_fingerprint"] = saved_operation.get("operation_fingerprint")
+            segment["attempts"] = list(saved_operation.get("attempts") or [])
+            segment["request_state"] = "not_sent"
+            segment["retry_disposition"] = "operation_fingerprint_mismatch_no_resubmit"
+            segment["text_chars"] = 0
+            segment["thinking_chars"] = 0
+            notes.append(
+                f"## {segment['start_time']} - {segment['end_time']}\n\n"
+                "[OPERATION FINGERPRINT MISMATCH; NOT RESUBMITTED]\n"
+            )
+            terminal_failure = True
+            continue
+        if saved_operation and not args.resume:
+            segment["status"] = "existing_operation_requires_resume_no_resubmit"
+            segment["operation_fingerprint"] = fingerprint
+            segment["attempts"] = list(saved_operation.get("attempts") or [])
+            segment["request_state"] = saved_operation["state"]
+            segment["retry_disposition"] = "existing_operation_requires_explicit_resume"
+            segment["text_chars"] = 0
+            segment["thinking_chars"] = 0
+            notes.append(
+                f"## {segment['start_time']} - {segment['end_time']}\n\n"
+                "[EXISTING OPERATION; USE --resume; NOT RESUBMITTED]\n"
+            )
+            terminal_failure = True
+            continue
+
+        disposition = resume_disposition(saved_operation, operation_dir) if args.resume else "new_operation"
+        attempts: list[dict[str, Any]] = list(saved_operation.get("attempts") or []) if saved_operation else []
+        if saved_operation and disposition == "reuse_completed":
+            try:
+                saved = last_verified_response(saved_operation, operation_dir, "completed")
+                note_text, thinking_text = extract_text(saved.get("body", {}))
+            except (OSError, ValueError):
+                note_text = ""
+            if note_text:
+                segment["status"] = "cached_completed"
+            else:
+                segment["status"] = "completed_evidence_missing_no_resubmit"
+                terminal_failure = True
+        elif saved_operation and disposition in {"resume_without_resubmit", "resume_terminal_without_resubmit"}:
+            segment["status"] = (
+                "completed_evidence_missing_no_resubmit"
+                if saved_operation["state"] == "completed"
+                else f"resume_{saved_operation['state']}_no_resubmit"
+            )
+            terminal_failure = saved_operation["state"] in {"accepted", "acceptance_unknown", "completed"} or any(
+                is_1026_error(attempt.get("error")) for attempt in attempts
+            )
+
+        if not note_text and disposition != "reuse_completed":
+            for attempt in range(len(attempts) + 1, args.retries + 1):
+                if saved_operation and disposition in {"resume_without_resubmit", "resume_terminal_without_resubmit"}:
+                    break
+                response_path = operation_dir / f"attempt_{attempt:02d}.json"
+                if response_path.exists() or response_path.is_symlink():
+                    raise RuntimeError(
+                        f"response evidence already exists; refusing to overwrite: {response_path}"
+                    )
+                # Persist the conservative state before POST. If the process is
+                # interrupted anywhere after this write, resume must not infer
+                # that the provider never accepted the request.
+                atomic_write_json(
+                    operation_path,
+                    {
+                        "schema": "media-understanding/provider-operation/v1",
+                        "operation_fingerprint": fingerprint,
+                        "state": "acceptance_unknown",
+                        "retry_disposition": "submission_started_acceptance_unknown_no_resubmit",
+                        "provider_request_id": None,
+                        "usage": {},
+                        "submission_attempt": attempt,
+                        "attempts": attempts,
+                        "response_evidence": [item["response_evidence"] for item in attempts],
+                    },
+                )
+                result = call_m3(api_key, endpoint, segment_path, prompt, args, media_bytes)
                 body = result.get("body", {})
                 text, thinking = extract_text(body if isinstance(body, dict) else {})
-                attempts.append(
-                    {
-                        "attempt": attempt,
-                        "status_code": result.get("status_code"),
-                        "ok": result.get("ok", False),
-                        "error": error_message(result),
-                        "stop_reason": body.get("stop_reason") if isinstance(body, dict) else None,
-                        "usage": body.get("usage", {}) if isinstance(body, dict) else {},
-                        "text_chars": len(text),
-                        "thinking_chars": len(thinking),
-                    }
-                )
-                response_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-                if result.get("ok") and text:
+                state, retry_disposition = classify_response(result, text)
+                observed_fingerprint = result.get("operation_fingerprint")
+                if observed_fingerprint is not None and observed_fingerprint != fingerprint:
+                    state = "acceptance_unknown"
+                    retry_disposition = "operation_fingerprint_changed_after_submit_no_resubmit"
+                    result["expected_operation_fingerprint"] = fingerprint
+                else:
+                    result["operation_fingerprint"] = fingerprint
+                result["request_state"] = state
+                result["retry_disposition"] = retry_disposition
+                atomic_write_json(response_path, result)
+                evidence_reference = response_reference(response_path, operation_dir)
+                attempt_receipt = {
+                    "attempt": attempt,
+                    "state": state,
+                    "status_code": result.get("status_code"),
+                    "ok": result.get("ok", False),
+                    "error": error_message(result),
+                    "stop_reason": body.get("stop_reason") if isinstance(body, dict) else None,
+                    "provider_request_id": result.get("provider_request_id"),
+                    "expected_operation_fingerprint": fingerprint,
+                    "observed_operation_fingerprint": observed_fingerprint,
+                    "usage": body.get("usage", {}) if isinstance(body, dict) else {},
+                    "text_chars": len(text),
+                    "thinking_chars": len(thinking),
+                    "retry_disposition": retry_disposition,
+                    "response_evidence": evidence_reference,
+                }
+                attempts.append(attempt_receipt)
+                operation = {
+                    "schema": "media-understanding/provider-operation/v1",
+                    "operation_fingerprint": fingerprint,
+                    "observed_operation_fingerprint": observed_fingerprint,
+                    "state": state,
+                    "retry_disposition": retry_disposition,
+                    "provider_request_id": result.get("provider_request_id"),
+                    "usage": attempt_receipt["usage"],
+                    "attempts": attempts,
+                    "response_evidence": [item["response_evidence"] for item in attempts],
+                }
+                atomic_write_json(operation_path, operation)
+                if state == "completed":
                     note_text, thinking_text = text, thinking
                     segment["status"] = "success"
                     break
-                if is_1026_error(attempts[-1].get("error")):
+                if is_1026_error(attempt_receipt.get("error")):
                     segment["status"] = "m3_blocked_1026_provider_fallback_requires_user_opt_in"
                     terminal_failure = True
                     break
-                time.sleep(args.retry_sleep)
+                if retry_disposition == "retry_allowed_proven_not_accepted" and attempt < args.retries:
+                    time.sleep(args.retry_sleep)
+                    continue
+                if state == "accepted":
+                    segment["status"] = "m3_accepted_empty_result_no_resubmit"
+                elif state == "acceptance_unknown":
+                    segment["status"] = "m3_acceptance_unknown_no_resubmit"
+                elif state == "rejected":
+                    segment["status"] = f"m3_rejected_{result.get('status_code', 'request')}"
+                else:
+                    segment["status"] = "m3_not_sent"
+                terminal_failure = state in {"accepted", "acceptance_unknown"}
+                break
         if not note_text:
             segment["status"] = segment.get("status") or "failed_or_empty"
             note_text = "[EMPTY_OR_FAILED]"
-        segment["response_file"] = str(response_path)
+        segment["operation_file"] = str(operation_path)
+        segment["operation_fingerprint"] = fingerprint
+        segment["request_state"] = (
+            load_operation(operation_path).get("state") if operation_path.is_file() else "not_sent"
+        )
+        segment["retry_disposition"] = (
+            load_operation(operation_path).get("retry_disposition")
+            if operation_path.is_file()
+            else "retry_allowed_proven_not_sent"
+        )
         segment["attempts"] = attempts or segment.get("attempts", [])
+        segment["response_files"] = [
+            str(operation_dir / reference["path"])
+            for item in segment["attempts"]
+            if isinstance((reference := item.get("response_evidence")), dict)
+            and isinstance(reference.get("path"), str)
+        ]
         segment["text_chars"] = len(note_text)
         segment["thinking_chars"] = len(thinking_text)
         notes.append(f"## {segment['start_time']} - {segment['end_time']}\n\n{note_text}\n")
@@ -460,7 +695,7 @@ def main() -> None:
         if not api_key:
             fail("MINIMAX_API_KEY is required for --analyze")
         analyze_segments(segments, output_dir, api_key, manifest["endpoint"], args)
-        analysis_failed = any(segment.get("status") not in {"success", "cached"} for segment in segments)
+        analysis_failed = any(segment.get("status") not in {"success", "cached_completed"} for segment in segments)
     (output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     print(output_dir)
     if analysis_failed:

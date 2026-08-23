@@ -80,6 +80,9 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 ## 证据和结果
 
 - 原媒体与原始 provider 响应保持只读；派生结果标明 route id 或 `host_native` execution path、provider/model、实际执行器、时间范围和不确定项。
+- 音频与视频 direct adapter 共用一个计费安全状态机：`not_sent`、`rejected`、`accepted`、`acceptance_unknown`、`completed`。只有证据能证明请求未发送或 provider 明确拒绝、未接受时才允许自动重试；POST 后超时、连接中断、5xx、不完整响应进入 `acceptance_unknown`，2xx 空结果进入 `accepted`，两者都禁止自动重发，`--resume` 也不得再次 POST。
+- 每次可能发送 POST 前先原子持久化 `acceptance_unknown` pre-submit marker；进程若在发送期间中断，resume 必须保留该状态并禁止重发，不得因响应证据尚未落盘就假定请求未发送。
+- 不假设 provider 支持幂等键。每个逻辑操作记录稳定 `operation_fingerprint`；每次响应写入独立、不可覆盖的 attempt evidence，并保留 provider request id、usage 与 `retry_disposition`（如 provider 返回）。
 - OCR 正文、bbox/layout、视觉摘要、ASR、音频语义和视频视觉是不同证据层，不能互相冒充。
 - 未实跑的 `media×model` 标为 `not_run/unverified_capability`。
 - 能由当前宿主实际读取的单媒体日常任务直接回答；批量、长媒体或正式交付才生成 manifest、raw、normalized 和人审产物。
@@ -89,6 +92,7 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 - 除上述 MiniMax 单图默认外，输入、外发授权、provider、route id 或成本边界不清楚：停在调用前。
 - route check 为 `missing_credentials`、`missing_executor`、`unsafe_credential_permissions`、`needs_explicit_binding` 或 `disabled`：报告该状态并停止。
 - 默认或指定 provider 失败：保存/报告失败；没有用户对另一个 provider 的当前授权，不跨 provider fallback。
+- `accepted` 或 `acceptance_unknown`：报告同一 operation 的证据并停在人工核对；不得靠重试、恢复或换 provider 掩盖可能已经产生的调用。
 - MiMo route check 的 `readiness` 始终为 `disabled`，同时保留 `runtime_state=not_run/unverified_capability` 和以 `local_route_not_ready:` 开头的 `stop_reason`，直到对应媒体 route 的全部 re-enable gate 有当前证据；不要推断为服务宕机、无余额或 key 无效。
 - 完成当前任务即停止；不自行安装、发布、定时运行、改账单或写 Akashic 正式层。
 
