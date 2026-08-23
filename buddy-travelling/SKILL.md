@@ -1,6 +1,6 @@
 ---
 name: buddy-travelling
-description: "Use ego-browser to run one WorkBuddy Buddy daily travel check: claim a returned gift, close the gift modal, send Buddy when today's trip is available, or recognize that today's one-trip limit is already used and stop until tomorrow. Use for scheduled daily Buddy check-ins or an explicit travel-status check."
+description: "Use ego-browser to run one receipted WorkBuddy Buddy daily travel check: claim a returned gift, close the gift modal, dispatch one uniquely verified destination, or conservatively stop on daily-limit, unknown, or prior same-day state. Use for scheduled daily Buddy check-ins or an explicit travel-status check."
 metadata:
   short-description: "每日领取 Buddy 礼物并处理一次旅行"
 ---
@@ -14,7 +14,24 @@ Materials:
 - User intent: the default is the full daily cycle; an optional destination may be named. Only an explicit status-only request disables mutations.
 - Runtime read boundary: only the target page in the selected browser task space. Local input path: none.
 - Runtime mutation boundary: only the named Buddy gift and travel controls. Local output path: none; the filesystem is read-only for this workflow.
+- Optional continuity input: one caller-supplied previous receipt object. This package never creates a scheduler, ledger, account record, or persistence path; cross-process persistence belongs to the caller.
 - Live UI evidence from 2026-08-20 established the sequence below. Treat labels as observed states, not a permanent API contract; re-read the page on every run.
+
+## Runtime Boundary
+
+Source classification and execution eligibility are separate:
+
+| Field | Value |
+|---|---|
+| Source class | `personal-open` |
+| Availability | `portable` |
+| Allowed devices | `any` |
+| Required network | `any` |
+| External dependencies | An available `ego-browser`, ordinary reachability to `workbuddy.cn`, and an existing authenticated growth-center page |
+| Verification | Read-only: open the growth center and read back the current Buddy state; this verifies reachability/state only, not dispatch success |
+| Stop rule | If browser availability, site reachability, or login state is unknown or mismatched, stop. Do not install, log in, reconfigure the environment, or collect credentials. |
+
+`personal-open` is the public source category; `portable` means no named device or network profile is required. Ordinary internet reachability is an external dependency, not a named network profile.
 
 Background:
 
@@ -28,12 +45,14 @@ Constraints:
 - Limit actions to the Buddy card, its returned-gift modal, and its travel-destination modal. Every other page control is outside this Skill.
 - A normal or scheduled invocation authorizes only the clicks required for one daily check. A status-only request is read-only.
 - Observe with `snapshotText()` before every state-changing click and again after it. Do not infer success from a click returning without error.
+- Before browser mutation, require a caller-supplied `service_day` (`YYYY-MM-DD`) and consume any optional previous receipt. A same-day receipt with `dispatch_attempted: true`, `terminal_for_day: true`, or `retry_allowed: false` blocks automated dispatch.
 - `领取礼物` on the Buddy card is the returned-trip gift action. Classify it from that exact button's accessible name and enabled state. Never assign text from a sibling control or a shared ancestor to this button.
 - Gift claiming, closing the claimed-gift modal, and checking travel availability are separate, ordered operations. Never inspect or click the travel control while the gift modal is still open.
 - After the reward reads `已领取`, close the modal through its close control. Do not use `去使用` as a substitute for closing and re-reading the Buddy card.
-- If the user names a destination, select that exact visible option. If the user only says to send Buddy, keep the modal's currently selected default instead of inventing a preference.
+- If the user names a destination, continue only when exactly one exact visible option exists and is enabled. Missing, disabled, or duplicate exact options yield `destination_unavailable`; do not click `确定派出`.
+- If the user does not name a destination, keep exactly one observed enabled selected default and read its label back. Do not invent a preference or continue when the selected default is missing or ambiguous.
 - Start at most one new trip per invocation. If a live countdown already exists, report it and stop without clicking.
-- Never click a disabled `派猫猫旅行` button. Disabled plus `累啦，明天再来吧` is the expected `daily_limit_reached` state, not a blocker and not a reason to retry.
+- Never click a disabled `派猫猫旅行` button. `daily_limit_reached` requires both one exact disabled travel button and one exact visible text element equal to `累啦，明天再来吧`. A missing control, another disabled reason, similar text, ambiguity, or unknown enabled state is `blocked`/`unknown`, never a daily-limit claim.
 - Never expose, request, or store cookies, tokens, or passwords. Login or captcha work is a browser handoff, not a credential-collection step.
 - Do not read or write local files as part of the runtime workflow.
 - Reply in concise Simplified Chinese. Report only values observed in the current run; mark unavailable values as unknown instead of inventing them.
@@ -66,6 +85,7 @@ State routing examples:
 | Example 3 — Card shows enabled `派猫猫旅行` | `ready_to_travel` | Open the destination modal and dispatch |
 | Example 4 — Card shows disabled `派猫猫旅行` with `累啦，明天再来吧` | `daily_limit_reached` | Do not click; report that today's trip is already used and wait until tomorrow |
 | Example 5 — Card shows `旅行倒计时 HH:MM:SS` | `travelling` | Report `already_travelling`; do not start another trip |
+| Example 6 — Named destination is missing, disabled, or appears more than once | `destination_unavailable` | Do not confirm dispatch; report the destination blocker |
 
 Task:
 
@@ -75,36 +95,46 @@ Task:
 
 Handle the observed current state in this exact order:
 
-1. Create or reuse one task space for this user goal and open the target page with load waiting enabled.
-2. Wait through a visible `加载中...` state, then inspect `pageInfo()` and a full-page `snapshotText()`.
-3. If authentication is required, hand off the task space. Do not seize it back without explicit confirmation.
-4. If the request is explicitly status-only, report the Buddy name, current state, destination when visible, and countdown when visible; make no clicks and stop.
-5. If the card already shows `旅行倒计时 HH:MM:SS`, report `already_travelling`; make no clicks and stop.
-6. If the returned-gift modal is not already open and the card shows one enabled exact button named `领取礼物`, click that exact button once. Do not inspect a shared ancestor to decide what the button means.
-7. If the returned-gift modal shows `领取 N 积分`, extract `N`, click that reward button once, and verify it changes to `已领取`.
-8. Whenever the returned-gift modal shows `已领取`, close it once using the fresh semantic close control or, if unlabeled, the unique visible `×` immediately below the modal. Do not click `去使用`. Verify `Buddy 满载而归啦～` is no longer present. If the modal remains open, report `blocked` and do not interact with the covered card.
-9. Take one fresh snapshot of the unobstructed Buddy card and classify the exact travel control:
-   - enabled `派猫猫旅行` → continue to step 10;
+1. Validate the caller-supplied `service_day` and optional previous receipt using the [offline contract helper](scripts/buddy_contract.py). If the same-day receipt blocks dispatch, emit `already_handled_for_service_day` without opening or mutating the page.
+2. Create or reuse one task space for this user goal and open the target page with load waiting enabled.
+3. Wait through a visible `加载中...` state, then inspect `pageInfo()` and a full-page `snapshotText()`.
+4. If authentication is required, hand off the task space. Do not seize it back without explicit confirmation.
+5. If the request is explicitly status-only, report the Buddy name, current state, destination when visible, and countdown when visible; make no clicks and stop.
+6. If the card already shows `旅行倒计时 HH:MM:SS`, report `already_travelling`; make no clicks and stop.
+7. If the returned-gift modal is not already open and the card shows one enabled exact button named `领取礼物`, click that exact button once. Do not inspect a shared ancestor to decide what the button means.
+8. If the returned-gift modal shows `领取 N 积分`, extract `N`, click that reward button once, and verify it changes to `已领取`.
+9. Whenever the returned-gift modal shows `已领取`, close it once using the fresh semantic close control or, if unlabeled, the unique visible `×` immediately below the modal. Do not click `去使用`. Verify `Buddy 满载而归啦～` is no longer present. If the modal remains open, report `blocked` and do not interact with the covered card.
+10. Take one fresh snapshot of the unobstructed Buddy card and classify the exact travel control:
+   - enabled `派猫猫旅行` → continue to step 11;
    - disabled `派猫猫旅行` plus `累啦，明天再来吧` → report `daily_limit_reached`, set next action to `wait_until_next_day`, and stop without clicking;
    - disabled for any other observed reason → report `blocked` with that reason and stop without clicking;
-   - no recognized travel state → report `blocked` and stop.
-10. Click the enabled `派猫猫旅行` once. Verify the modal shows `想让 Buddy 今天去哪里逛逛？` and `确定派出`. If the user named a visible destination, select its `aria-label="切换到 <地点>"`; otherwise keep the current default.
-11. Click `确定派出` once. Verify both `Buddy 正在 <地点> 采风中...` and `旅行倒计时 HH:MM:SS`. These readbacks, not the click itself, prove `completed_cycle`.
-12. Run `completeTaskSpace(..., {keep: false})` in its own final heredoc after the result is confirmed, unless the user explicitly asked to keep the live page open.
+   - no recognized travel state → report `blocked`/`unknown` and stop.
+11. Click the enabled `派猫猫旅行` once. Verify the modal shows `想让 Buddy 今天去哪里逛逛？` and `确定派出`. For a named destination, enumerate exact option labels and select only one unique enabled match, then take a fresh readback proving that exact option is selected before confirmation; otherwise identify and read back one enabled selected default. On missing, disabled, duplicate, unselected, or ambiguous evidence, emit `destination_unavailable`/`blocked` and do not confirm.
+12. Click `确定派出` once and immediately set `dispatch_attempted: true`. Verify both exact `Buddy 正在 <地点> 采风中...` and `旅行倒计时 HH:MM:SS`. Both readbacks prove `completed_cycle`; if either readback is absent or ambiguous, emit `dispatch_outcome_unknown`, set `terminal_for_day: true`, and prohibit same-day automatic retry.
+13. Run `completeTaskSpace(..., {keep: false})` in its own final heredoc after the result is classified, unless the user explicitly asked to keep the live page open.
 
 Stop rules:
 
 - After a click, wait 2–4 seconds and take one fresh snapshot for classification.
 - Do not retry any click. Never repeat `领取礼物`, `领取 N 积分`, modal close, `派猫猫旅行`, destination selection, or `确定派出` in the same run.
+- Once `确定派出` was clicked, any failed or ambiguous readback is `dispatch_outcome_unknown`; never reopen the modal or dispatch again that service day.
 - Never test a disabled button by clicking it.
 - Stop on an unchanged or unknown state, an unknown modal, or more than one matching actionable button.
 - Never begin a second gift-and-dispatch cycle after a countdown appears, even if another matching label is present elsewhere on the page.
 
 Output format:
 
-Return a concise Chinese result containing:
+Return a concise Chinese result plus one receipt containing all of these required fields:
 
-- run result: `completed_cycle`, `daily_limit_reached`, `already_travelling`, `status_only`, `auth_required`, or `blocked`;
+- `service_day`, `outcome`, `dispatch_attempted`, `dispatch_confirmed`, `terminal_for_day`, `retry_allowed`, and `next_action`;
+- `dispatch_confirmed` may be true only when `dispatch_attempted` is true and both post-confirm readbacks exist;
+- an attempted but unconfirmed dispatch must be `dispatch_outcome_unknown`, `terminal_for_day: true`, `retry_allowed: false`, `next_action: manual_status_check_only`;
+- a read-only `status_only` receipt is non-terminal with `retry_allowed: true`; it does not consume the daily dispatch opportunity;
+- caller/scheduler persistence is outside this package. This package only validates and consumes an optional previous receipt object.
+
+The human-readable result contains:
+
+- run result: `completed_cycle`, `daily_limit_reached`, `already_travelling`, `status_only`, `destination_unavailable`, `dispatch_outcome_unknown`, `already_handled_for_service_day`, `auth_required`, or `blocked`;
 - observed start state;
 - actions actually completed;
 - claimed points only when the modal exposed the number;
@@ -119,5 +149,8 @@ Success criteria:
 - A claimed-gift modal is always closed and verified absent before the card is classified.
 - `completed_cycle` requires a newly verified `旅行倒计时 HH:MM:SS` and the active destination after `确定派出`.
 - `daily_limit_reached` requires an observed disabled `派猫猫旅行` plus `累啦，明天再来吧`; it is an expected daily terminal state, performs no dispatch click, and reports `wait_until_next_day`.
+- A named destination is confirmed only after one unique enabled exact option is selected and read back; missing, disabled, or duplicate matches never reach `确定派出`.
+- A confirm click without both success readbacks is receipted as `dispatch_outcome_unknown` and blocks same-day automatic dispatch.
+- Cross-process idempotency is enforceable only when the caller persists the receipt and supplies it to the next invocation; package text alone is not persistence proof.
 - `already_travelling` requires an existing live countdown and performs no mutation.
 - No non-travel page control is triggered, and every reported value comes from the current browser readback.
