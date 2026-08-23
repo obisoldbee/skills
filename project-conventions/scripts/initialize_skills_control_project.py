@@ -687,18 +687,91 @@ def write_text(path: Path, content: str) -> None:
         handle.write(content)
 
 
-def write_atomic(path: Path, content: str) -> None:
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temporary = Path(temporary_name)
+def directory_receipt(path: Path) -> tuple[int, int]:
+    if is_link_or_junction(path) or not path.is_dir():
+        raise ControlInitializationError(f"created directory is no longer real: {path}")
+    observed = path.stat(follow_symlinks=False)
+    return observed.st_dev, observed.st_ino
+
+
+def same_directory(path: Path, receipt: tuple[int, int]) -> bool:
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
+        return directory_receipt(path) == receipt
+    except (OSError, ControlInitializationError):
+        return False
+
+
+def create_directory_exclusive(path: Path) -> tuple[int, int]:
+    path.mkdir()
+    try:
+        return directory_receipt(path)
+    except Exception:
+        try:
+            if not is_link_or_junction(path) and path.is_dir():
+                path.rmdir()
+        except OSError:
+            pass
+        raise
+
+
+def file_receipt(path: Path, content: bytes | None = None) -> tuple[int, int, int, bytes]:
+    if is_link_or_junction(path) or not path.is_file():
+        raise ControlInitializationError(f"created file is no longer real: {path}")
+    observed = path.stat(follow_symlinks=False)
+    return (
+        observed.st_dev,
+        observed.st_ino,
+        stat.S_IMODE(observed.st_mode),
+        path.read_bytes() if content is None else content,
+    )
+
+
+def same_file(path: Path, receipt: tuple[int, int, int, bytes]) -> bool:
+    try:
+        return file_receipt(path) == receipt
+    except (OSError, ControlInitializationError):
+        return False
+
+
+def write_exclusive(path: Path, content: str) -> tuple[int, int, int, bytes]:
+    encoded = content.encode("utf-8")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    created = os.fstat(descriptor)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o644)
+            handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
+            final = os.fstat(handle.fileno())
+        if not hasattr(os, "fchmod"):
+            os.chmod(path, 0o644)
+            final = path.stat(follow_symlinks=False)
+        return final.st_dev, final.st_ino, stat.S_IMODE(final.st_mode), encoded
+    except Exception:
+        try:
+            observed = path.stat(follow_symlinks=False)
+            if observed.st_dev == created.st_dev and observed.st_ino == created.st_ino:
+                path.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def link_staged_file(source: Path, destination: Path) -> tuple[int, int, int, bytes]:
+    receipt = file_receipt(source)
+    os.link(source, destination, follow_symlinks=False)
+    return receipt
+
+
+def expanded_directories(values: tuple[str, ...]) -> list[str]:
+    expanded: set[str] = set(values)
+    for relative in values:
+        for parent in PurePosixPath(relative).parents:
+            if parent != PurePosixPath("."):
+                expanded.add(parent.as_posix())
+    return sorted(expanded, key=lambda value: (value.count("/"), value))
 
 
 def expected_control_files(dynamic: dict[str, str]) -> set[str]:
@@ -884,6 +957,106 @@ def create_member_projection(link_path: Path, target: Path, raw_posix_target: st
     create_projection(link_path, target, raw_posix_target, "directory")
 
 
+def projection_receipt(
+    path: Path, target: Path, raw_target: str, kind: str
+) -> tuple[int, int, str, str, str]:
+    observed = os.lstat(path)
+    return (
+        observed.st_dev,
+        observed.st_ino,
+        kind,
+        raw_target,
+        os.path.normcase(str(target.resolve())),
+    )
+
+
+def same_projection(
+    path: Path, receipt: tuple[int, int, str, str, str]
+) -> bool:
+    try:
+        observed = os.lstat(path)
+        device, inode, kind, raw_target, target = receipt
+        if observed.st_dev != device or observed.st_ino != inode:
+            return False
+        if os.name == "nt" and kind == "directory":
+            if not is_windows_junction(path):
+                return False
+        elif not path.is_symlink() or os.readlink(path).replace(os.sep, "/") != raw_target:
+            return False
+        return os.path.normcase(str(path.resolve())) == target
+    except OSError:
+        return False
+
+
+def materialize_staging_tree(
+    staging: Path,
+    destination: Path,
+    directories: tuple[str, ...],
+    files: dict[str, str],
+    projections: list[tuple[str, Path, str, str]],
+    created: list[tuple[str, Path, object]],
+) -> None:
+    root_receipt = create_directory_exclusive(destination)
+    created.append(("directory", destination, root_receipt))
+    directory_state = {".": root_receipt}
+    for relative in expanded_directories(directories):
+        path = destination / relative
+        parent = PurePosixPath(relative).parent.as_posix()
+        parent_key = "." if parent == "." else parent
+        if not same_directory(path.parent, directory_state[parent_key]):
+            raise ControlInitializationError(f"destination parent changed: {relative}")
+        receipt = create_directory_exclusive(path)
+        directory_state[relative] = receipt
+        created.append(("directory", path, receipt))
+    for relative in sorted(files):
+        destination_file = destination / relative
+        parent = PurePosixPath(relative).parent.as_posix()
+        parent_key = "." if parent == "." else parent
+        if not same_directory(destination_file.parent, directory_state[parent_key]):
+            raise ControlInitializationError(f"destination file parent changed: {relative}")
+        receipt = link_staged_file(staging / relative, destination_file)
+        created.append(("file", destination_file, receipt))
+    for relative, target, raw_target, kind in projections:
+        link_path = destination / relative
+        parent = PurePosixPath(relative).parent.as_posix()
+        parent_key = "." if parent == "." else parent
+        if not same_directory(link_path.parent, directory_state[parent_key]):
+            raise ControlInitializationError(f"projection parent changed: {relative}")
+        create_projection(link_path, target, raw_target, kind)
+        receipt = projection_receipt(link_path, target, raw_target, kind)
+        created.append(("projection", link_path, receipt))
+
+
+def rollback_created(created: list[tuple[str, Path, object]]) -> list[str]:
+    unresolved: list[str] = []
+    for kind, path, raw_receipt in reversed(created):
+        try:
+            if kind == "file":
+                receipt = raw_receipt
+                if same_file(path, receipt):
+                    path.unlink()
+                else:
+                    unresolved.append(str(path))
+            elif kind == "projection":
+                receipt = raw_receipt
+                if same_projection(path, receipt):
+                    if is_windows_junction(path):
+                        path.rmdir()
+                    else:
+                        path.unlink()
+                else:
+                    unresolved.append(str(path))
+            else:
+                receipt = raw_receipt
+                if same_directory(path, receipt):
+                    path.rmdir()
+                elif path.exists() or is_link_or_junction(path):
+                    unresolved.append(str(path))
+        except OSError:
+            unresolved.append(str(path))
+    return unresolved
+
+
 def verify_member_tree(
     member_root: Path,
     dynamic: dict[str, str],
@@ -942,11 +1115,6 @@ def verify_member_tree(
             f"member file set differs: missing={sorted(expected - observed)} "
             f"extra={sorted(observed - expected)}"
         )
-
-
-def remove_created_tree(path: Path) -> None:
-    if path.exists() or is_link_or_junction(path):
-        shutil.rmtree(path)
 
 
 def initialize(
@@ -1134,16 +1302,19 @@ def initialize(
             "agent_links_created": [],
         }
 
+    collection_receipt = directory_receipt(collection_root)
     control_staging = Path(
         tempfile.mkdtemp(prefix=f".{control_project}.initialize-", dir=collection_root)
     )
-    member_staging = Path(
-        tempfile.mkdtemp(prefix=f".{member_project}.initialize-", dir=collection_root)
-    )
-    created_control = False
-    created_member = False
-    created_root_files: list[Path] = []
+    control_staging_receipt = directory_receipt(control_staging)
+    member_staging: Path | None = None
+    member_staging_receipt: tuple[int, int] | None = None
+    created: list[tuple[str, Path, object]] = []
     try:
+        member_staging = Path(
+            tempfile.mkdtemp(prefix=f".{member_project}.initialize-", dir=collection_root)
+        )
+        member_staging_receipt = directory_receipt(member_staging)
         for relative in CONTROL_DIRECTORIES:
             (control_staging / relative).mkdir(parents=True, exist_ok=True)
         for relative, content in control_files.items():
@@ -1174,38 +1345,69 @@ def initialize(
         )
         verify_member_tree(member_staging, member_files, package_root, member_project)
 
-        control_staging.rename(control_root)
-        created_control = True
-        member_staging.rename(member_root)
-        created_member = True
+        if not same_directory(collection_root, collection_receipt):
+            raise ControlInitializationError("collection root changed during initialization")
+        control_projections = [
+            (
+                f"src/{name}",
+                distribution_root / name,
+                projection_raw_target(repository_project, name),
+                kind,
+            )
+            for name, kind in CONTROL_PROJECTIONS
+        ]
+        materialize_staging_tree(
+            control_staging,
+            control_root,
+            CONTROL_DIRECTORIES,
+            control_files,
+            control_projections,
+            created,
+        )
+        if not same_directory(collection_root, collection_receipt):
+            raise ControlInitializationError("collection root changed during initialization")
+        materialize_staging_tree(
+            member_staging,
+            member_root,
+            MEMBER_DIRECTORIES,
+            member_files,
+            [(f"src/{member_project}", package_root.resolve(), raw_target, "directory")],
+            created,
+        )
         for name, content in root_files.items():
-            write_atomic(collection_root / name, content)
-            created_root_files.append(collection_root / name)
-    except Exception:
-        for path in reversed(created_root_files):
-            if path.exists() and path.is_file():
-                path.unlink()
-        if created_member:
-            remove_created_tree(member_root)
-        if created_control:
-            remove_created_tree(control_root)
+            if not same_directory(collection_root, collection_receipt):
+                raise ControlInitializationError("collection root changed during initialization")
+            path = collection_root / name
+            receipt = write_exclusive(path, content)
+            created.append(("file", path, receipt))
+
+        verify_control_tree(
+            control_root,
+            control_files,
+            distribution_root,
+            repository_project,
+        )
+        verify_member_tree(member_root, member_files, package_root, member_project)
+        for name, content in root_files.items():
+            path = collection_root / name
+            if is_link_or_junction(path) or path.read_text(encoding="utf-8") != content:
+                raise ControlInitializationError(f"collection root readback failed: {name}")
+    except Exception as exc:
+        unresolved = rollback_created(created)
+        if unresolved:
+            raise ControlInitializationError(
+                f"{exc}; rollback preserved changed paths: {', '.join(unresolved)}"
+            ) from exc
         raise
     finally:
-        if member_staging.exists():
+        if (
+            member_staging is not None
+            and member_staging_receipt is not None
+            and same_directory(member_staging, member_staging_receipt)
+        ):
             shutil.rmtree(member_staging)
-        if control_staging.exists():
+        if same_directory(control_staging, control_staging_receipt):
             shutil.rmtree(control_staging)
-
-    verify_control_tree(
-        control_root,
-        control_files,
-        distribution_root,
-        repository_project,
-    )
-    verify_member_tree(member_root, member_files, package_root, member_project)
-    for name, content in root_files.items():
-        if (collection_root / name).read_text(encoding="utf-8") != content:
-            raise ControlInitializationError(f"collection root readback failed: {name}")
 
     return {
         "status": "initialized",

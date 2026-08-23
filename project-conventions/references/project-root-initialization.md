@@ -33,6 +33,14 @@ Its owned-local package root is `src/<skill-name>/`, with the entry at `src/<ski
 
 Neither mode moves existing content, initializes Git, creates a worktree, scans siblings, or edits a Harness-owned hidden directory.
 
+## 旧项目治理接入合同
+
+脚本模式 `adopt-existing` 在本文中称为“旧项目治理接入”。它只适用于用户针对某一个已经存在的项目根目录逐项目明确授权的治理动作。它的作用仅限于补齐 `AGENTS.md` 路由、项目本地准入助手 `.project-conventions/project_access.py` 及其配置，以及缺失的最小管理目录和初始管理记录；它不是源码整理、仓库迁移、发布或安装流程。
+
+接入必须原样保留所有已有资料、目录、文件和规则，不得移动、重命名、删除、复制或重新归类任何源码与用户内容；不得新建或移动 `Git` 仓库，不得执行 `fetch` 或 `push`，不得上传或发布，不得安装 `Skill`，也不得建立 `Agent` 消费者链接。
+
+每个项目必须单独获得用户授权。`dry-run` 指只展示计划而不写入，`apply` 指按已确认计划执行写入；必须先运行 `dry-run`，确认无冲突后才能运行 `apply`。任何已有路径、内容或边界冲突都必须立即停止；任何失败都必须回滚本轮新建内容和对 `AGENTS.md` 的编辑，且不得删除或覆盖并发出现的用户内容。在无关修复、审查、构建或运行任务中，即使看到旧项目缺少本地准入助手，也不得自动接入，也不得仅因此阻断原任务；只有项目当前规则或已观察到的真实并发写冲突才能构成独立停止依据。
+
 ## Dry-run, apply, validate
 
 Run from the installed or cloned `project-conventions` package:

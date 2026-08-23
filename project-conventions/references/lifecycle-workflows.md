@@ -14,7 +14,7 @@ Use this reference before filesystem-governance references whenever a request me
 
 `clone` does not authorize sibling scans or Agent installation. `update` does not authorize initialization. An explicit end-to-end request naming the target, repository, migration inputs, and consumers authorizes those exact stages without making the user reconfirm the same map.
 
-Likewise, an unrelated bug fix, implementation, review, build, or run request does not become Full initialization merely because the current legacy Project Root lacks `.project-conventions/`. Do not pause it to propose adoption unless the user asked for governance or actual concurrent-write evidence makes the requested write unsafe under the project's current rules.
+脚本模式 `adopt-existing` 指“旧项目治理接入”，它必须由用户针对每一个已有项目根目录单独明确授权。它只补齐 `AGENTS.md` 路由、项目本地准入助手和最小管理记录，不移动源码，不建立或移动 `Git` 仓库，不上传、发布、安装 `Skill` 或建立 `Agent` 消费者链接。必须先运行 `dry-run` 再运行 `apply`，冲突即停，失败回滚。无关修复不会因为旧项目缺少 `.project-conventions/` 而自动变成接入任务，也不得仅因此阻断原任务。完整合同见 `project-root-initialization.md`。
 
 ## Full initialization: shared Skills collection
 
@@ -136,8 +136,10 @@ The safety gate is:
 6. fetch succeeds;
 7. ahead count is zero;
 8. local `HEAD` is an ancestor of upstream;
-9. fast-forward only when behind;
-10. named-package validation passes.
+9. extract the frozen upstream commit into an isolated temporary candidate tree and require named-package validation to pass there;
+10. recheck `HEAD`, branch, upstream, status, operation markers, remote, and the frozen upstream commit;
+11. fast-forward only the exact validated commit when behind;
+12. perform final read-only state readback.
 
 Dirty, ahead, detached, diverged, wrong-remote, wrong-upstream, or locked states stop without changing local commits or files. A fetch may update remote-tracking refs before a divergence is known; report that fact precisely.
 
@@ -150,7 +152,7 @@ Forbidden side effects in update-only:
 - moving a checkout or preserving/renaming a local branch;
 - auto-stash, merge, rebase, reset, cherry-pick, or delete.
 
-After validation, report before/after commit and stop. A healthy projection or consumer automatically sees new bytes and does not require relinking.
+After the validated fast-forward and final readback, report before/after commit and stop. A candidate validation failure leaves local `HEAD` and the worktree unchanged; fetch may still have updated the remote-tracking ref. A healthy projection or consumer automatically sees new bytes and does not require relinking.
 
 ## Device refresh
 

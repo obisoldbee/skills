@@ -763,6 +763,12 @@ def findings_for(
     walked_links: list[tuple[Path, bool]],
 ) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = list(index_errors)
+    verified_git_roots = [item for item in git_roots if item.get("verified")]
+    for item in git_roots:
+        if not item.get("verified"):
+            findings.append(
+                {"type": "unverified_git_marker", "path": str(item["path"])}
+            )
     by_key: dict[str, list[IndexEntry]] = {}
     by_path: dict[str, list[IndexEntry]] = {}
     valid: list[IndexEntry] = []
@@ -819,6 +825,7 @@ def findings_for(
         entry for entry in live_valid if entry.kind != "collection"
     ]
     collection_entries = [entry for entry in valid if entry.kind == "collection"]
+    collection_remote_roots: dict[tuple[str, str], set[str]] = {}
 
     for entry in project_entries:
         prefix = entry.path.rstrip("/")
@@ -834,13 +841,13 @@ def findings_for(
         )
         declared_contained = [
             item
-            for item in git_roots
+            for item in verified_git_roots
             if item["path"] == repository_prefix
             or str(item["path"]).startswith(repository_prefix + "/")
         ]
         member_contained = [
             item
-            for item in git_roots
+            for item in verified_git_roots
             if item["path"] == prefix
             or str(item["path"]).startswith(prefix + "/")
         ]
@@ -853,9 +860,20 @@ def findings_for(
             findings.append(
                 {"type": "nested_git_detected", "path": entry.path}
             )
+        if entry.kind == "collection-member" and entry.parent_collection:
+            for item in contained:
+                observed_remote = str(item.get("remote_identity") or "")
+                if observed_remote:
+                    collection_remote_roots.setdefault(
+                        (entry.parent_collection, observed_remote), set()
+                    ).add(str(item["path"]))
         if len(contained) == 1 and entry.remote not in {"", "-"}:
             observed = str(contained[0].get("remote_identity") or "")
-            if observed and not remotes_equivalent(entry.remote, observed):
+            if not observed:
+                findings.append(
+                    {"type": "remote_missing", "path": entry.path}
+                )
+            elif not remotes_equivalent(entry.remote, observed):
                 findings.append(
                     {"type": "remote_mismatch", "path": entry.path}
                 )
@@ -897,8 +915,20 @@ def findings_for(
                     }
                 )
 
+    for (collection, remote), roots in collection_remote_roots.items():
+        if len(roots) > 1:
+            findings.append(
+                {
+                    "type": "duplicate_remote_checkout",
+                    "path": (
+                        f"{collection}: remote={remote}, "
+                        f"roots={','.join(sorted(roots))}"
+                    ),
+                }
+            )
+
     for collection in collection_entries:
-        for item in git_roots:
+        for item in verified_git_roots:
             if item["path"] == collection.path.rstrip("/"):
                 findings.append(
                     {"type": "collection_root_git", "path": collection.path}
@@ -912,7 +942,7 @@ def findings_for(
             if entry.repository_root.strip() not in {"", "-"}
             and is_safe_relative_path(entry.repository_root)
         )
-        for item in git_roots:
+        for item in verified_git_roots:
             git_path = str(item["path"])
             if git_path == "outside-workspace":
                 continue

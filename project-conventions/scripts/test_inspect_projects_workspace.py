@@ -134,8 +134,8 @@ class InspectorCollectionTests(unittest.TestCase):
             collection = root / "skill-collection"
             members = collection / "skills" / "docs" / "indexes"
             members.mkdir(parents=True)
-            (collection / "member-a" / "src" / ".git").mkdir(parents=True)
-            (root / "ordinary" / ".git").mkdir(parents=True)
+            self.init_git(collection / "member-a" / "src")
+            self.init_git(root / "ordinary")
 
             (indexes / "00-collections.md").write_text(
                 "| key | name | path | kind | members_index | purpose | tags |\n"
@@ -194,9 +194,7 @@ class InspectorCollectionTests(unittest.TestCase):
             root = Path(raw)
             indexes = root / "_project-catalog" / "docs" / "indexes"
             indexes.mkdir(parents=True)
-            (root / "skill-collection" / "member-a" / ".git").mkdir(
-                parents=True
-            )
+            self.init_git(root / "skill-collection" / "member-a")
             (indexes / "00-collections.md").write_text(
                 "| key | name | path | kind | members_index | purpose | tags |\n"
                 "|---|---|---|---|---|---|---|\n"
@@ -326,7 +324,7 @@ class InspectorCollectionTests(unittest.TestCase):
             collection = root / "skill-collection"
             members = collection / "skills" / "docs" / "indexes"
             members.mkdir(parents=True)
-            (collection / "member-a" / ".git").mkdir(parents=True)
+            self.init_git(collection / "member-a")
             (collection / "member-a" / "src").mkdir()
             (indexes / "00-collections.md").write_text(
                 "| key | name | path | kind | members_index | purpose | tags |\n"
@@ -780,7 +778,7 @@ class InspectorCollectionTests(unittest.TestCase):
             root = Path(raw)
             indexes = root / "_project-catalog" / "docs" / "indexes"
             indexes.mkdir(parents=True)
-            (root / "declared-none" / ".git").mkdir(parents=True)
+            self.init_git(root / "declared-none")
             (root / "missing-git").mkdir()
             (indexes / "03-local-only.md").write_text(
                 "| key | name | path | vcs | remote | purpose | tags | update |\n"
@@ -849,6 +847,112 @@ class InspectorCollectionTests(unittest.TestCase):
             }
             self.assertIn(("remote_mismatch", "remote-project"), findings)
             self.assertIn(("nested_git_detected", "nested-project"), findings)
+
+    def test_declared_remote_without_origin_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            self.init_git(root / "project-a")
+            (indexes / "01-personal-open.md").write_text(
+                "| key | name | path | vcs | remote | purpose | tags | update |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| project-a | Project A | project-a | git | example/project-a | Test | test | manual |\n",
+                encoding="utf-8",
+            )
+
+            report = self.run_inspector(root)
+            self.assertIn(
+                ("remote_missing", "project-a"),
+                {
+                    (finding["type"], finding["path"])
+                    for finding in report["findings"]
+                },
+            )
+
+    def test_unverified_git_marker_does_not_satisfy_vcs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            (root / "project-a" / ".git").mkdir(parents=True)
+            (indexes / "03-local-only.md").write_text(
+                "| key | name | path | vcs | remote | purpose | tags | update |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| project-a | Project A | project-a | local_git | - | Test | test | manual |\n",
+                encoding="utf-8",
+            )
+
+            report = self.run_inspector(root)
+            findings = {
+                (finding["type"], finding["path"])
+                for finding in report["findings"]
+            }
+            self.assertIn(("unverified_git_marker", "project-a"), findings)
+            self.assertIn(
+                (
+                    "vcs_state_mismatch",
+                    "project-a: declared=local_git, observed=none",
+                ),
+                findings,
+            )
+
+    def test_duplicate_remote_checkout_is_scoped_to_one_collection(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            entries: list[INSPECTOR.IndexEntry] = []
+            git_roots: list[dict[str, object]] = []
+            fixtures = (
+                ("one", "member-a", "repo-a", "github.com/example/shared"),
+                ("one", "member-b", "repo-b", "github.com/example/shared"),
+                ("one", "member-c", "repo-c", "github.com/example/other"),
+                ("two", "member-a", "repo-a", "github.com/example/shared"),
+            )
+            for collection, member, repository, remote in fixtures:
+                member_path = f"{collection}/{member}"
+                repository_path = f"{collection}/{repository}"
+                (root / member_path).mkdir(parents=True)
+                (root / repository_path).mkdir(parents=True)
+                entries.append(
+                    INSPECTOR.IndexEntry(
+                        key=f"{collection}/{member}",
+                        path=member_path,
+                        category_file="fixture.md",
+                        vcs="git",
+                        remote=remote,
+                        kind="collection-member",
+                        parent_collection=collection,
+                        repository_root=repository_path,
+                        status="active",
+                    )
+                )
+                git_roots.append(
+                    {
+                        "path": repository_path,
+                        "verified": True,
+                        "remote_identity": remote,
+                    }
+                )
+
+            findings = INSPECTOR.findings_for(
+                root,
+                [],
+                entries,
+                [],
+                False,
+                git_roots,
+                [],
+            )
+            duplicates = [
+                finding["path"]
+                for finding in findings
+                if finding["type"] == "duplicate_remote_checkout"
+            ]
+            self.assertEqual(len(duplicates), 1)
+            self.assertIn("one: remote=github.com/example/shared", duplicates[0])
+            self.assertIn("one/repo-a", duplicates[0])
+            self.assertIn("one/repo-b", duplicates[0])
+            self.assertNotIn("two/repo-a", duplicates[0])
 
     def test_invalid_reserved_and_missing_paths_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -938,7 +1042,7 @@ class InspectorCollectionTests(unittest.TestCase):
             (root / "_project-catalog" / "docs" / "indexes").mkdir(
                 parents=True
             )
-            (root / "orphan" / ".git").mkdir(parents=True)
+            self.init_git(root / "orphan")
 
             report = self.run_inspector(root)
             findings = {
@@ -1003,7 +1107,7 @@ class InspectorCollectionTests(unittest.TestCase):
             members = collection / "skills" / "docs" / "indexes"
             members.mkdir(parents=True)
             (collection / "skills" / "src").mkdir()
-            (collection / "old-member" / "src" / ".git").mkdir(parents=True)
+            self.init_git(collection / "old-member" / "src")
             (collection / "bad-member" / "src").mkdir(parents=True)
             (indexes / "00-collections.md").write_text(
                 "| key | name | path | kind | members_index | purpose | tags |\n"

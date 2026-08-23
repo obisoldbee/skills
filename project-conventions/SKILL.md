@@ -12,14 +12,18 @@ For clone, initialization, sync, pull, or update work, read `references/lifecycl
 | Intent | Lifecycle | Stop boundary |
 |---|---|---|
 | Build a new governed target and make it usable | **Full initialization** | Target, repository mapping, validation, then separately authorized consumer links |
-| Refresh an existing checkout or named Skill | **Update-only** | Fetch/fast-forward, validate the requested package, report, stop |
+| Refresh an existing checkout or named Skill | **Update-only** | Fetch, validate the frozen candidate package, fast-forward that exact commit, report, stop |
 | Refresh this device's existing public Skill consumers | **Device refresh** | Plan first; when authorized, update the one checkout and add only missing allowlisted links in existing Agent roots |
 | Reorganize or audit existing paths | **Governance maintenance** | Only the exact authorized paths and selected governance layer |
 | Clone/download now for a later task | **Bootstrap-only** | Validate the clone and stop |
 
 The presence of `AGENTS.md`, `README.md`, another project, or an Agent Skill directory never broadens the request. Do not inspect or modify unnamed siblings.
 
-Loading this Skill during an unrelated implementation, review, or bug-fix task does not authorize or require retroactive initialization. The project-local admission protocol is mandatory only when the exact Project Root already contains its managed access block/config, or when the user selected initialization/adoption in this task. If a legacy Project Root has no local entry and its own `AGENTS.md` does not require one, do not pause the requested work merely to propose `adopt-existing`; follow its current rules and report the uncoordinated legacy boundary. Stop only on observed concurrent-write evidence or another actual conflict. Never install governance files as a side effect of an unrelated task.
+### 旧项目治理接入
+
+脚本模式 `adopt-existing` 在本文中称为“旧项目治理接入”。它只能在用户针对某一个已有项目根目录单独明确授权时运行，且只补齐 `AGENTS.md` 路由、项目本地准入助手和最小管理记录。它必须原样保留所有已有资料，不移动、重命名、删除或重新归类源码，不新建或移动 `Git` 仓库，不执行 `fetch` 或 `push`，不上传或发布，不安装 `Skill`，也不建立 `Agent` 消费者链接。
+
+每个项目都必须先运行只展示计划的 `dry-run`，确认无冲突后才能运行执行写入的 `apply`；冲突即停，失败必须回滚本轮写入，并保留并发出现的用户内容。在无关修复中发现旧项目缺少本地准入助手，不得自动接入，也不得仅因此阻断原任务。完整可执行合同见 `references/project-root-initialization.md`。
 
 ## Shared-repository Skills collection profile
 
@@ -108,7 +112,7 @@ An update request never runs initialization. From either the true package or mem
 python -B <package>/scripts/update_shared_checkout.py <package>
 ```
 
-The helper resolves the shared Git worktree, requires clean/attached/tracked/ahead=0/fast-forwardable state, fetches and fast-forwards if needed, validates only the requested package, reports before/after commits, and stops.
+The helper resolves the shared Git worktree, requires clean/attached/tracked/ahead=0/fast-forwardable state, fetches, validates only the requested package from the frozen candidate commit in an isolated temporary tree, rechecks the safety gate, fast-forwards that exact validated commit if needed, reports before/after commits, and stops.
 
 If dirty, ahead, detached, diverged, locked, wrong-remote, or wrong-upstream, stop. Never auto-stash, merge a divergence, rebase, reset, preserve/rename branches, move files, rebuild wrappers, edit indexes, scan siblings, or relink during update-only.
 

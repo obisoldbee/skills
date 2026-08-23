@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +57,17 @@ class ProjectRootWorkflowTests(unittest.TestCase):
 
     def access(self, root: Path) -> Path:
         return root / ".project-conventions" / "project_access.py"
+
+    def load_initializer_module(self):
+        module_name = f"_project_root_initializer_test_{id(self)}"
+        spec = importlib.util.spec_from_file_location(module_name, INITIALIZER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        self.addCleanup(sys.modules.pop, module_name, None)
+        spec.loader.exec_module(module)
+        return module
 
     def finish_claim(self, root: Path, receipt: dict[str, object]) -> None:
         result = self.run_command(
@@ -119,6 +132,133 @@ class ProjectRootWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(validated.returncode, 0, validated.stderr)
             self.assertEqual(json.loads(validated.stdout)["records_dir"], "submissions/records")
+
+    def test_optional_paths_reject_reserved_non_normalized_and_file_topology_without_writing(self) -> None:
+        cases = (
+            ("--records-dir", "."),
+            ("--records-dir", "a//b"),
+            ("--records-dir", "a/."),
+            ("--records-dir", ".git/records"),
+            ("--records-dir", ".project-conventions/records"),
+            ("--records-dir", ".codex/records"),
+            ("--records-dir", "README.md/records"),
+            ("--repository-root", "README.md/repo"),
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            for index, (flag, value) in enumerate(cases):
+                with self.subTest(flag=flag, value=value):
+                    root = base / f"case-{index}"
+                    for apply in (False, True):
+                        command = [
+                            sys.executable,
+                            "-B",
+                            str(INITIALIZER),
+                            str(root),
+                            "--type",
+                            "code",
+                            "--mode",
+                            "fresh-empty",
+                            flag,
+                            value,
+                        ]
+                        if apply:
+                            command.append("--apply")
+                        result = self.run_command(command)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(root.exists())
+
+    def test_adopt_agents_preserves_byte_prefix_mode_and_crlf_idempotently(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw) / "legacy"
+            root.mkdir()
+            agents = root / "AGENTS.md"
+            original = b"# Existing Rules\r\n\r\n- Keep trailing spaces.  \r\n\r\n"
+            agents.write_bytes(original)
+            os.chmod(agents, 0o751)
+            first = self.initialize(root, mode="adopt-existing")
+            self.assertEqual(first["status"], "initialized")
+            adopted = agents.read_bytes()
+            self.assertTrue(adopted.startswith(original))
+            self.assertIn(b"\r\n<!-- project-conventions:access:start -->\r\n", adopted)
+            self.assertEqual(agents.stat().st_mode & 0o777, 0o751)
+            second = self.initialize(root, mode="adopt-existing")
+            self.assertEqual(second["status"], "already_initialized")
+            self.assertEqual(agents.read_bytes(), adopted)
+            self.assertEqual(agents.stat().st_mode & 0o777, 0o751)
+            validated = self.run_command([sys.executable, "-B", str(VALIDATOR), str(root)])
+            self.assertEqual(validated.returncode, 0, validated.stderr)
+
+    def test_apply_failure_rolls_back_created_paths_and_agents_bytes_and_mode(self) -> None:
+        initializer = self.load_initializer_module()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw) / "legacy"
+            root.mkdir()
+            agents = root / "AGENTS.md"
+            original = b"# Existing Rules\n\n- Preserve exact tail.  \n"
+            agents.write_bytes(original)
+            os.chmod(agents, 0o750)
+            real_inspect = initializer.inspect_target
+            calls = 0
+
+            def fail_readback(*args, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("injected readback failure")
+                return real_inspect(*args, **kwargs)
+
+            with mock.patch.object(initializer, "inspect_target", side_effect=fail_readback):
+                with self.assertRaisesRegex(OSError, "injected readback failure"):
+                    initializer.initialize(
+                        root,
+                        "code",
+                        "adopt-existing",
+                        None,
+                        None,
+                        "versions/records",
+                        "standard",
+                        None,
+                        True,
+                    )
+            self.assertEqual(agents.read_bytes(), original)
+            self.assertEqual(agents.stat().st_mode & 0o777, 0o750)
+            self.assertEqual(sorted(path.name for path in root.iterdir()), ["AGENTS.md"])
+
+    def test_rollback_preserves_concurrent_user_replacement(self) -> None:
+        initializer = self.load_initializer_module()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw) / "project"
+            real_inspect = initializer.inspect_target
+            calls = 0
+            user_bytes = b"concurrent user content\n"
+
+            def replace_then_fail(*args, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    readme = root / "README.md"
+                    readme.write_bytes(user_bytes)
+                    raise OSError("injected concurrent readback failure")
+                return real_inspect(*args, **kwargs)
+
+            with mock.patch.object(initializer, "inspect_target", side_effect=replace_then_fail):
+                with self.assertRaisesRegex(
+                    initializer.ProjectInitializationError,
+                    "rollback preserved changed or unrecoverable paths",
+                ):
+                    initializer.initialize(
+                        root,
+                        "code",
+                        "fresh-empty",
+                        None,
+                        None,
+                        None,
+                        "standard",
+                        None,
+                        True,
+                    )
+            self.assertEqual((root / "README.md").read_bytes(), user_bytes)
 
     def test_agent_skill_profile_uses_named_src_package_and_preserves_real_skill(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -268,6 +408,86 @@ Real workflow.
             )
             self.assertNotEqual(validated.returncode, 0)
             self.assertIn("conflicting Agent Skill source routes", validated.stderr)
+
+    def test_agent_skill_rejects_duplicate_name_and_external_suffix_routes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            duplicate_root = base / "duplicate-name"
+            duplicate_entry = duplicate_root / "src" / "demo-skill" / "SKILL.md"
+            duplicate_entry.parent.mkdir(parents=True)
+            duplicate_entry.write_text(
+                "---\nname: demo-skill\nname : demo-skill\ndescription: duplicate\n---\n",
+                encoding="utf-8",
+            )
+            duplicate = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(INITIALIZER),
+                    str(duplicate_root),
+                    "--type",
+                    "code",
+                    "--profile",
+                    "agent-skill",
+                    "--skill-name",
+                    "demo-skill",
+                    "--mode",
+                    "adopt-existing",
+                    "--apply",
+                ]
+            )
+            self.assertNotEqual(duplicate.returncode, 0)
+            self.assertFalse((duplicate_root / ".project-conventions").exists())
+
+            routes = (
+                "/tmp/src/demo-skill/SKILL.md",
+                "prefix/src/demo-skill/SKILL.md",
+                "../src/demo-skill/SKILL.md",
+                r"C:\\outside\\src\\demo-skill\\SKILL.md",
+                "file" + ":///tmp/src/demo-skill/SKILL.md",
+            )
+            for index, route in enumerate(routes):
+                with self.subTest(route=route):
+                    root = base / f"route-{index}"
+                    root.mkdir()
+                    agents = root / "AGENTS.md"
+                    original = f"# Existing Rules\n\nSkill source: `{route}`.\n"
+                    agents.write_text(original, encoding="utf-8")
+                    rejected = self.run_command(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(INITIALIZER),
+                            str(root),
+                            "--type",
+                            "code",
+                            "--profile",
+                            "agent-skill",
+                            "--skill-name",
+                            "demo-skill",
+                            "--mode",
+                            "adopt-existing",
+                            "--apply",
+                        ]
+                    )
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn("conflicting Agent Skill source routes", rejected.stderr)
+                    self.assertEqual(agents.read_text(encoding="utf-8"), original)
+                    self.assertFalse((root / ".project-conventions").exists())
+
+    def test_validator_rejects_duplicate_agent_skill_name(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw) / "skill"
+            extra = ["--profile", "agent-skill", "--skill-name", "demo-skill"]
+            self.initialize(root, extra=extra)
+            entry = root / "src" / "demo-skill" / "SKILL.md"
+            entry.write_text(
+                "---\nname: demo-skill\nname: demo-skill\ndescription: duplicate\n---\n",
+                encoding="utf-8",
+            )
+            validated = self.run_command([sys.executable, "-B", str(VALIDATOR), str(root)])
+            self.assertNotEqual(validated.returncode, 0)
+            self.assertIn("frontmatter name differs", validated.stderr)
 
     def test_adoption_preserves_material_harness_and_existing_human_files(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -678,7 +898,7 @@ Real workflow.
                     "linked-writer",
                 ]
             )
-            self.assertEqual(linked_writer.returncode, 2)
+            self.assertEqual(linked_writer.returncode, 3)
             self.finish_claim(root, json.loads(main_claim.stdout))
 
     @unittest.skipUnless(shutil.which("git"), "git is required")
@@ -714,6 +934,29 @@ Real workflow.
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 worktrees.append(worktree)
+
+            for value in (".", "a//b", "a/."):
+                with self.subTest(write_path=value):
+                    invalid = self.run_command(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(self.access(worktrees[0])),
+                            "enter",
+                            "--mode",
+                            "isolated-writer",
+                            "--actor",
+                            "invalid-path",
+                            "--write-path",
+                            value,
+                        ]
+                    )
+                    self.assertEqual(invalid.returncode, 3, invalid.stderr)
+            empty_status = self.run_command(
+                [sys.executable, "-B", str(self.access(root)), "status"]
+            )
+            self.assertEqual(empty_status.returncode, 0, empty_status.stderr)
+            self.assertEqual(json.loads(empty_status.stdout)["claims"], [])
 
             receipts: list[dict[str, object]] = []
             for worktree, path in zip(worktrees[:2], ("src/component-a", "src/caf\u00e9")):
@@ -924,6 +1167,59 @@ Real workflow.
             result = self.run_command([sys.executable, "-B", str(VALIDATOR), str(root)])
             self.assertEqual(result.returncode, 1)
             self.assertIn("digest differs", result.stderr)
+
+    @unittest.skipIf(os.name == "nt", "portable runtime-link fixture is Unix-only")
+    def test_runtime_directory_and_database_links_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            runtime_root = base / "runtime-link-project"
+            self.initialize(runtime_root)
+            external_runtime = base / "external-runtime"
+            external_runtime.mkdir()
+            runtime = runtime_root / ".project-conventions" / "runtime"
+            runtime.symlink_to(external_runtime, target_is_directory=True)
+            linked_runtime = self.run_command(
+                [sys.executable, "-B", str(self.access(runtime_root)), "status"]
+            )
+            self.assertEqual(linked_runtime.returncode, 3)
+            self.assertFalse((external_runtime / "access.sqlite3").exists())
+
+            database_root = base / "database-link-project"
+            self.initialize(database_root)
+            database_runtime = database_root / ".project-conventions" / "runtime"
+            database_runtime.mkdir()
+            external_database = base / "external.sqlite3"
+            (database_runtime / "access.sqlite3").symlink_to(external_database)
+            linked_database = self.run_command(
+                [sys.executable, "-B", str(self.access(database_root)), "status"]
+            )
+            self.assertEqual(linked_database.returncode, 3)
+            self.assertFalse(external_database.exists())
+
+    def test_validator_binds_gitignore_and_document_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            gitignore_root = base / "gitignore"
+            self.initialize(gitignore_root)
+            (gitignore_root / ".project-conventions" / ".gitignore").write_text(
+                "*.sqlite3\n", encoding="utf-8"
+            )
+            gitignore_validation = self.run_command(
+                [sys.executable, "-B", str(VALIDATOR), str(gitignore_root)]
+            )
+            self.assertEqual(gitignore_validation.returncode, 1)
+            self.assertIn(".gitignore differs", gitignore_validation.stderr)
+
+            for relative in ("docs/reviews", "docs/research"):
+                with self.subTest(relative=relative):
+                    document_root = base / relative.replace("/", "-")
+                    self.initialize(document_root, project_type="document")
+                    (document_root / relative).rmdir()
+                    validation = self.run_command(
+                        [sys.executable, "-B", str(VALIDATOR), str(document_root)]
+                    )
+                    self.assertEqual(validation.returncode, 1)
+                    self.assertIn("required real directory is missing", validation.stderr)
 
     def test_crlf_checkout_preserves_hash_bound_authority(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

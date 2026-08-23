@@ -11,6 +11,8 @@ import re
 import stat
 import subprocess
 import tempfile
+import unicodedata
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 
@@ -19,6 +21,7 @@ PROTOCOL_VERSION = 1
 MANAGED_START = "<!-- project-conventions:access:start -->"
 MANAGED_END = "<!-- project-conventions:access:end -->"
 HARNESS_ENTRIES = {
+    ".agents",
     ".claude",
     ".codex",
     ".minimax",
@@ -27,7 +30,12 @@ HARNESS_ENTRIES = {
     ".trae",
     ".workbuddy",
 }
-PROJECT_NAME = re.compile(r"^[^/\\\x00]{1,160}$")
+RESERVED_OPTIONAL_PATH_PARTS = {
+    ".git",
+    CONTROL_DIRECTORY,
+    *HARNESS_ENTRIES,
+}
+PROJECT_NAME = re.compile(r"^[^/\\\x00-\x1f\x7f]{1,160}$")
 SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 WINDOWS_RESERVED_NAMES = {
     "CON",
@@ -41,6 +49,27 @@ WINDOWS_RESERVED_NAMES = {
 
 class ProjectInitializationError(RuntimeError):
     """Raised when initialization cannot preserve the target safely."""
+
+
+@dataclass(frozen=True)
+class FileSnapshot:
+    content: bytes
+    mode: int
+    device: int
+    inode: int
+
+
+@dataclass(frozen=True)
+class PathIdentity:
+    device: int
+    inode: int
+
+
+@dataclass(frozen=True)
+class AppliedFile:
+    path: Path
+    snapshot: FileSnapshot
+    previous: FileSnapshot | None
 
 
 def portable_text_sha256(content: bytes) -> str:
@@ -71,10 +100,17 @@ def is_link_or_junction(path: Path) -> bool:
 def safe_relative(value: str | None, label: str, allow_none: bool = True) -> str | None:
     if value is None and allow_none:
         return None
-    if value is None or not value or "\\" in value:
+    if value is None or not value or value != value.strip() or "\\" in value:
         raise ProjectInitializationError(f"{label} must be a portable relative path")
+    value = unicodedata.normalize("NFC", value)
     path = PurePosixPath(value)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    if (
+        path.is_absolute()
+        or not path.parts
+        or path.as_posix() != value
+        or path.as_posix() == "."
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
         raise ProjectInitializationError(f"{label} must be a normalized relative path")
     for part in path.parts:
         stem = part.split(".", 1)[0].upper()
@@ -84,6 +120,8 @@ def safe_relative(value: str | None, label: str, allow_none: bool = True) -> str
             or stem in WINDOWS_RESERVED_NAMES
         ):
             raise ProjectInitializationError(f"{label} is not portable across supported filesystems")
+        if part.casefold() in {entry.casefold() for entry in RESERVED_OPTIONAL_PATH_PARTS}:
+            raise ProjectInitializationError(f"{label} enters a reserved project boundary")
     return path.as_posix()
 
 
@@ -294,8 +332,9 @@ def validate_skill_entry_name(path: Path, skill_name: str) -> None:
     if not text.startswith("---\n") or "\n---\n" not in text[4:]:
         raise ProjectInitializationError("Agent Skill entry has no valid YAML frontmatter boundary")
     frontmatter = text[4 : text.index("\n---\n", 4)]
-    observed = re.search(r"(?m)^name:\s*([a-z0-9]+(?:-[a-z0-9]+)*)\s*$", frontmatter)
-    if observed is None or observed.group(1) != skill_name:
+    keys = re.findall(r"(?m)^name\s*:", frontmatter)
+    observed = re.findall(r"(?m)^name:\s*([^\r\n]*?)\s*$", frontmatter)
+    if len(keys) != 1 or len(observed) != 1 or observed[0] != skill_name:
         raise ProjectInitializationError("Agent Skill frontmatter name differs from --skill-name")
 
 
@@ -337,8 +376,7 @@ def find_misplaced_skill_entries(target: Path, expected_relative: str) -> list[s
 
 
 SKILL_PATH_MENTION = re.compile(
-    r"(?i)(?<![A-Za-z0-9_.-])((?:(?:src|docs)[/\\][^\s`|<>\"']*[/\\])?SKILL\.md)"
-    r"(?![A-Za-z0-9_.-])"
+    r"(?i)([^\s`|<>\"'()\[\]{}*,;]+SKILL\.md)(?![A-Za-z0-9_.-])"
 )
 
 
@@ -378,6 +416,49 @@ All later substantive work uses the project-local `.project-conventions/project_
 """
 
 
+def validate_project_root_git_boundary(target: Path) -> None:
+    probe = target if target.is_dir() else target.parent
+    completed = subprocess.run(
+        ["git", "-C", str(probe), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return
+    observed = Path(completed.stdout.strip()).expanduser().resolve()
+    if not target.is_dir() or os.path.normcase(str(observed)) != os.path.normcase(
+        str(target.resolve())
+    ):
+        raise ProjectInitializationError(
+            "ordinary Project Root must not be nested inside another Git worktree"
+        )
+    git_dir = subprocess.run(
+        ["git", "-C", str(target), "rev-parse", "--git-dir"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    common_dir = subprocess.run(
+        ["git", "-C", str(target), "rev-parse", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if git_dir.returncode != 0 or common_dir.returncode != 0:
+        raise ProjectInitializationError("Git worktree identity could not be verified")
+    git_path = Path(git_dir.stdout.strip())
+    common_path = Path(common_dir.stdout.strip())
+    if not git_path.is_absolute():
+        git_path = target / git_path
+    if not common_path.is_absolute():
+        common_path = target / common_path
+    if os.path.normcase(str(git_path.resolve())) != os.path.normcase(str(common_path.resolve())):
+        raise ProjectInitializationError(
+            "ordinary initialization must run at the canonical Git worktree, not a linked worktree"
+        )
+
+
 def detect_runtime_backend(target: Path, repository_root: str | None) -> str:
     repository = target / repository_root if repository_root is not None else target
     if not repository.is_dir():
@@ -398,20 +479,91 @@ def detect_runtime_backend(target: Path, repository_root: str | None) -> str:
     )
 
 
-def managed_agents(existing: str, expected_block: str) -> tuple[str, str]:
-    start_count = existing.count(MANAGED_START)
-    end_count = existing.count(MANAGED_END)
+def canonical_text(content: bytes) -> bytes:
+    return content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def preferred_newline(content: bytes) -> bytes:
+    crlf_count = content.count(b"\r\n")
+    lone_lf_count = content.count(b"\n") - crlf_count
+    return b"\r\n" if crlf_count and not lone_lf_count else b"\n"
+
+
+def managed_agents(existing: bytes, expected_block: str) -> tuple[bytes, str]:
+    try:
+        existing.decode("utf-8")
+    except UnicodeError as exc:
+        raise ProjectInitializationError("AGENTS.md is not UTF-8") from exc
+    start_marker = MANAGED_START.encode("utf-8")
+    end_marker = MANAGED_END.encode("utf-8")
+    start_count = existing.count(start_marker)
+    end_count = existing.count(end_marker)
     if start_count == 0 and end_count == 0:
-        prefix = existing.rstrip()
-        return (prefix + "\n\n" + expected_block + "\n" if prefix else expected_block + "\n"), "append"
+        newline = preferred_newline(existing)
+        block = expected_block.encode("utf-8").replace(b"\n", newline)
+        if not existing:
+            separator = b""
+        elif existing.endswith(newline * 2):
+            separator = b""
+        elif existing.endswith(newline):
+            separator = newline
+        else:
+            separator = newline * 2
+        return existing + separator + block + newline, "append"
     if start_count != 1 or end_count != 1:
         raise ProjectInitializationError("AGENTS.md has malformed project-conventions access markers")
-    start = existing.index(MANAGED_START)
-    end = existing.index(MANAGED_END, start) + len(MANAGED_END)
+    start = existing.index(start_marker)
+    end = existing.index(end_marker, start) + len(end_marker)
     observed = existing[start:end]
-    if observed != expected_block:
+    if canonical_text(observed) != expected_block.encode("utf-8"):
         raise ProjectInitializationError("existing AGENTS.md access block differs; manual merge required")
     return existing, "preserve"
+
+
+def file_snapshot(path: Path) -> FileSnapshot:
+    if is_link_or_junction(path) or not path.is_file():
+        raise ProjectInitializationError(f"required real file changed: {path}")
+    observed = path.stat(follow_symlinks=False)
+    return FileSnapshot(
+        content=path.read_bytes(),
+        mode=stat.S_IMODE(observed.st_mode),
+        device=observed.st_dev,
+        inode=observed.st_ino,
+    )
+
+
+def directory_identity(path: Path) -> PathIdentity:
+    if is_link_or_junction(path) or not path.is_dir():
+        raise ProjectInitializationError(f"required real directory changed: {path}")
+    observed = path.stat(follow_symlinks=False)
+    return PathIdentity(device=observed.st_dev, inode=observed.st_ino)
+
+
+def same_file_snapshot(path: Path, expected: FileSnapshot) -> bool:
+    try:
+        return file_snapshot(path) == expected
+    except (OSError, ProjectInitializationError):
+        return False
+
+
+def same_directory(path: Path, expected: PathIdentity) -> bool:
+    try:
+        return directory_identity(path) == expected
+    except (OSError, ProjectInitializationError):
+        return False
+
+
+def create_directory(path: Path) -> PathIdentity:
+    path.mkdir()
+    try:
+        return directory_identity(path)
+    except Exception:
+        try:
+            if not is_link_or_junction(path) and path.is_dir():
+                path.rmdir()
+        except OSError:
+            pass
+        raise
 
 
 def inspect_target(
@@ -420,7 +572,13 @@ def inspect_target(
     directories: set[str],
     expected_files: dict[str, bytes],
     managed_block: str,
-) -> tuple[list[str], list[str], list[str], dict[str, bytes | None]]:
+) -> tuple[
+    list[str],
+    list[str],
+    list[str],
+    dict[str, FileSnapshot | None],
+    dict[str, PathIdentity | None],
+]:
     if is_link_or_junction(target):
         raise ProjectInitializationError(f"target must be a real directory: {target}")
     if target.exists() and not target.is_dir():
@@ -451,15 +609,20 @@ def inspect_target(
     creates: list[str] = []
     edits: list[str] = []
     preserves: list[str] = []
-    preconditions: dict[str, bytes | None] = {}
+    preconditions: dict[str, FileSnapshot | None] = {}
+    directory_preconditions: dict[str, PathIdentity | None] = {
+        ".": directory_identity(target) if target.exists() else None
+    }
     for relative in sorted(directories):
         path = target / relative
         if is_link_or_junction(path) or (path.exists() and not path.is_dir()):
             raise ProjectInitializationError(f"required directory conflicts: {relative}")
         if path.exists():
             preserves.append(relative + "/")
+            directory_preconditions[relative] = directory_identity(path)
         else:
             creates.append(relative + "/")
+            directory_preconditions[relative] = None
 
     for relative, expected in sorted(expected_files.items()):
         path = target / relative
@@ -469,14 +632,11 @@ def inspect_target(
             creates.append(relative)
             preconditions[relative] = None
             continue
-        observed = path.read_bytes()
+        observed = file_snapshot(path)
         preconditions[relative] = observed
         if relative == "AGENTS.md":
-            try:
-                updated, action = managed_agents(observed.decode("utf-8"), managed_block)
-            except UnicodeError as exc:
-                raise ProjectInitializationError("AGENTS.md is not UTF-8") from exc
-            expected_files[relative] = updated.encode("utf-8")
+            updated, action = managed_agents(observed.content, managed_block)
+            expected_files[relative] = updated
             (edits if action == "append" else preserves).append(relative)
         elif relative in {
             "README.md",
@@ -487,27 +647,67 @@ def inspect_target(
             relative.startswith("src/") and relative.endswith("/SKILL.md")
         ):
             preserves.append(relative)
-        elif observed == expected:
+        elif observed.content == expected:
             preserves.append(relative)
         else:
             raise ProjectInitializationError(f"managed file differs: {relative}")
-    return creates, edits, preserves, preconditions
+    return creates, edits, preserves, preconditions, directory_preconditions
 
 
-def write_atomic(path: Path, content: bytes, expected_existing: bytes | None) -> None:
+def validate_planned_topology(
+    directories: set[str], expected_files: dict[str, bytes], optional_directories: set[str]
+) -> None:
+    file_paths = {PurePosixPath(relative) for relative in expected_files}
+    directory_paths = {
+        PurePosixPath(relative) for relative in directories | optional_directories
+    }
+    for directory in directory_paths:
+        if directory in file_paths or any(parent in file_paths for parent in directory.parents):
+            raise ProjectInitializationError(
+                f"planned directory conflicts with a managed file: {directory.as_posix()}"
+            )
+    for file_path in file_paths:
+        if any(parent in file_paths for parent in file_path.parents):
+            raise ProjectInitializationError(
+                f"planned file has a managed-file parent: {file_path.as_posix()}"
+            )
+
+
+def write_atomic(
+    path: Path, content: bytes, expected_existing: FileSnapshot | None
+) -> AppliedFile:
     if expected_existing is None:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        created = os.fstat(descriptor)
         try:
             with os.fdopen(descriptor, "wb") as handle:
+                if hasattr(os, "fchmod"):
+                    os.fchmod(handle.fileno(), 0o644)
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
+                created_final = os.fstat(handle.fileno())
+            if not hasattr(os, "fchmod"):
+                os.chmod(path, 0o644)
         except Exception:
-            if path.exists():
-                path.unlink()
+            try:
+                observed = path.stat(follow_symlinks=False)
+                if observed.st_dev == created.st_dev and observed.st_ino == created.st_ino:
+                    path.unlink()
+            except OSError:
+                pass
             raise
-        return
-    if not path.is_file() or path.read_bytes() != expected_existing:
+        return AppliedFile(
+            path=path,
+            snapshot=FileSnapshot(
+                content=content,
+                mode=stat.S_IMODE(created_final.st_mode),
+                device=created_final.st_dev,
+                inode=created_final.st_ino,
+            ),
+            previous=None,
+        )
+    if not same_file_snapshot(path, expected_existing):
         raise ProjectInitializationError(f"file changed after planning: {path}")
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
@@ -516,12 +716,70 @@ def write_atomic(path: Path, content: bytes, expected_existing: bytes | None) ->
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        if path.read_bytes() != expected_existing:
+        os.chmod(temporary, expected_existing.mode)
+        installed = temporary.stat(follow_symlinks=False)
+        if not same_file_snapshot(path, expected_existing):
             raise ProjectInitializationError(f"file changed during apply: {path}")
         os.replace(temporary, path)
     finally:
         if temporary.exists():
             temporary.unlink()
+    return AppliedFile(
+        path=path,
+        snapshot=FileSnapshot(
+            content=content,
+            mode=expected_existing.mode,
+            device=installed.st_dev,
+            inode=installed.st_ino,
+        ),
+        previous=expected_existing,
+    )
+
+
+def restore_file(applied: AppliedFile) -> bool:
+    if not same_file_snapshot(applied.path, applied.snapshot):
+        return False
+    if applied.previous is None:
+        applied.path.unlink()
+        return True
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{applied.path.name}.rollback.", dir=applied.path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(applied.previous.content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, applied.previous.mode)
+        if same_file_snapshot(applied.path, applied.snapshot):
+            os.replace(temporary, applied.path)
+            return True
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return False
+
+
+def rollback_apply(
+    applied_files: list[AppliedFile], created_directories: list[tuple[Path, PathIdentity]]
+) -> list[str]:
+    unresolved: list[str] = []
+    for applied in reversed(applied_files):
+        try:
+            if not restore_file(applied):
+                unresolved.append(str(applied.path))
+        except OSError:
+            unresolved.append(str(applied.path))
+    for path, identity in reversed(created_directories):
+        try:
+            if same_directory(path, identity):
+                path.rmdir()
+            elif path.exists() or is_link_or_junction(path):
+                unresolved.append(str(path))
+        except OSError:
+            unresolved.append(str(path))
+    return unresolved
 
 
 def initialize(
@@ -537,7 +795,11 @@ def initialize(
 ) -> dict[str, object]:
     raw_target = target.expanduser().absolute()
     project_name = project_name or raw_target.name
-    if not PROJECT_NAME.fullmatch(project_name):
+    if (
+        not PROJECT_NAME.fullmatch(project_name)
+        or MANAGED_START in project_name
+        or MANAGED_END in project_name
+    ):
         raise ProjectInitializationError("project name is empty or contains a path separator")
     repository_root = safe_relative(repository_root, "repository_root")
     records_dir = safe_relative(records_dir, "records_dir")
@@ -551,6 +813,8 @@ def initialize(
     elif skill_name is not None:
         raise ProjectInitializationError("--skill-name is valid only with --profile agent-skill")
     validate_existing_path_components(raw_target, repository_root, "repository_root")
+    validate_existing_path_components(raw_target, records_dir, "records_dir")
+    validate_project_root_git_boundary(raw_target)
     helper_source = Path(__file__).resolve().with_name("project_access.py")
     if is_link_or_junction(helper_source) or not helper_source.is_file():
         raise ProjectInitializationError("packaged project_access.py is missing or linked")
@@ -638,34 +902,85 @@ def initialize(
     if records_dir is not None:
         expected_files[f"{records_dir}/INDEX.md"] = render_records_index().encode("utf-8")
 
-    creates, edits, preserves, preconditions = inspect_target(
+    optional_directories = {
+        relative for relative in (repository_root, records_dir) if relative is not None
+    }
+    validate_planned_topology(directories, expected_files, optional_directories)
+
+    creates, edits, preserves, preconditions, directory_preconditions = inspect_target(
         raw_target, mode, directories, expected_files, managed_block
     )
     if apply and (creates or edits):
-        raw_target.mkdir(exist_ok=True)
-        for relative in sorted(directories, key=lambda item: (item.count("/"), item)):
-            (raw_target / relative).mkdir(exist_ok=True)
-        files_to_write = {
-            relative for relative in creates + edits if not relative.endswith("/")
-        }
-        ordered_files = sorted(
-            files_to_write,
-            key=lambda item: (item == "AGENTS.md", item),
-        )
-        for relative in ordered_files:
-            path = raw_target / relative
-            expected_existing = preconditions[relative]
-            if expected_existing is not None and path.read_bytes() == expected_files[relative]:
-                continue
-            write_atomic(path, expected_files[relative], expected_existing)
-        # Re-read with the same contract. Any remaining create/edit is a failed apply.
-        verified_create, verified_edit, _, _ = inspect_target(
-            raw_target, "adopt-existing", directories, expected_files, managed_block
-        )
-        if verified_create or verified_edit:
-            raise ProjectInitializationError(
-                "post-write readback failed: " + ", ".join(verified_create + verified_edit)
+        created_directories: list[tuple[Path, PathIdentity]] = []
+        applied_files: list[AppliedFile] = []
+        directory_states: dict[str, PathIdentity] = {}
+        try:
+            planned_root = directory_preconditions["."]
+            if planned_root is None:
+                identity = create_directory(raw_target)
+                directory_states["."] = identity
+                created_directories.append((raw_target, identity))
+            elif same_directory(raw_target, planned_root):
+                directory_states["."] = planned_root
+            else:
+                raise ProjectInitializationError("target changed after planning")
+
+            for relative in sorted(directories, key=lambda item: (item.count("/"), item)):
+                path = raw_target / relative
+                parent = PurePosixPath(relative).parent.as_posix()
+                parent_key = "." if parent == "." else parent
+                parent_identity = directory_states.get(parent_key)
+                if parent_identity is None or not same_directory(path.parent, parent_identity):
+                    raise ProjectInitializationError(
+                        f"directory parent changed after planning: {relative}"
+                    )
+                planned_directory = directory_preconditions[relative]
+                if planned_directory is None:
+                    identity = create_directory(path)
+                    created_directories.append((path, identity))
+                    directory_states[relative] = identity
+                elif same_directory(path, planned_directory):
+                    directory_states[relative] = planned_directory
+                else:
+                    raise ProjectInitializationError(
+                        f"required directory changed after planning: {relative}"
+                    )
+
+            files_to_write = {
+                relative for relative in creates + edits if not relative.endswith("/")
+            }
+            ordered_files = sorted(
+                files_to_write,
+                key=lambda item: (item == "AGENTS.md", item),
             )
+            for relative in ordered_files:
+                path = raw_target / relative
+                parent = PurePosixPath(relative).parent.as_posix()
+                parent_key = "." if parent == "." else parent
+                parent_identity = directory_states.get(parent_key)
+                if parent_identity is None or not same_directory(path.parent, parent_identity):
+                    raise ProjectInitializationError(
+                        f"file parent changed after planning: {relative}"
+                    )
+                applied_files.append(
+                    write_atomic(path, expected_files[relative], preconditions[relative])
+                )
+            # Re-read inside the transaction. A failed readback rolls back this run.
+            verified_create, verified_edit, _, _, _ = inspect_target(
+                raw_target, "adopt-existing", directories, expected_files, managed_block
+            )
+            if verified_create or verified_edit:
+                raise ProjectInitializationError(
+                    "post-write readback failed: " + ", ".join(verified_create + verified_edit)
+                )
+        except Exception as exc:
+            unresolved = rollback_apply(applied_files, created_directories)
+            if unresolved:
+                raise ProjectInitializationError(
+                    f"{exc}; rollback preserved changed or unrecoverable paths: "
+                    + ", ".join(sorted(set(unresolved)))
+                ) from exc
+            raise
 
     return {
         "status": (

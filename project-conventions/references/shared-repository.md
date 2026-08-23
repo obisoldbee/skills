@@ -114,7 +114,7 @@ Verification requires platform-exact link type and exact target. Unix additional
 
 ## Update-only
 
-The named package's `update_shared_checkout.py` is the update entry. It may change the shared checkout's remote-tracking refs and fast-forward `HEAD`; it may not change wrapper files, projections, indexes, records, exports, or consumer links.
+The named package's `update_shared_checkout.py` is the update entry. After fetch, it freezes the upstream commit, extracts only the named package into an isolated temporary tree, runs that candidate's package validator, then rechecks local Git state and fast-forwards only the exact validated commit. A linked package, linked validator, or failed candidate validation leaves local `HEAD` and the worktree unchanged; the fetch may still change remote-tracking refs. It may not change wrapper files, projections, indexes, records, exports, or consumer links.
 
 Because Git updates a repository commit, other published package bytes in that checkout can also advance. This does not authorize work on their wrappers or consumers. Report the named package validation and stop.
 

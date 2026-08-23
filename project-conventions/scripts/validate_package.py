@@ -27,9 +27,19 @@ REQUIRED_FILES = {
     "scripts/update_shared_checkout.py",
     "scripts/validate_package.py",
     "scripts/validate_project_root.py",
+    "references/agents-md-template.md",
+    "references/conversation-format.md",
+    "references/directory-layout.md",
+    "references/fork-workflow.md",
+    "references/lifecycle-workflows.md",
+    "references/migration-guide.md",
     "references/project-access.md",
+    "references/project-collection.md",
     "references/project-root-initialization.md",
+    "references/projects-workspace.md",
+    "references/review-naming.md",
     "references/shared-repository.md",
+    "references/versioned-records.md",
 }
 REQUIRED_DIRECTORIES = {"agents", "references", "scripts"}
 TEXT_SUFFIXES = {".json", ".md", ".ps1", ".py", ".sh", ".toml", ".tsv", ".yaml", ".yml"}

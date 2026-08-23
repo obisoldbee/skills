@@ -2,7 +2,7 @@
 
 This document provides the step-by-step procedure for migrating a project's directory layout to conform to the `project-conventions` standard. It is based on real-world migrations (OB Dim, Pets) and covers safety checks, atomic moves, reference syncing, and verification.
 
-Before any migration write, obtain the initialized Project Root's exclusive project-local `writer` claim. If the access helper is missing, initialize/adopt the Project Root first or remain read-only. A blocked Agent does not create a migration record, move files, or update indexes. Keep the claim through readback, conversation, and memory updates, then finish it.
+在任何迁移写入前，必须获取已完成治理接入的项目根目录所属的项目本地独占 `writer` 准入。如果本地准入助手缺失，只有用户另行针对该项目明确授权“旧项目治理接入”后才能补齐；否则保持只读，不得把迁移授权、无关修复或发现缺失助手自动解释为接入授权。准入被阻断时，不得新建迁移记录、移动文件或更新索引。准入必须保持到读回、会话记录和连续性记录更新完成，然后正常结束。
 
 ## When to Use This Guide
 

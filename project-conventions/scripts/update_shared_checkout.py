@@ -3,8 +3,8 @@
 
 This is the deterministic update-only entry point. It resolves the Git worktree
 from the requested package, refuses dirty/ahead/detached/diverged states, performs
-at most one fetch plus fast-forward, validates only the named package, reports
-before/after commits, and stops. It never edits
+at most one fetch, validates the named package from the frozen candidate commit,
+then fast-forwards that exact commit, reports before/after commits, and stops. It never edits
 wrappers, indexes, records, or Skill links.
 """
 
@@ -17,7 +17,9 @@ import re
 import stat
 import subprocess
 import sys
-from pathlib import Path
+import tarfile
+import tempfile
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 
@@ -167,6 +169,82 @@ def validate_after_update(repository_root: Path, package_root: Path) -> list[str
     return completed
 
 
+def extract_candidate_archive(archive: Path, destination: Path, package_name: str) -> None:
+    destination.mkdir()
+    with tarfile.open(archive, mode="r:") as bundle:
+        members: list[tuple[tarfile.TarInfo, str]] = []
+        observed: set[str] = set()
+        for member in bundle.getmembers():
+            raw_name = member.name.rstrip("/")
+            relative = PurePosixPath(raw_name)
+            if (
+                not raw_name
+                or "\\" in raw_name
+                or relative.is_absolute()
+                or not relative.parts
+                or any(part in {"", ".", ".."} for part in relative.parts)
+                or relative.as_posix() != raw_name
+                or relative.parts[0] != package_name
+                or raw_name in observed
+            ):
+                raise UpdateError(f"unsafe or duplicate candidate archive path: {member.name!r}")
+            if not (member.isdir() or member.isreg()):
+                raise UpdateError(f"candidate package contains a linked path: {raw_name}")
+            observed.add(raw_name)
+            members.append((member, raw_name))
+
+        for member, raw_name in members:
+            if member.isdir():
+                (destination / raw_name).mkdir(parents=True, exist_ok=True)
+        for member, raw_name in members:
+            if not member.isreg():
+                continue
+            path = destination / raw_name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            source = bundle.extractfile(member)
+            if source is None:
+                raise UpdateError(f"candidate archive file cannot be read: {raw_name}")
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    while chunk := source.read(1024 * 1024):
+                        handle.write(chunk)
+                    if hasattr(os, "fchmod"):
+                        os.fchmod(handle.fileno(), 0o755 if member.mode & 0o111 else 0o644)
+                if not hasattr(os, "fchmod"):
+                    os.chmod(path, 0o755 if member.mode & 0o111 else 0o644)
+            except Exception:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                raise
+
+
+def validate_candidate(
+    repository_root: Path,
+    candidate: str,
+    package_name: str,
+) -> list[str]:
+    with tempfile.TemporaryDirectory(prefix="project-conventions-candidate-") as raw:
+        temporary = Path(raw)
+        archive = temporary / "candidate.tar"
+        run(
+            repository_root,
+            "git",
+            "archive",
+            "--format=tar",
+            f"--output={archive}",
+            candidate,
+            "--",
+            package_name,
+        )
+        candidate_root = temporary / "tree"
+        extract_candidate_archive(archive, candidate_root, package_name)
+        validate_after_update(candidate_root, candidate_root / package_name)
+    return [f"validate_package.py {package_name} at {candidate}"]
+
+
 def update(
     package_root: Path,
     package_name: str,
@@ -252,12 +330,13 @@ def update(
     )
     if fetch.returncode != 0:
         raise UpdateError(f"git fetch failed for configured remote {remote_name}")
+    candidate = git(repository_root, "rev-parse", upstream)
     counts = git(
         repository_root,
         "rev-list",
         "--left-right",
         "--count",
-        f"HEAD...{upstream}",
+        f"{before}...{candidate}",
     ).split()
     if len(counts) != 2:
         raise UpdateError(f"unexpected ahead/behind output: {' '.join(counts)}")
@@ -272,34 +351,104 @@ def update(
         "git",
         "merge-base",
         "--is-ancestor",
-        "HEAD",
-        upstream,
+        before,
+        candidate,
         allow_failure=True,
     )
     if ancestor.returncode != 0:
         raise UpdateError("checkout cannot fast-forward to its upstream")
-    if behind:
-        git(repository_root, "merge", "--ff-only", upstream)
+    try:
+        validations = validate_candidate(repository_root, candidate, package_name)
+    except UpdateError as exc:
+        raise UpdateError(
+            f"candidate {candidate} validation failed before fast-forward: {exc}"
+        ) from exc
 
-    after = git(repository_root, "rev-parse", "HEAD")
-    upstream_head = git(repository_root, "rev-parse", upstream)
-    if after != upstream_head:
-        raise UpdateError(f"post-update HEAD differs from upstream: {after} != {upstream_head}")
+    current_head = git(repository_root, "rev-parse", "HEAD")
+    if current_head != before:
+        raise UpdateError(f"checkout HEAD changed during candidate validation: {current_head}")
+    current_branch = run(
+        repository_root,
+        "git",
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "HEAD",
+        allow_failure=True,
+    ).stdout.strip()
+    if current_branch != branch:
+        raise UpdateError("checkout branch changed during candidate validation")
+    current_upstream = git(
+        repository_root,
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{upstream}",
+    )
+    if current_upstream != upstream:
+        raise UpdateError("checkout upstream changed during candidate validation")
     if git(
         repository_root,
         "status",
         "--porcelain=v1",
         "--untracked-files=all",
     ):
-        raise UpdateError("checkout became dirty during update")
-
-    try:
-        validations = validate_after_update(repository_root, package_root)
-    except UpdateError as exc:
+        raise UpdateError("checkout became dirty during candidate validation")
+    current_operations = operation_in_progress(repository_root)
+    if current_operations:
         raise UpdateError(
-            f"checkout state after update is {after}; validation failed after "
-            f"{before} -> {after}: {exc}"
-        ) from exc
+            "Git operation or lock appeared during candidate validation: "
+            + ", ".join(current_operations)
+        )
+    current_origin = git(repository_root, "remote", "get-url", remote_name)
+    if current_origin != origin or not remote_matches(current_origin, remote_identity):
+        raise UpdateError("checkout remote changed during candidate validation")
+    current_candidate = git(repository_root, "rev-parse", upstream)
+    if current_candidate != candidate:
+        raise UpdateError(
+            f"upstream changed during candidate validation: {candidate} -> {current_candidate}"
+        )
+
+    if behind:
+        git(repository_root, "merge", "--ff-only", candidate)
+
+    after = git(repository_root, "rev-parse", "HEAD")
+    if after != candidate:
+        raise UpdateError(f"post-update HEAD differs from validated candidate: {after} != {candidate}")
+    final_branch = run(
+        repository_root,
+        "git",
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "HEAD",
+        allow_failure=True,
+    ).stdout.strip()
+    final_upstream = git(
+        repository_root,
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{upstream}",
+    )
+    final_upstream_head = git(repository_root, "rev-parse", final_upstream)
+    final_origin = git(repository_root, "remote", "get-url", remote_name)
+    final_status = git(
+        repository_root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    )
+    final_operations = operation_in_progress(repository_root)
+    if (
+        final_branch != branch
+        or final_upstream != upstream
+        or final_upstream_head != candidate
+        or final_origin != origin
+        or final_status
+        or final_operations
+    ):
+        raise UpdateError("checkout state changed during final update readback")
     return {
         "status": "updated" if before != after else "already_current",
         "lifecycle": "update-only",

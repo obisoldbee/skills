@@ -25,6 +25,16 @@ SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 CONTROL_DIRECTORY = ".project-conventions"
 CONFIG_FILE = "project.json"
 DATABASE_FILE = "access.sqlite3"
+GIT_OPERATION_MARKERS = (
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "REVERT_HEAD",
+    "BISECT_LOG",
+    "rebase-apply",
+    "rebase-merge",
+    "index.lock",
+    "shallow.lock",
+)
 MANAGED_START = "<!-- project-conventions:access:start -->"
 MANAGED_END = "<!-- project-conventions:access:end -->"
 RESERVED_SHARED_PATHS = (
@@ -37,6 +47,17 @@ RESERVED_SHARED_PATHS = (
     "MEMBERS.md",
     "memory",
 )
+HARNESS_ENTRIES = {
+    ".agents",
+    ".claude",
+    ".codex",
+    ".minimax",
+    ".qoder",
+    ".qoderworkcn",
+    ".trae",
+    ".workbuddy",
+}
+RESERVED_OPTIONAL_PATH_PARTS = {".git", CONTROL_DIRECTORY, *HARNESS_ENTRIES}
 WINDOWS_RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -79,10 +100,17 @@ def portable_text_sha256(content: bytes) -> str:
 def safe_config_relative(value: object, label: str) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str) or not value or "\\" in value:
+    if not isinstance(value, str) or not value or value != value.strip() or "\\" in value:
         raise AccessError(f"{label} must be a portable relative path")
+    value = unicodedata.normalize("NFC", value)
     path = PurePosixPath(value)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    if (
+        path.is_absolute()
+        or not path.parts
+        or path.as_posix() != value
+        or path.as_posix() == "."
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
         raise AccessError(f"{label} must be a normalized relative path")
     for part in path.parts:
         stem = part.split(".", 1)[0].upper()
@@ -92,6 +120,8 @@ def safe_config_relative(value: object, label: str) -> str | None:
             or stem in WINDOWS_RESERVED_NAMES
         ):
             raise AccessError(f"{label} is not portable across supported filesystems")
+        if part.casefold() in {entry.casefold() for entry in RESERVED_OPTIONAL_PATH_PARTS}:
+            raise AccessError(f"{label} enters a reserved project boundary")
     return path.as_posix()
 
 
@@ -338,6 +368,14 @@ def git_evidence(project_root: Path) -> dict[str, object]:
         common_dir = project_root / common_dir
     git_dir = git_dir.resolve()
     common_dir = common_dir.resolve()
+    operation_markers = sorted(
+        {
+            marker
+            for base in {git_dir, common_dir}
+            for marker in GIT_OPERATION_MARKERS
+            if (base / marker).exists() or is_link_or_junction(base / marker)
+        }
+    )
     status = run_git(project_root, "status", "--porcelain=v1", "--untracked-files=normal")
     status_text = status if status is not None else "<git-status-unavailable>"
     return {
@@ -347,13 +385,22 @@ def git_evidence(project_root: Path) -> dict[str, object]:
         "git_dir": str(git_dir),
         "git_common_dir": str(common_dir),
         "linked_worktree": path_identity(git_dir) != path_identity(common_dir),
+        "operation_markers": operation_markers,
         "status_sha256": hashlib.sha256(status_text.encode("utf-8")).hexdigest(),
         "clean": status_text == "",
     }
 
 
 def connect(database: Path) -> sqlite3.Connection:
-    database.parent.mkdir(parents=True, exist_ok=True)
+    ensure_runtime_boundary(database, create=True)
+    if not database.exists():
+        try:
+            descriptor = os.open(database, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            ensure_runtime_boundary(database, create=False)
+        else:
+            os.close(descriptor)
+    ensure_runtime_boundary(database, create=False)
     connection = sqlite3.connect(database, timeout=5.0, isolation_level=None)
     connection.execute("PRAGMA busy_timeout = 5000")
     connection.execute("PRAGMA journal_mode = DELETE")
@@ -406,6 +453,28 @@ def connect(database: Path) -> sqlite3.Connection:
     return connection
 
 
+def ensure_runtime_boundary(database: Path, create: bool) -> None:
+    runtime = database.parent
+    if is_link_or_junction(runtime):
+        raise AccessError("runtime directory must not be a symlink or junction")
+    if runtime.exists():
+        if not runtime.is_dir():
+            raise AccessError("runtime path must be a real directory")
+    elif create:
+        parent = runtime.parent
+        if is_link_or_junction(parent) or not parent.is_dir():
+            raise AccessError("runtime parent must be a real directory")
+        try:
+            runtime.mkdir()
+        except FileExistsError:
+            if is_link_or_junction(runtime) or not runtime.is_dir():
+                raise AccessError("runtime directory collision is linked or not a directory")
+    if is_link_or_junction(database):
+        raise AccessError("runtime database must not be a symlink or junction")
+    if database.exists() and not database.is_file():
+        raise AccessError("runtime database path is not a real file")
+
+
 def public_claims(connection: sqlite3.Connection) -> list[dict[str, object]]:
     rows = connection.execute(
         "SELECT session_id, mode, actor, workspace, acquired_at, write_paths_json, evidence_json "
@@ -444,7 +513,14 @@ def normalize_write_paths(values: list[str]) -> list[str]:
             raise AccessError("write paths must be normalized workspace-relative Git paths")
         value = unicodedata.normalize("NFC", value)
         path = PurePosixPath(value)
-        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        candidate = path.as_posix()
+        if (
+            path.is_absolute()
+            or not path.parts
+            or candidate == "."
+            or candidate != value
+            or any(part in {"", ".", ".."} for part in path.parts)
+        ):
             raise AccessError("write paths must be normalized workspace-relative Git paths")
         for part in path.parts:
             stem = part.split(".", 1)[0].upper()
@@ -454,7 +530,6 @@ def normalize_write_paths(values: list[str]) -> list[str]:
                 or stem in WINDOWS_RESERVED_NAMES
             ):
                 raise AccessError("write paths must be portable across supported filesystems")
-        candidate = path.as_posix()
         if candidate not in normalized:
             normalized.append(candidate)
     return sorted(normalized)
@@ -542,11 +617,19 @@ def enter(
         actual_workspace = project_root
     token = secrets.token_hex(24)
     evidence = git_evidence(actual_workspace)
+    if mode == "writer" and evidence.get("linked_worktree"):
+        raise AccessError(
+            "exclusive writer must enter from the canonical worktree or Project Root wrapper"
+        )
     if mode == "isolated-writer":
         if not evidence.get("git_backed") or not evidence.get("linked_worktree"):
             raise AccessError("isolated-writer requires a real linked Git worktree")
         if not evidence.get("clean"):
             raise AccessError("isolated-writer worktree must be clean before admission")
+        if evidence.get("branch") == "detached":
+            raise AccessError("isolated-writer requires an attached branch")
+        if evidence.get("operation_markers"):
+            raise AccessError("isolated-writer worktree has an active Git operation")
         if storage != "git-common-dir":
             raise AccessError("isolated-writer requires a Git-common coordination backend")
         expected_common = database.parent.parent.resolve()
@@ -667,6 +750,8 @@ def check_claim(
         original = dict(claim["evidence"])
         if not evidence.get("git_backed") or not evidence.get("linked_worktree"):
             raise AccessError("isolated-writer workspace is no longer a linked Git worktree")
+        if evidence.get("branch") == "detached" or evidence.get("operation_markers"):
+            raise AccessError("isolated-writer branch or Git operation state is invalid")
         if (
             path_identity(str(evidence.get("git_dir")))
             != path_identity(str(original.get("git_dir")))
@@ -853,6 +938,7 @@ def main() -> int:
         project_root, control, config = resolve_control(Path(__file__))
         runtime, storage = runtime_root(project_root, control, config)
         database = runtime / DATABASE_FILE
+        ensure_runtime_boundary(database, create=False)
         if arguments.command == "status":
             result = status(project_root, database, storage)
         elif arguments.command == "enter":

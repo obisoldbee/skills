@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import ast
+import importlib.util
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -12,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DISTRIBUTION_ROOT = PACKAGE_ROOT.parent
@@ -36,6 +40,13 @@ class LifecycleWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.skill = (PACKAGE_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        cls.readme = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
+        cls.initialization = (
+            PACKAGE_ROOT / "references" / "project-root-initialization.md"
+        ).read_text(encoding="utf-8")
+        cls.migration = (
+            PACKAGE_ROOT / "references" / "migration-guide.md"
+        ).read_text(encoding="utf-8")
         cls.lifecycle = (
             PACKAGE_ROOT / "references" / "lifecycle-workflows.md"
         ).read_text(encoding="utf-8")
@@ -92,8 +103,8 @@ class LifecycleWorkflowTests(unittest.TestCase):
             "read-only",
             "isolated-writer",
             "blocked or failed configured admission means no write",
-            "do not pause the requested work merely to propose `adopt-existing`",
-            "does not authorize or require retroactive initialization",
+            "不得自动接入",
+            "不得仅因此阻断原任务",
         ):
             self.assertIn(required, self.skill)
         for required in (
@@ -137,6 +148,41 @@ class LifecycleWorkflowTests(unittest.TestCase):
         ):
             self.assertTrue((PACKAGE_ROOT / "scripts" / required_file).is_file())
 
+    def test_legacy_project_adoption_contract_is_complete_chinese_and_routed(self) -> None:
+        section = self.initialization.split("## 旧项目治理接入合同", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        for required in (
+            "`adopt-existing` 在本文中称为“旧项目治理接入”",
+            "逐项目明确授权",
+            "仅限于补齐 `AGENTS.md` 路由",
+            "项目本地准入助手 `.project-conventions/project_access.py`",
+            "最小管理目录和初始管理记录",
+            "原样保留所有已有资料",
+            "不得移动、重命名、删除、复制或重新归类",
+            "不得新建或移动 `Git` 仓库",
+            "不得执行 `fetch` 或 `push`",
+            "不得安装 `Skill`",
+            "不得建立 `Agent` 消费者链接",
+            "`dry-run` 指只展示计划而不写入",
+            "任何失败都必须回滚本轮新建内容",
+            "不得自动接入",
+            "不得仅因此阻断原任务",
+        ):
+            self.assertIn(required, section)
+        chinese_narrative = re.sub(r"`[^`]+`", "", section)
+        self.assertIsNone(re.search(r"[A-Za-z]{2,}", chinese_narrative))
+        for routed in (self.skill, self.readme, self.lifecycle, self.migration):
+            self.assertIn("旧项目治理接入", routed)
+
+        update_contract = "\n".join((self.skill, self.lifecycle, self.shared))
+        for required in (
+            "frozen candidate commit",
+            "isolated temporary candidate tree",
+            "fast-forwards only the exact validated commit",
+            "leaves local `HEAD` and the worktree unchanged",
+        ):
+            self.assertIn(required, update_contract)
+
     def test_project_root_workflow_suite_passes(self) -> None:
         result = self.run_command(
             [
@@ -157,6 +203,14 @@ class LifecycleWorkflowTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
+
+    def load_script(self, path: Path, name: str):
+        spec = importlib.util.spec_from_file_location(name, path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
     def git(self, cwd: Path, *arguments: str) -> str:
         result = self.run_command(["git", *arguments], cwd=cwd)
@@ -289,6 +343,149 @@ class LifecycleWorkflowTests(unittest.TestCase):
             "Require the pool root to be a real non-Git directory",
             self.lifecycle,
         )
+
+    def test_minimal_collection_initializer_rejects_links_and_rolls_back(self) -> None:
+        initializer = self.load_script(
+            PACKAGE_ROOT / "scripts" / "initialize_project_collection.py",
+            "project_collection_initializer_test",
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw).resolve()
+            outside = base / "outside"
+            outside.mkdir()
+            leaf = base / "leaf"
+            self.create_directory_link(leaf, outside)
+            with self.assertRaises(initializer.InitializationError):
+                initializer.initialize(leaf, "control", [], True)
+
+            relay = base / "relay"
+            self.create_directory_link(relay, outside)
+            with self.assertRaises(initializer.InitializationError):
+                initializer.initialize(relay / "collection", "control", [], True)
+            self.assertFalse((outside / "collection").exists())
+
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw).resolve() / "collection"
+            original = initializer.write_exclusive
+
+            def collide(path: Path, content: str):
+                if path.name == "README.md":
+                    path.write_text("concurrent\n", encoding="utf-8")
+                return original(path, content)
+
+            with mock.patch.object(initializer, "write_exclusive", side_effect=collide):
+                with self.assertRaises(initializer.InitializationError):
+                    initializer.initialize(target, "control", [], True)
+            self.assertEqual(
+                {path.name for path in target.iterdir()},
+                {"README.md"},
+            )
+            self.assertEqual(
+                (target / "README.md").read_text(encoding="utf-8"),
+                "concurrent\n",
+            )
+
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw).resolve() / "collection"
+            original = initializer.write_exclusive
+
+            def fail_second(path: Path, content: str):
+                if path.name == "README.md":
+                    raise OSError("injected write failure")
+                return original(path, content)
+
+            with mock.patch.object(initializer, "write_exclusive", side_effect=fail_second):
+                with self.assertRaises(OSError):
+                    initializer.initialize(target, "control", [], True)
+            self.assertFalse(target.exists())
+
+    def test_shared_initializer_preserves_race_collisions_and_rolls_back_readback(self) -> None:
+        initializer = self.load_script(
+            PACKAGE_ROOT / "scripts" / "initialize_skills_control_project.py",
+            "skills_control_initializer_test",
+        )
+
+        def apply(collection: Path, checkout: Path):
+            return initializer.initialize(
+                collection,
+                checkout,
+                "skills",
+                "GitHub",
+                "project-conventions",
+                "project-conventions",
+                "obisoldbee/skills",
+                "main",
+                "personal-open",
+                True,
+            )
+
+        with tempfile.TemporaryDirectory() as raw:
+            collection, checkout, _remote = self.create_shared_fixture(Path(raw))
+            collection, checkout = collection.resolve(), checkout.resolve()
+            initializer.PACKAGE_ROOT = checkout / "project-conventions"
+            original = initializer.materialize_staging_tree
+
+            def collide_directory(staging, destination, *arguments):
+                if destination == collection / "skills":
+                    destination.mkdir()
+                return original(staging, destination, *arguments)
+
+            with mock.patch.object(
+                initializer,
+                "materialize_staging_tree",
+                side_effect=collide_directory,
+            ):
+                with self.assertRaises(FileExistsError):
+                    apply(collection, checkout)
+            self.assertTrue((collection / "skills").is_dir())
+            self.assertEqual(list((collection / "skills").iterdir()), [])
+            self.assertFalse((collection / "project-conventions").exists())
+
+        with tempfile.TemporaryDirectory() as raw:
+            collection, checkout, _remote = self.create_shared_fixture(Path(raw))
+            collection, checkout = collection.resolve(), checkout.resolve()
+            initializer.PACKAGE_ROOT = checkout / "project-conventions"
+            original = initializer.write_exclusive
+
+            def collide_file(path: Path, content: str):
+                if path == collection / "AGENTS.md":
+                    path.write_text("concurrent\n", encoding="utf-8")
+                return original(path, content)
+
+            with mock.patch.object(initializer, "write_exclusive", side_effect=collide_file):
+                with self.assertRaises(FileExistsError):
+                    apply(collection, checkout)
+            self.assertEqual(
+                (collection / "AGENTS.md").read_text(encoding="utf-8"),
+                "concurrent\n",
+            )
+            self.assertFalse((collection / "skills").exists())
+            self.assertFalse((collection / "project-conventions").exists())
+
+        with tempfile.TemporaryDirectory() as raw:
+            collection, checkout, _remote = self.create_shared_fixture(Path(raw))
+            collection, checkout = collection.resolve(), checkout.resolve()
+            initializer.PACKAGE_ROOT = checkout / "project-conventions"
+            original = initializer.verify_control_tree
+
+            def fail_final_readback(root: Path, *arguments):
+                original(root, *arguments)
+                if root == collection / "skills":
+                    raise initializer.ControlInitializationError(
+                        "injected final readback failure"
+                    )
+
+            with mock.patch.object(
+                initializer,
+                "verify_control_tree",
+                side_effect=fail_final_readback,
+            ):
+                with self.assertRaises(initializer.ControlInitializationError):
+                    apply(collection, checkout)
+            self.assertEqual(
+                {path.name for path in collection.iterdir()},
+                {"GitHub"},
+            )
 
     def test_fresh_shared_collection_is_complete_and_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -558,6 +755,63 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.assertEqual(repeated.returncode, 0, repeated.stderr)
             self.assertEqual(json.loads(repeated.stdout)["status"], "already_initialized")
             self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), before_head)
+
+    def test_shared_roles_reject_empty_source_projection_sets(self) -> None:
+        def initialize(raw: str):
+            collection, checkout, _remote = self.create_shared_fixture(Path(raw))
+            initializer = (
+                checkout
+                / "project-conventions"
+                / "scripts"
+                / "initialize_skills_control_project.py"
+            )
+            applied = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(initializer),
+                    str(collection),
+                    "--distribution-root",
+                    str(checkout),
+                    "--apply",
+                ]
+            )
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            validator = (
+                checkout
+                / "project-conventions"
+                / "scripts"
+                / "validate_project_root.py"
+            )
+            return collection, validator
+
+        with tempfile.TemporaryDirectory() as raw:
+            collection, validator = initialize(raw)
+            control = collection / "skills"
+            for projection in (control / "src").iterdir():
+                if is_windows_junction(projection):
+                    projection.rmdir()
+                else:
+                    projection.unlink()
+            control_result = self.run_command(
+                [sys.executable, "-B", str(validator), str(control)]
+            )
+            self.assertNotEqual(control_result.returncode, 0)
+            self.assertIn("exactly four projections", control_result.stderr)
+
+        with tempfile.TemporaryDirectory() as raw:
+            collection, validator = initialize(raw)
+            member = collection / "project-conventions"
+            for projection in (member / "src").iterdir():
+                if is_windows_junction(projection):
+                    projection.rmdir()
+                else:
+                    projection.unlink()
+            member_result = self.run_command(
+                [sys.executable, "-B", str(validator), str(member)]
+            )
+            self.assertNotEqual(member_result.returncode, 0)
+            self.assertIn("only its package projection", member_result.stderr)
 
     def test_initializer_refuses_unknown_collection_content(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -1000,6 +1254,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.git(seed, "push", "origin", "main")
             package = checkout / "project-conventions"
             updater = package / "scripts" / "update_shared_checkout.py"
+            before = self.git(checkout, "rev-parse", "HEAD")
             result = self.run_command(
                 [
                     sys.executable,
@@ -1011,10 +1266,14 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(result.returncode, 2)
-            self.assertIn("package validator is missing or linked", result.stderr)
+            self.assertIn("validation failed before fast-forward", result.stderr)
+            self.assertIn("candidate package contains a linked path", result.stderr)
+            self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), before)
+            self.assertEqual(self.git(checkout, "status", "--porcelain=v1"), "")
+            self.assertFalse((package / "scripts" / "validate_package.py").is_symlink())
 
     @unittest.skipIf(os.name == "nt", "Git symlink fixture is Unix-only")
-    def test_update_only_rejects_package_replaced_by_link_after_fast_forward(self) -> None:
+    def test_update_only_rejects_package_replaced_by_link_before_fast_forward(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             base = Path(raw)
             seed, checkout, remote = self.create_update_fixture(base)
@@ -1028,6 +1287,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.git(seed, "add", "-A")
             self.git(seed, "commit", "-m", "replace package with linked fixture")
             self.git(seed, "push", "origin", "main")
+            before = self.git(checkout, "rev-parse", "HEAD")
             result = self.run_command(
                 [
                     sys.executable,
@@ -1039,8 +1299,38 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(result.returncode, 2)
-            self.assertIn("managed package root is outside its exact real path or linked", result.stderr)
-            self.assertTrue(checkout_package.is_symlink())
+            self.assertIn("validation failed before fast-forward", result.stderr)
+            self.assertIn("candidate package contains a linked path", result.stderr)
+            self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), before)
+            self.assertEqual(self.git(checkout, "status", "--porcelain=v1"), "")
+            self.assertFalse(checkout_package.is_symlink())
+
+    def test_update_only_validation_failure_leaves_checkout_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            seed, checkout, remote = self.create_update_fixture(Path(raw))
+            package = checkout / "project-conventions"
+            updater = package / "scripts" / "update_shared_checkout.py"
+            before = self.git(checkout, "rev-parse", "HEAD")
+            (seed / "project-conventions" / "README.md").unlink()
+            self.git(seed, "add", "-A")
+            self.git(seed, "commit", "-m", "invalid package candidate")
+            self.git(seed, "push", "origin", "main")
+
+            result = self.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(updater),
+                    str(package),
+                    "--remote-identity",
+                    str(remote),
+                ]
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("validation failed before fast-forward", result.stderr)
+            self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), before)
+            self.assertEqual(self.git(checkout, "status", "--porcelain=v1"), "")
+            self.assertTrue((package / "README.md").is_file())
 
     def test_package_validator_is_offline_and_rejects_transients(self) -> None:
         validator = PACKAGE_ROOT / "scripts" / "validate_package.py"
@@ -1068,6 +1358,36 @@ class LifecycleWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(invalid_link.returncode, 1)
             self.assertIn("package root is missing or linked", invalid_link.stderr)
+
+    def test_every_required_package_file_is_enforced(self) -> None:
+        validator = PACKAGE_ROOT / "scripts" / "validate_package.py"
+        module = ast.parse(validator.read_text(encoding="utf-8"))
+        assignment = next(
+            node
+            for node in module.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "REQUIRED_FILES"
+                for target in node.targets
+            )
+        )
+        required = sorted(ast.literal_eval(assignment.value))
+        with tempfile.TemporaryDirectory() as raw:
+            package = Path(raw) / "project-conventions"
+            shutil.copytree(PACKAGE_ROOT, package)
+            for relative in required:
+                with self.subTest(relative=relative):
+                    path = package / relative
+                    content = path.read_bytes()
+                    mode = stat.S_IMODE(path.stat().st_mode)
+                    path.unlink()
+                    result = self.run_command(
+                        [sys.executable, "-B", str(validator), str(package)]
+                    )
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn(relative, result.stderr)
+                    path.write_bytes(content)
+                    path.chmod(mode)
 
     def test_package_validator_rejects_required_links_before_reading_them(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
