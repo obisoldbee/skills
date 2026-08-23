@@ -10,7 +10,14 @@ import struct
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from common import sha256_file, stable_id, utc_now, write_json
+from common import ensure_within, package_relative, sha256_file, stable_id, utc_now, write_json
+
+
+def is_public_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Treat IPv4-mapped IPv6 as its mapped address and require global routing."""
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    return bool(address.is_global)
 
 
 def canonical_url(raw: str) -> tuple[str | None, str | None]:
@@ -22,7 +29,7 @@ def canonical_url(raw: str) -> tuple[str | None, str | None]:
         return None, "local_or_internal_host"
     try:
         address = ipaddress.ip_address(host)
-        if address.is_private or address.is_loopback or address.is_link_local or address.is_multicast or address.is_reserved:
+        if not is_public_address(address):
             return None, "non_public_ip_literal"
     except ValueError:
         pass
@@ -62,6 +69,7 @@ def main() -> int:
     source.add_argument("--url")
     source.add_argument("--image", type=Path)
     parser.add_argument("--package-root", type=Path, required=True)
+    parser.add_argument("--case-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--case-id")
     parser.add_argument("--url-kind", choices=["web_page", "video_page"], default="web_page")
@@ -70,12 +78,15 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.package_root.resolve()
+    case_root = ensure_within(args.case_root, root)
+    out = ensure_within(args.out, case_root)
     if args.url:
         url, blocked_reason = canonical_url(args.url)
         identifier = url or args.url
         record = {
-            "schema": "web-bookmark-intelligence/intake/v1",
+            "schema": "web-bookmark-intelligence/intake/v2",
             "case_id": args.case_id or stable_id("case", identifier),
+            "case_root": package_relative(case_root, root),
             "created_at": utc_now(),
             "input_kind": args.url_kind,
             "source_locator": url or args.url,
@@ -98,8 +109,9 @@ def main() -> int:
         is_long = bool(width and height and height / max(width, 1) >= 3)
         digest = sha256_file(image)
         record = {
-            "schema": "web-bookmark-intelligence/intake/v1",
+            "schema": "web-bookmark-intelligence/intake/v2",
             "case_id": args.case_id or stable_id("case", digest),
+            "case_root": package_relative(case_root, root),
             "created_at": utc_now(),
             "input_kind": "long_image" if is_long else "screenshot",
             "source_locator": str(image),
@@ -115,7 +127,7 @@ def main() -> int:
             "install_authorized": False,
             "adoption_authorized": False,
         }
-    write_json(args.out, record, root)
+    write_json(out, record, root)
     print(record["case_id"])
     return 0
 

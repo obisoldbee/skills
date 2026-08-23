@@ -36,3 +36,5 @@ Pass `--repos` a JSON array. One repository snapshot has this minimum shape:
 ## Action-card fields
 
 Every candidate action card contains `same_as_existing`, `new_vs_existing`, `matched_context_ids`, `matched_repo_ids`, `evidence_refs`, `uncertainties`, `recommendation`, and `user_decision_required`. Valid recommendations include `poc_candidate`, `research_refresh`, `catalog_only`, `rule_candidate`, `duplicate_existing`, `ignore_low_value`, and `reject_conflict_or_risk`.
+
+`content-units/v2` must bind to the same case root/id and evidence-assessment path/hash used by `page-purpose-request/v2`. `build_action_cards.py` emits no cards when the assessment is failed, blocked, not case-bound, when purpose is not ready, or when content units point at another assessment/case. A zero-card blocked output is an evidence-gate result, not an empty successful interpretation.

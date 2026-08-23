@@ -7,7 +7,7 @@
 
 The migrated package keeps one capture core for public webpages, WeChat/public-account pages, bookmark batches, and the serial/resumable Shoulong profile. It does not create a second Shoulong scraper.
 
-The WorkBuddy lineage has an apparent metadata mismatch: the current WorkBuddy `SKILL.md` frontmatter reports `1.4.0`, while its live `wechat_archive.py` declares `VERSION = "v1.5.1"`. Runtime execution must bind and receipt the actual script path and SHA-256; it must not infer implementation bytes from the frontmatter version alone.
+The WorkBuddy lineage has an apparent metadata mismatch: the retained WorkBuddy `SKILL.md` frontmatter reports `1.4.0`, while its retained `wechat_archive.py` declares `VERSION = "v1.5.1"`. Runtime identity is now exact-hash based: the wrapper binds the supplied and resolved script paths, pre/post implementation SHA-256, command, logs, and artifact inventory. An unknown script receives no observed version. The retained v1.5.1 hash also lacks package evidence for every-hop DNS validation or IP pinning, so it remains provenance evidence rather than a compatible current network executor.
 
 On 2026-08-11, the 21-file working candidate was atomically moved from the collection-relative `working-skills/src/workflows/media/web-bookmark-intelligence/` path to the shared Git package scope `GitHub/web-bookmark-intelligence/`. Its pre-migration sorted relative-path/content-SHA inventory digest was `0e4c3b05d78d923a3b897c2be4d513abda874649916bfdf0365f52f04ba6b2bc`. The former working path is now a route adapter with no implementation bytes.
 

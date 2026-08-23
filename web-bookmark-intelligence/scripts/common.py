@@ -22,6 +22,12 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_json(value: object) -> str:
+    """Hash one JSON-compatible value using a stable, compact encoding."""
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def stable_id(prefix: str, value: str, length: int = 12) -> str:
     return f"{prefix}-{hashlib.sha256(value.encode('utf-8')).hexdigest()[:length]}"
 
@@ -34,6 +40,37 @@ def ensure_within(target: Path, package_root: Path) -> Path:
     except ValueError as exc:
         raise ValueError(f"write target escapes package root: {target}") from exc
     return resolved
+
+
+def package_relative(target: Path, package_root: Path) -> str:
+    """Return a portable package-root-relative path after enforcing containment."""
+    return str(ensure_within(target, package_root).relative_to(package_root.resolve()))
+
+
+def resolve_declared_path(value: object, package_root: Path) -> Path:
+    """Resolve an absolute or package-relative receipt path inside package_root."""
+    raw = Path(str(value))
+    candidate = raw if raw.is_absolute() else package_root.resolve() / raw
+    return ensure_within(candidate, package_root)
+
+
+def file_reference_matches(
+    reference: object,
+    package_root: Path,
+    boundary: Path,
+    *,
+    path_key: str = "path",
+    hash_key: str = "sha256",
+) -> bool:
+    """Verify one regular file reference and hash inside a declared boundary."""
+    if not isinstance(reference, dict):
+        return False
+    try:
+        path = resolve_declared_path(reference.get(path_key), package_root)
+        ensure_within(path, boundary)
+    except (TypeError, ValueError):
+        return False
+    return path.is_file() and not path.is_symlink() and reference.get(hash_key) == sha256_file(path)
 
 
 def write_json(target: Path, data: object, package_root: Path) -> None:

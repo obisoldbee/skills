@@ -7,12 +7,15 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
-from common import ensure_within, read_json, stable_id, utc_now, write_json
+from common import ensure_within, file_reference_matches, package_relative, read_json, resolve_declared_path, sha256_file, stable_id, utc_now, write_json
+from assess_capture_evidence import validate_persisted_assessment
 from intake_case import canonical_url
 
-TERMINAL_STATES = {"captured", "partial", "blocked", "failed"}
-SHARED_CAPTURE_PIPELINE = "workbuddy_v1_5_1_shared"
+TERMINAL_STATES = {"captured", "blocked", "failed"}
+PASSING_ASSESSMENT_STATES = {"full_body", "full_body_with_media_supplement", "needs_image_supplement"}
+SHARED_CAPTURE_PIPELINE = "workbuddy_shared_pending_quality"
 WORKBUDDY_ADAPTER = "workbuddy_wechat_article_archive"
 
 
@@ -21,6 +24,55 @@ def load_urls(values: list[str], url_file: Path | None) -> list[str]:
     if url_file:
         collected.extend(line.strip() for line in url_file.read_text(encoding="utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#"))
     return collected
+
+
+def passing_case_assessment(case_dir: Path, item: dict[str, object], root: Path) -> dict[str, object] | None:
+    """Return a bound assessment receipt only when it closes the quality gate."""
+    assessment_path = case_dir / "evidence-assessment.json"
+    if not assessment_path.is_file() or assessment_path.is_symlink():
+        return None
+    assessment = read_json(assessment_path)
+    if not isinstance(assessment, dict):
+        return None
+    binding = assessment.get("case_binding")
+    try:
+        declared_root = resolve_declared_path(assessment.get("case_root"), root)
+    except (TypeError, ValueError):
+        return None
+    if (
+        assessment.get("schema") != "web-bookmark-intelligence/evidence-assessment/v2"
+        or assessment.get("case_id") != item.get("case_id")
+        or declared_root != case_dir.resolve()
+        or not isinstance(binding, dict)
+        or binding.get("valid") is not True
+        or assessment.get("page_purpose_ready") is not True
+        or assessment.get("final_status") not in PASSING_ASSESSMENT_STATES
+    ):
+        return None
+    intake = assessment.get("intake")
+    dom = assessment.get("dom")
+    media = assessment.get("media")
+    dom_reference = {
+        "path": dom.get("capture_path") if isinstance(dom, dict) else None,
+        "sha256": dom.get("sha256") if isinstance(dom, dict) else None,
+    }
+    if not file_reference_matches(intake, root, case_dir) or not file_reference_matches(dom_reference, root, case_dir):
+        return None
+    if isinstance(media, dict) and media.get("provided") is True and not file_reference_matches(media, root, case_dir):
+        return None
+    if validate_persisted_assessment(
+        assessment_path,
+        root,
+        case_dir,
+        str(item.get("case_id") or ""),
+        str(item.get("source_url") or ""),
+    ):
+        return None
+    return {
+        "path": package_relative(assessment_path, root),
+        "sha256": sha256_file(assessment_path),
+        "final_status": assessment.get("final_status"),
+    }
 
 
 def main() -> int:
@@ -51,10 +103,29 @@ def main() -> int:
         canonical, unsafe_reason = canonical_url(raw_url)
         source_url = canonical or raw_url
         existing = prior_by_url.get(source_url)
-        if existing and existing.get("status") in TERMINAL_STATES:
-            cases.append(existing)
-            continue
-        host_matches = bool(canonical and "chinalowcarb.com" in canonical.split("/", 3)[2].lower())
+        if existing:
+            existing = dict(existing)
+            case_dir = out_dir / "cases" / str(existing.get("case_id"))
+            prior_status = existing.get("status")
+            batch_identity_valid = existing.get("case_id") == stable_id("case", source_url)
+            assessment = (
+                passing_case_assessment(case_dir, existing, root)
+                if batch_identity_valid and prior_status in {"pending_quality", "captured"}
+                else None
+            )
+            if assessment:
+                existing["status"] = "captured"
+                existing["quality_assessment"] = assessment
+                existing["blocked_reason"] = None
+            elif prior_status in {"pending_quality", "captured"}:
+                existing["status"] = "pending_quality"
+                existing.pop("quality_assessment", None)
+                existing["blocked_reason"] = "stale_or_invalid_quality_assessment"
+            if existing.get("status") in TERMINAL_STATES or existing.get("status") == "pending_quality":
+                cases.append(existing)
+                continue
+        host = (urlparse(canonical).hostname or "").lower() if canonical else ""
+        host_matches = host == "chinalowcarb.com" or host.endswith(".chinalowcarb.com")
         status = "planned"
         blocked_reason = unsafe_reason
         if args.profile == "shoulong" and not host_matches:
@@ -74,6 +145,7 @@ def main() -> int:
                 "quality_gate": "capture_pipeline.py",
                 "media_route_on_text_failure": "media_understanding_then_ocr",
                 "continuity_key": stable_id("batch", source_url) if args.profile == "shoulong" else None,
+                "quality_assessment_required": True,
             }
         )
 
@@ -99,8 +171,24 @@ def main() -> int:
                 str(args.workbuddy_script.resolve()),
             ]
             completed = subprocess.run(command, capture_output=True, text=True, check=False)
-            item["status"] = "captured" if completed.returncode == 0 else "failed"
+            receipt_path = case_dir / "capture-execution-receipt.json"
+            receipt = read_json(receipt_path) if receipt_path.is_file() else {}
+            receipt_status = receipt.get("status") if isinstance(receipt, dict) else None
+            if completed.returncode == 0 and receipt_status == "captured_pending_quality_gate":
+                item["status"] = "pending_quality"
+                item["blocked_reason"] = None
+            elif receipt_status == "needs_compatible_executor":
+                item["status"] = "blocked"
+                item["blocked_reason"] = receipt.get("blocked_reason")
+            else:
+                item["status"] = "failed"
+                item["blocked_reason"] = receipt.get("blocked_reason") if isinstance(receipt, dict) else "capture_execution_failed"
             item["execution_returncode"] = completed.returncode
+            if receipt_path.is_file():
+                item["capture_receipt"] = {
+                    "path": package_relative(receipt_path, root),
+                    "sha256": sha256_file(receipt_path),
+                }
     elif execution_blocked:
         for item in cases:
             if item["status"] == "planned":
@@ -108,13 +196,14 @@ def main() -> int:
                 item["blocked_reason"] = "missing_network_authorization_or_workbuddy_script"
 
     batch = {
-        "schema": "web-bookmark-intelligence/batch/v1",
+        "schema": "web-bookmark-intelligence/batch/v2",
         "created_at": utc_now(),
         "profile": args.profile,
         "capture_pipeline": SHARED_CAPTURE_PIPELINE,
         "workbuddy_adapter": WORKBUDDY_ADAPTER,
         "max_workers": 1,
         "resume_policy": "preserve_terminal_states",
+        "capture_completion_gate": "case-bound evidence-assessment/v2 with a passing final_status",
         "formal_write_authorized": False,
         "cases": cases,
     }

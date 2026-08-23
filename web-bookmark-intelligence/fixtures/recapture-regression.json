@@ -10,10 +10,13 @@
   "workbuddy": {
     "implementation": "workbuddy_wechat_article_archive",
     "baseline_version": "v1.5.1",
-    "script_sha256": "bb6f11eab11de44882b6563b012424ddd6b631197be4874fc1c4b7c0e29737df"
+    "script_sha256": "bb6f11eab11de44882b6563b012424ddd6b631197be4874fc1c4b7c0e29737df",
+    "redirect_rebind_protection": "not_proven_by_historical_receipts",
+    "current_execution_eligibility": "needs_compatible_executor"
   },
   "global_guards": {
     "network_calls": 0,
+    "historical_replay_is_not_current_executor_proof": true,
     "tls_verification_disabled": false,
     "meta_description_as_body_is_never_allowed": true,
     "final_states": [

@@ -8,7 +8,16 @@ import html
 import re
 from pathlib import Path
 
-from common import meaningful_char_count, sha256_file, utc_now, write_json
+from common import (
+    ensure_within,
+    meaningful_char_count,
+    package_relative,
+    read_json,
+    resolve_declared_path,
+    sha256_file,
+    utc_now,
+    write_json,
+)
 
 
 PLACEHOLDER_TERMS = (
@@ -59,6 +68,53 @@ def body_region(document: str) -> str:
             return match.group(1)
     match = re.search(r"<body\b[^>]*>(.*?)</body>", cleaned, flags=re.I | re.S)
     return match.group(1) if match else cleaned
+
+
+def dom_media_inventory(document: str) -> list[dict[str, object]]:
+    """Return a deterministic occurrence inventory for body img/canvas nodes."""
+    region = body_region(document)
+    inventory: list[dict[str, object]] = []
+    first_by_locator: dict[tuple[str, str], str] = {}
+    for index, match in enumerate(
+        re.finditer(r"<(img|canvas)\b([^>]*)>", region, flags=re.I), 1
+    ):
+        kind = match.group(1).lower()
+        attributes = match.group(2)
+        locator: str | None = None
+        if kind == "img":
+            source = re.search(
+                r"\bsrc\s*=\s*(?:['\"]([^'\"]*)['\"]|([^\s>]+))",
+                attributes,
+                flags=re.I,
+            )
+            if source:
+                locator = html.unescape(source.group(1) or source.group(2) or "").strip() or None
+        else:
+            canvas_id = re.search(
+                r"\bid\s*=\s*(?:['\"]([^'\"]*)['\"]|([^\s>]+))",
+                attributes,
+                flags=re.I,
+            )
+            locator = (
+                f"id:{html.unescape(canvas_id.group(1) or canvas_id.group(2) or '').strip()}"
+                if canvas_id and (canvas_id.group(1) or canvas_id.group(2) or "").strip()
+                else None
+            )
+        dom_id = f"media-{index:04d}"
+        duplicate_of = None
+        if locator is not None:
+            key = (kind, locator)
+            duplicate_of = first_by_locator.get(key)
+            first_by_locator.setdefault(key, dom_id)
+        inventory.append(
+            {
+                "dom_id": dom_id,
+                "kind": kind,
+                "locator": locator,
+                "duplicate_of": duplicate_of,
+            }
+        )
+    return inventory
 
 
 def paragraphs(region: str) -> list[str]:
@@ -140,30 +196,101 @@ def decide_gate(document: str, rendered: bool) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--html", type=Path, required=True)
+    parser.add_argument("--intake", type=Path, required=True)
     parser.add_argument("--package-root", type=Path, required=True)
+    parser.add_argument("--case-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--source-url")
     parser.add_argument("--rendered", action="store_true")
     parser.add_argument("--case-id")
+    parser.add_argument("--media-asset", type=Path, action="append", default=[])
     args = parser.parse_args()
 
-    html_path = args.html.resolve()
+    root = args.package_root.resolve()
+    case_root = ensure_within(args.case_root, root)
+    html_path = ensure_within(args.html, case_root)
+    intake_path = ensure_within(args.intake, case_root)
+    out_path = ensure_within(args.out, case_root)
     if not html_path.is_file():
         raise SystemExit(f"HTML input does not exist: {html_path}")
+    if not intake_path.is_file():
+        raise SystemExit(f"intake record does not exist: {intake_path}")
+    intake = read_json(intake_path)
+    if not isinstance(intake, dict):
+        raise SystemExit("intake record must be an object")
+    if intake.get("schema") != "web-bookmark-intelligence/intake/v2":
+        raise SystemExit("intake record must use web-bookmark-intelligence/intake/v2")
+    intake_case_id = str(intake.get("case_id") or "")
+    if not intake_case_id:
+        raise SystemExit("intake record is missing case_id")
+    if args.case_id and args.case_id != intake_case_id:
+        raise SystemExit("case-id does not match intake record")
+    declared_case_root = resolve_declared_path(intake.get("case_root"), root)
+    if declared_case_root != case_root:
+        raise SystemExit("case-root does not match intake record")
+    if args.source_url and intake.get("source_locator") != args.source_url:
+        raise SystemExit("source-url does not match intake record")
+
     document = html_path.read_text(encoding="utf-8", errors="replace")
+    dom_inventory = dom_media_inventory(document)
+    unique_dom_items = [item for item in dom_inventory if item["duplicate_of"] is None]
+    if len(args.media_asset) > len(unique_dom_items):
+        raise SystemExit("more media assets were supplied than unique DOM media items")
+    asset_by_dom_id: dict[str, dict[str, object]] = {}
+    source_assets: list[dict[str, object]] = []
+    for dom_item, asset_arg in zip(unique_dom_items, args.media_asset):
+        asset = ensure_within(asset_arg, case_root)
+        if not asset.is_file() or asset.is_symlink():
+            raise SystemExit(f"media asset must be a regular case-local file: {asset}")
+        reference = {
+            "path": package_relative(asset, root),
+            "sha256": sha256_file(asset),
+            "bytes": asset.stat().st_size,
+        }
+        asset_by_dom_id[str(dom_item["dom_id"])] = reference
+        source_assets.append({**reference, "dom_ids": [dom_item["dom_id"]]})
+    by_dom_id: dict[str, dict[str, object]] = {}
+    bound_dom_inventory: list[dict[str, object]] = []
+    for item in dom_inventory:
+        source_reference = asset_by_dom_id.get(str(item["dom_id"]))
+        if item["duplicate_of"] is not None:
+            source_reference = by_dom_id[str(item["duplicate_of"])].get("source_asset")
+            if source_reference is not None:
+                for source_asset in source_assets:
+                    if (
+                        source_asset["path"] == source_reference["path"]
+                        and source_asset["sha256"] == source_reference["sha256"]
+                    ):
+                        source_asset["dom_ids"].append(item["dom_id"])
+                        break
+        bound = {
+            **item,
+            "availability": "captured" if source_reference is not None else "unavailable",
+            "source_asset": source_reference,
+        }
+        by_dom_id[str(item["dom_id"])] = bound
+        bound_dom_inventory.append(bound)
     gate = decide_gate(document, args.rendered)
     record = {
-        "schema": "web-bookmark-intelligence/capture-record/v2",
+        "schema": "web-bookmark-intelligence/capture-record/v3",
         "created_at": utc_now(),
-        "case_id": args.case_id,
-        "source": {"url": args.source_url, "local_html": str(html_path), "sha256": sha256_file(html_path)},
+        "case_id": intake_case_id,
+        "case_root": package_relative(case_root, root),
+        "intake": {"path": package_relative(intake_path, root), "sha256": sha256_file(intake_path)},
+        "source": {
+            "url": args.source_url,
+            "local_html": package_relative(html_path, root),
+            "sha256": sha256_file(html_path),
+        },
+        "source_assets": source_assets,
+        "dom_media_inventory": bound_dom_inventory,
         "capture_adapter": "static_html_probe" if not args.rendered else "rendered_html_probe",
         "title": title(document),
         "quality_gate": gate,
         "capture_status": "captured_pending_evidence_fusion" if gate["status"] == "pass" else "partial" if gate["status"] != "failed" else "failed",
         "formal_write_authorized": False,
     }
-    write_json(args.out, record, args.package_root.resolve())
+    write_json(out_path, record, root)
     print(gate["status"])
     return 0
 
