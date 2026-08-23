@@ -67,15 +67,15 @@ Use this machine-checkable shape when a durable plan is useful:
         "model": "gpt-5.6-sol",
         "reasoning": "max",
         "surface": "visible_thread",
-        "model_basis": "auto_unspecified",
-        "reasoning_basis": "auto_unspecified"
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
       }
     }
   ]
 }
 ~~~
 
-Allowed route bases are `explicit_user`, `auto_requested`, and `auto_unspecified`. Record model and reasoning bases separately so a user-selected model is never replaced merely because reasoning was left automatic, and vice versa. `requested_route` binds alias semantics: `spark` requires the bundled CLI at `xhigh`, while `luna-max` requires a visible Luna task at `max`.
+Allowed route bases are `explicit_user`, `explicit_skill_route`, `explicit_auto`, and `platform_default`. Record model and reasoning bases separately, and retain every raw user value as `requested_model` or `requested_reasoning`. A raw user-selected value applies to one axis and must equal its effective value; an explicitly selected alias binds both axes; explicit `auto` authorizes classification only on that axis; an unselected axis has a null value and must be omitted from `create_thread`. A bare Skill trigger or task-creation request therefore uses `requested_route=platform-default`, not an automatically selected worker alias. `requested_route` still binds explicit alias semantics: `spark` requires the bundled CLI at `xhigh`, while `luna-max` requires a visible Luna task at `max`.
 
 ## 3. Independence and concurrency
 
@@ -113,7 +113,7 @@ For a durable multi-task run, create these files under the user-approved output 
 - `controller/status.md` — current wave, ready queue, running lanes, blockers, invalidated gates, next action, and integration state.
 - `controller/router-log.jsonl` — append-only dispatch, message, retry, user intervention, gate, abort, archive, and integration events.
 
-Normalize the actual `create_thread` result and require `scripts/validate_visible_task_receipt.py` to pass before recording creation. Record the exact `actual_tool`, `thread_id` plus `host_id`, or queued `client_thread_id`; never record `/root/<agent>`, `agentPath`, `agentThreadId`, or subagent activity. Never pass a queued client id to a tool that requires a ready task id.
+Normalize the actual `create_thread` result and require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to pass before recording creation. Record the exact `actual_tool`, `actual_create_thread_arguments`, `dispatch_attempt_sha256`, `thread_id` plus `host_id`, or queued `client_thread_id`; never record `/root/<agent>`, `agentPath`, `agentThreadId`, or subagent activity. Never pass a queued client id to a tool that requires a ready task id.
 
 Each router-log line should contain at least:
 

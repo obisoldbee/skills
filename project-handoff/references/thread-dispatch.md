@@ -27,8 +27,10 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 - For Sol, Terra, and Luna initial dispatch, call the live tool whose leaf name is `create_thread`.
 - Never call `spawn_agent`, `collaboration.spawn_agent`, or another hidden-subagent API for a `visible_thread` route. Never treat `subAgentActivity`, `/root/<agent>`, `agentPath`, or `agentThreadId` as task creation evidence.
 - Do not apply a hidden-subagent concurrency-slot limit to visible tasks. Use only the live visible-task capacity and the user's cap.
-- Put the exact planned tool name in the route attempt before calling it. After the call, put the exact actual tool name and normalized raw receipt in a receipt file and run `scripts/validate_visible_task_receipt.py`.
+- Put the exact planned tool name in the route attempt before calling it and retain the route validator's `attempt_sha256`. After the call, put the exact actual tool name, actual route-sensitive arguments, and attempt hash in a normalized receipt, then run `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT`.
 - If either guard fails, set the lane to `failed` with classification `invalid_visible_task_evidence`, record the exact evidence, and stop that dispatch. Do not use `created_confirmed`, `created_unconfirmed`, or `queued`.
+
+Visible-task authority and field authority are separate. A user who only invokes `$project-handoff`, triggers it implicitly, or says “创建任务” authorizes no model/reasoning override. Validate `requested_route=platform-default`, then omit both `model` and `thinking`. A raw explicit value controls only its axis and is retained in `requested_model` or `requested_reasoning`; an explicit alias binds both documented axes; explicit `auto` authorizes classification only on the named axis.
 
 ## `create_thread`
 
@@ -38,11 +40,11 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 - **Parameters**:
   - `prompt`: generated internal handoff envelope;
   - `target`: resolved project/projectless target and allowed environment;
-  - `model` and `thinking`: explicit or authorized automatic route.
+  - `model` and `thinking`: include only fields present in the route validator's `create_thread_arguments`. Omit each field whose basis is `platform_default`; never substitute a Skill-selected value for an omitted axis.
 - **Return**:
   - ready creation: `threadId` and `hostId`;
   - queued worktree setup: `clientThreadId`.
-- **Postcondition**: Normalize the raw return as the receipt shape below and require `scripts/validate_visible_task_receipt.py` to report `valid: true` before registration.
+- **Postcondition**: Normalize the raw return as the receipt shape below, bind it to the exact attempt file, and require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to report `valid: true` before registration.
 - **Failure handling**: An unsupported parameter, invalid request, permission/auth/quota failure, or provider/model failure is not a synchronization delay and must not be retried by stripping or changing route fields. When creation returns an ambiguous result, inspect current task state before considering any new create call. Do not silently use a hidden subagent.
 - **Stop rules**:
   - Do not pass a `clientThreadId` to tools requiring a `threadId`.
@@ -96,10 +98,10 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 
 1. Verify state and authority.
 2. Resolve the live project target.
-3. Select the route, write its dispatch-attempt receipt, and require `valid: true` from `scripts/validate_dispatch_route.py`.
+3. Select the route, write its dispatch-attempt receipt, and require `valid: true` from `scripts/validate_dispatch_route.py`. Preserve its exact `create_thread_arguments` and omitted-field list.
 4. Generate internal prompt.
-5. Create task.
-6. Normalize and validate the real creation receipt.
+5. Create the task without adding any omitted model/thinking field.
+6. Normalize and validate the real creation receipt against the exact pre-dispatch attempt and argument projection.
 7. Set title.
 8. Confirm delivery from the receipt or read back once.
 9. Return task receipt.
@@ -130,7 +132,7 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 
 ## Receipt binding and shape
 
-Write one normalized JSON receipt from the actual `create_thread` result and validate it before updating registry/status/log. The validator rejects hidden-subagent tools and fields, path-like ids, missing ready ids, and false confirmation states; rejected evidence is `failed / invalid_visible_task_evidence`. This syntactic guard does not replace app readback when readback is available.
+Write one normalized JSON receipt from the actual `create_thread` result and validate it together with the exact pre-dispatch attempt before updating registry/status/log. The validator rejects hidden-subagent tools and fields, path-like ids, missing ready ids, false confirmation states, a changed tool/route/attempt hash, and any actual argument that differs from the route validator's exact projection. That exact comparison also rejects injection of a field listed in `omitted_create_thread_fields`. This syntactic guard does not replace app readback when readback is available.
 
 Required creation-receipt fields:
 
@@ -139,6 +141,8 @@ actual_tool: codex_app__create_thread
 status: created_confirmed | created_unconfirmed | queued | failed
 surface: visible_thread
 requested_route: sol-max | terra-max | luna-max | <supported visible route>
+dispatch_attempt_sha256: <64 lowercase hex from the route validator>
+actual_create_thread_arguments: <exact arguments actually passed; may be {}>
 task_kind: codex
 thread_id: <ready task id or null>
 client_thread_id: <queued client id or null>
@@ -163,11 +167,17 @@ host_id:
 title:
 project_id:
 requested_route:
+requested_model: <raw explicit model or null>
+requested_reasoning: <raw explicit reasoning or null>
 model:
 reasoning:
 surface:
-model_basis:
-reasoning_basis:
+model_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
+reasoning_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
+create_thread_arguments:
+omitted_create_thread_fields:
+dispatch_attempt_sha256:
+actual_create_thread_arguments:
 dispatch_guard_valid:
 receipt_guard_valid:
 prompt_verified: receipt | readback | false

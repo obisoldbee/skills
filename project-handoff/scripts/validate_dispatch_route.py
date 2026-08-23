@@ -2,12 +2,19 @@
 """Fail closed on project-handoff route, surface, follow-up, and retry drift."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 
 
-ROUTE_BASES = {"explicit_user", "auto_requested", "auto_unspecified"}
+ROUTE_BASES = {
+    "explicit_user",
+    "explicit_skill_route",
+    "explicit_auto",
+    "platform_default",
+}
 SURFACES = {"visible_thread", "bundled_cli"}
 OPERATIONS = {"initial_dispatch", "followup", "sync_retry", "failure_report"}
 ACTIONS = {
@@ -54,6 +61,8 @@ ALIASES = {
     "spark": SPARK_ROUTE,
     "spark-xhigh": SPARK_ROUTE,
 }
+MISSING = object()
+REASONING_TIERS = ("low", "medium", "high", "xhigh", "max", "ultra")
 
 
 def add_error(errors, message):
@@ -65,6 +74,16 @@ def required_string(value, field, errors):
     if not isinstance(value, str) or not value.strip():
         add_error(errors, f"{field} must be a non-empty string")
         return ""
+    return value.strip()
+
+
+def optional_route_value(value, field, errors):
+    """Normalize an optional model/reasoning axis recorded in a route receipt."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        add_error(errors, f"{field} must be a non-empty string or null")
+        return None
     return value.strip()
 
 
@@ -111,8 +130,10 @@ def validate_route(route, field="route"):
     requested_route = required_string(
         route.get("requested_route"), f"{field}.requested_route", errors
     ).lower()
-    model = required_string(route.get("model"), f"{field}.model", errors)
-    reasoning = required_string(route.get("reasoning"), f"{field}.reasoning", errors)
+    model = optional_route_value(route.get("model"), f"{field}.model", errors)
+    reasoning = optional_route_value(
+        route.get("reasoning"), f"{field}.reasoning", errors
+    )
     surface = required_string(route.get("surface"), f"{field}.surface", errors)
 
     result = {
@@ -125,6 +146,7 @@ def validate_route(route, field="route"):
     if surface and surface not in SURFACES:
         add_error(errors, f"{field}.surface must be one of: {', '.join(sorted(SURFACES))}")
 
+    bases = {}
     for key in ("model_basis", "reasoning_basis"):
         value = route.get(key)
         if value not in ROUTE_BASES:
@@ -134,6 +156,104 @@ def validate_route(route, field="route"):
             )
         else:
             result[key] = value
+            bases[key] = value
+
+    for axis, value in (("model", model), ("reasoning", reasoning)):
+        basis = bases.get(f"{axis}_basis")
+        if basis == "platform_default" and value is not None:
+            add_error(
+                errors,
+                f"silent_default_override: {field}.{axis} must be null or omitted "
+                "when its basis is platform_default",
+            )
+        elif basis in {"explicit_user", "explicit_skill_route", "explicit_auto"}:
+            if value is None:
+                add_error(
+                    errors,
+                    f"{field}.{axis} must be present when its basis is {basis}",
+                )
+
+    model_basis = bases.get("model_basis")
+    reasoning_basis = bases.get("reasoning_basis")
+
+    requested_axes = {}
+    for axis, value, basis in (
+        ("model", model, model_basis),
+        ("reasoning", reasoning, reasoning_basis),
+    ):
+        requested_field = f"requested_{axis}"
+        raw_requested = route.get(requested_field, MISSING)
+        requested = (
+            MISSING
+            if raw_requested is MISSING
+            else optional_route_value(raw_requested, f"{field}.{requested_field}", errors)
+        )
+
+        if basis == "explicit_user":
+            if requested is MISSING or requested is None:
+                add_error(
+                    errors,
+                    f"{field}.{requested_field} must record the explicit user value",
+                )
+                normalized_requested = None
+            else:
+                normalized_requested = requested
+                if value != requested:
+                    add_error(
+                        errors,
+                        f"axis_authority_mismatch: {field}.{axis} must equal "
+                        f"{field}.{requested_field}",
+                    )
+        elif basis == "explicit_skill_route":
+            normalized_requested = requested_route or None
+            if requested is not MISSING and (
+                requested is None or requested.lower() != requested_route
+            ):
+                add_error(
+                    errors,
+                    f"{field}.{requested_field} must equal alias {requested_route}",
+                )
+        elif basis == "explicit_auto":
+            normalized_requested = "auto"
+            if requested is not MISSING and (
+                requested is None or requested.lower() != "auto"
+            ):
+                add_error(errors, f"{field}.{requested_field} must be auto")
+        else:
+            normalized_requested = None
+            if requested is not MISSING and requested is not None:
+                add_error(
+                    errors,
+                    f"{field}.{requested_field} must be null or omitted for platform_default",
+                )
+
+        requested_axes[axis] = {
+            "basis": basis,
+            "requested": normalized_requested,
+            "effective": value,
+        }
+
+    result["requested_axes"] = requested_axes
+
+    if "explicit_auto" not in {model_basis, reasoning_basis}:
+        requested_model = requested_axes["model"]["requested"]
+        if model_basis == "explicit_user" and (
+            not requested_model or requested_route != requested_model.lower()
+        ):
+            add_error(
+                errors,
+                f"{field}.requested_route must equal the explicit requested_model",
+            )
+        if (
+            model_basis == "platform_default"
+            and reasoning_basis == "explicit_user"
+            and requested_route != "reasoning-only"
+        ):
+            add_error(
+                errors,
+                f"{field}.requested_route must be reasoning-only for a raw "
+                "reasoning-only request",
+            )
 
     expected = ALIASES.get(requested_route)
     actual = (model, reasoning, surface)
@@ -144,6 +264,54 @@ def validate_route(route, field="route"):
             f"reasoning={expected[1]}, surface={expected[2]}",
         )
 
+    if expected and (
+        model_basis != "explicit_skill_route"
+        or reasoning_basis != "explicit_skill_route"
+    ):
+        add_error(
+            errors,
+            f"{field} explicit alias {requested_route} requires "
+            "model_basis=explicit_skill_route and "
+            "reasoning_basis=explicit_skill_route",
+        )
+
+    if "explicit_skill_route" in {model_basis, reasoning_basis} and not expected:
+        add_error(
+            errors,
+            f"{field} explicit_skill_route is valid only for a named Skill alias",
+        )
+
+    if requested_route == "platform-default":
+        if surface != "visible_thread":
+            add_error(errors, f"{field} platform-default requires surface=visible_thread")
+        if model_basis != "platform_default" or reasoning_basis != "platform_default":
+            add_error(
+                errors,
+                f"{field} platform-default requires both axes to use "
+                "platform_default",
+            )
+
+    if (
+        model_basis == "platform_default"
+        and reasoning_basis == "platform_default"
+        and requested_route != "platform-default"
+    ):
+        add_error(
+            errors,
+            f"{field} two platform-default axes require requested_route=platform-default",
+        )
+
+    if requested_route == "auto" and "explicit_auto" not in {
+        model_basis,
+        reasoning_basis,
+    }:
+        add_error(errors, f"{field} requested_route=auto requires an explicit_auto axis")
+    if "explicit_auto" in {model_basis, reasoning_basis} and requested_route != "auto":
+        add_error(
+            errors,
+            f"{field} explicit_auto requires requested_route=auto",
+        )
+
     if model == SPARK_MODEL and actual != SPARK_ROUTE:
         add_error(
             errors,
@@ -152,7 +320,187 @@ def validate_route(route, field="route"):
     if surface == "bundled_cli" and model != SPARK_MODEL:
         add_error(errors, f"{field} bundled_cli is reserved for {SPARK_MODEL}")
 
+    create_thread_arguments = {}
+    omitted_create_thread_fields = []
+    if surface == "visible_thread":
+        if model_basis == "platform_default":
+            omitted_create_thread_fields.append("model")
+        elif model is not None:
+            create_thread_arguments["model"] = model
+        if reasoning_basis == "platform_default":
+            omitted_create_thread_fields.append("thinking")
+        elif reasoning is not None:
+            create_thread_arguments["thinking"] = reasoning
+    result["create_thread_arguments"] = create_thread_arguments
+    result["omitted_create_thread_fields"] = omitted_create_thread_fields
+
     return result, errors
+
+
+def dispatch_attempt_sha256(attempt):
+    """Bind a post-create receipt to the exact pre-dispatch record."""
+    canonical = json.dumps(
+        attempt,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _decision_from_route(route):
+    normalized, errors = validate_route(route)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return normalized
+
+
+def resolve_request_case(request, context=None):
+    """Resolve only the documented natural-language grammar used by fixtures.
+
+    This is not a general intent parser. An unrecognized or ambiguous fixture fails
+    instead of inventing authority. Runtime callers still resolve the live request
+    and verify tool capability.
+    """
+    if not isinstance(request, str) or not request.strip():
+        raise ValueError("request must be a non-empty string")
+    context = context if isinstance(context, dict) else {}
+    text = request.strip()
+    lowered = text.lower()
+
+    if (
+        context.get("recipient_create_thread") is False
+        and context.get("recipient_cli") is False
+    ):
+        return {"surface": "portable_prompt_or_file", "mode": "complete_handoff"}
+
+    alias_names = r"(sol-ultra|sol-max|terra-max|luna-max|spark(?:-xhigh)?)"
+    alias_match = re.search(
+        r"(?:用|使用)\s*" + alias_names + r"\s*(?:创建|派发|dispatch|create)",
+        lowered,
+    ) or re.search(
+        r"(?:^|\s)use\s+" + alias_names + r"(?:\s+to)?\s+(?:创建|派发|dispatch|create)",
+        lowered,
+    ) or re.search(
+        r"^(?:\$project-handoff\s+)?" + alias_names + r"\s+(?:创建|派发|dispatch|create)",
+        lowered,
+    )
+    if alias_match:
+        alias = alias_match.group(1)
+        model, reasoning, surface = ALIASES[alias]
+        return _decision_from_route(
+            {
+                "requested_route": alias,
+                "model": model,
+                "reasoning": reasoning,
+                "surface": surface,
+                "model_basis": "explicit_skill_route",
+                "reasoning_basis": "explicit_skill_route",
+            }
+        )
+
+    model_match = re.search(r"模型用\s*(gpt-[a-z0-9.-]+)", lowered)
+    reasoning_match = re.search(
+        r"推理(?:档位)?用\s*(" + "|".join(REASONING_TIERS) + r")",
+        lowered,
+    )
+    if model_match and reasoning_match:
+        model = model_match.group(1)
+        reasoning = reasoning_match.group(1)
+        return _decision_from_route(
+            {
+                "requested_route": model,
+                "requested_model": model,
+                "requested_reasoning": reasoning,
+                "model": model,
+                "reasoning": reasoning,
+                "surface": "visible_thread",
+                "model_basis": "explicit_user",
+                "reasoning_basis": "explicit_user",
+            }
+        )
+    if model_match and not reasoning_match:
+        model = model_match.group(1)
+        return _decision_from_route(
+            {
+                "requested_route": model,
+                "requested_model": model,
+                "model": model,
+                "reasoning": None,
+                "surface": "visible_thread",
+                "model_basis": "explicit_user",
+                "reasoning_basis": "platform_default",
+            }
+        )
+    if reasoning_match and not model_match:
+        reasoning = reasoning_match.group(1)
+        return _decision_from_route(
+            {
+                "requested_route": "reasoning-only",
+                "requested_reasoning": reasoning,
+                "model": None,
+                "reasoning": reasoning,
+                "surface": "visible_thread",
+                "model_basis": "platform_default",
+                "reasoning_basis": "explicit_user",
+            }
+        )
+
+    auto_both = "自动" in text and "模型" in text and "推理" in text
+    if auto_both:
+        if "先设计" in text and "验收后" in text:
+            return {
+                "surface": "visible_thread_pipeline",
+                "requested_route": "auto",
+                "model_basis": "explicit_auto",
+                "reasoning_basis": "explicit_auto",
+                "sequence": [
+                    {"model": "gpt-5.6-sol", "reasoning": "max"},
+                    {"model": "gpt-5.6-terra", "reasoning": "max"},
+                ],
+            }
+
+        if (
+            context.get("controller_model") == "gpt-5.6-sol"
+            and context.get("controller_reasoning") == "ultra"
+            and context.get("project_scale") in {"large", "super-large"}
+        ):
+            model, reasoning, surface = "gpt-5.6-sol", "max", "visible_thread"
+        elif any(marker in text for marker in ("manifest", "YAML", "SHA")) and any(
+            marker in text for marker in ("只读", "不判断")
+        ):
+            model, reasoning, surface = SPARK_ROUTE
+        elif any(marker in text for marker in ("核验", "审核", "风险优先级")):
+            model, reasoning, surface = "gpt-5.6-luna", "max", "visible_thread"
+        elif any(marker in text for marker in ("设计", "架构", "迁移方案")):
+            model, reasoning, surface = "gpt-5.6-sol", "max", "visible_thread"
+        else:
+            model, reasoning, surface = "gpt-5.6-terra", "max", "visible_thread"
+
+        return _decision_from_route(
+            {
+                "requested_route": "auto",
+                "model": model,
+                "reasoning": reasoning,
+                "surface": surface,
+                "model_basis": "explicit_auto",
+                "reasoning_basis": "explicit_auto",
+            }
+        )
+
+    if any(marker in text for marker in ("创建一个新任务", "创建任务", "创建一个任务")):
+        return _decision_from_route(
+            {
+                "requested_route": "platform-default",
+                "model": None,
+                "reasoning": None,
+                "surface": "visible_thread",
+                "model_basis": "platform_default",
+                "reasoning_basis": "platform_default",
+            }
+        )
+
+    raise ValueError("automatic routing requires an explicit auto request")
 
 
 def failure_disposition(failure_class, route, route_errors):
@@ -309,6 +657,7 @@ def validate_attempt(attempt):
         "tool": tool,
         "failure_class": failure_class,
         "failure_disposition": disposition,
+        "attempt_sha256": dispatch_attempt_sha256(attempt),
     }
 
 

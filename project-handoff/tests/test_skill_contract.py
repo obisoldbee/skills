@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -11,6 +13,9 @@ import unittest
 TEST_ROOT = Path(__file__).resolve().parent
 SKILL_ROOT = TEST_ROOT.parent
 WORKSPACE_ROOT = SKILL_ROOT
+sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+
+from validate_dispatch_route import resolve_request_case
 
 
 class ProjectHandoffContractTests(unittest.TestCase):
@@ -46,6 +51,8 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertIn("scripts/validate_visible_task_receipt.py", text)
         self.assertIn("PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE", text)
         self.assertIn("new explicit user request", text)
+        self.assertIn("platform_default", text)
+        self.assertIn("silent_default_override", text)
 
     def test_openai_metadata_invokes_skill(self):
         text = (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
@@ -70,11 +77,11 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertEqual("validated", result["status"])
         self.assertEqual("project-handoff", result["package"])
 
-    def test_seven_routing_cases_use_supported_contract(self):
+    def test_sixteen_natural_language_routing_cases_preserve_field_authority(self):
         cases = json.loads(
             (TEST_ROOT / "routing-cases.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(7, len(cases))
+        self.assertEqual(16, len(cases))
 
         allowed = {
             ("gpt-5.6-sol", "max", "visible_thread"),
@@ -84,27 +91,58 @@ class ProjectHandoffContractTests(unittest.TestCase):
         }
 
         for case in cases:
+            actual = resolve_request_case(case["request"], case.get("context"))
             expected = case["expected"]
+            self.assertEqual(
+                expected,
+                {key: actual.get(key) for key in expected},
+                case["id"],
+            )
             if expected.get("mode") == "complete_handoff":
-                self.assertEqual("portable_prompt_or_file", expected["surface"])
+                self.assertEqual("portable_prompt_or_file", actual["surface"])
                 continue
             if "sequence" in expected:
-                self.assertEqual("visible_thread_pipeline", expected["surface"])
+                self.assertEqual("visible_thread_pipeline", actual["surface"])
+                self.assertEqual("explicit_auto", actual["model_basis"])
+                self.assertEqual("explicit_auto", actual["reasoning_basis"])
                 self.assertEqual(
                     [
                         {"model": "gpt-5.6-sol", "reasoning": "max"},
                         {"model": "gpt-5.6-terra", "reasoning": "max"},
                     ],
-                    expected["sequence"],
+                    actual["sequence"],
                 )
                 continue
 
+            if expected.get("requested_route") == "platform-default":
+                self.assertIsNone(actual["model"])
+                self.assertIsNone(actual["reasoning"])
+                self.assertEqual("platform_default", actual["model_basis"])
+                self.assertEqual("platform_default", actual["reasoning_basis"])
+                self.assertEqual({}, actual["create_thread_arguments"])
+                continue
+
+            if "create_thread_arguments" in expected:
+                arguments = actual["create_thread_arguments"]
+                if actual["model_basis"] == "platform_default":
+                    self.assertNotIn("model", arguments)
+                if actual["reasoning_basis"] == "platform_default":
+                    self.assertNotIn("thinking", arguments)
+                for axis in ("model", "reasoning"):
+                    authority = actual["requested_axes"][axis]
+                    self.assertEqual(actual[f"{axis}_basis"], authority["basis"])
+                    self.assertEqual(actual[axis], authority["effective"])
+                continue
+
             contract = (
-                expected["model"],
-                expected["reasoning"],
-                expected["surface"],
+                actual["model"],
+                actual["reasoning"],
+                actual["surface"],
             )
             self.assertIn(contract, allowed)
+            self.assertIn("模型和推理都自动选", case["request"])
+            self.assertEqual("explicit_auto", actual["model_basis"])
+            self.assertEqual("explicit_auto", actual["reasoning_basis"])
 
         large_case = next(
             case for case in cases
@@ -118,6 +156,18 @@ class ProjectHandoffContractTests(unittest.TestCase):
             },
             large_case["context"],
         )
+
+        alias_case = next(
+            case for case in cases if case["id"] == "explicit-sol-ultra-alias"
+        )["expected"]
+        self.assertEqual("explicit_skill_route", alias_case["model_basis"])
+        self.assertEqual("explicit_skill_route", alias_case["reasoning_basis"])
+
+        auto_case = next(
+            case for case in cases if case["id"] == "explicit-auto-route"
+        )["expected"]
+        self.assertEqual("explicit_auto", auto_case["model_basis"])
+        self.assertEqual("explicit_auto", auto_case["reasoning_basis"])
 
     def test_orchestration_cases_and_validator(self):
         cases = json.loads(
@@ -162,13 +212,13 @@ class ProjectHandoffContractTests(unittest.TestCase):
             case for case in cases if case["id"] == "final-integration-lane"
         )["plan"]["lanes"][0]["route"]
         self.assertEqual("explicit_user", partial_route["model_basis"])
-        self.assertEqual("auto_unspecified", partial_route["reasoning_basis"])
+        self.assertEqual("explicit_user", partial_route["reasoning_basis"])
 
     def test_dispatch_route_guard_rejects_route_drift_and_bad_retries(self):
         cases = json.loads(
             (TEST_ROOT / "dispatch-route-cases.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(17, len(cases))
+        self.assertEqual(34, len(cases))
 
         script = SKILL_ROOT / "scripts" / "validate_dispatch_route.py"
         self.assertTrue(os.access(script, os.X_OK))
@@ -189,6 +239,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
                 result = json.loads(proc.stdout)
                 expected = case["expected"]
                 self.assertEqual(expected["valid"], result["valid"], case["id"])
+                self.assertRegex(result["attempt_sha256"], r"^[0-9a-f]{64}$")
                 self.assertEqual(0 if expected["valid"] else 2, proc.returncode)
                 disposition = result["failure_disposition"]
                 self.assertEqual(
@@ -199,6 +250,17 @@ class ProjectHandoffContractTests(unittest.TestCase):
                     disposition["spark_unavailable_supported"],
                     case["id"],
                 )
+                if "create_thread_arguments" in expected:
+                    self.assertEqual(
+                        expected["create_thread_arguments"],
+                        result["route"]["create_thread_arguments"],
+                        case["id"],
+                    )
+                    self.assertEqual(
+                        expected["omitted_create_thread_fields"],
+                        result["route"]["omitted_create_thread_fields"],
+                        case["id"],
+                    )
                 for field in (
                     "terminal",
                     "next_action",
@@ -220,25 +282,53 @@ class ProjectHandoffContractTests(unittest.TestCase):
                         f"{case['id']}: {result['errors']}",
                     )
 
-    def test_visible_task_receipt_guard_rejects_subagent_evidence(self):
-        cases = json.loads(
+    def test_visible_task_receipt_guard_binds_attempt_tool_route_and_arguments(self):
+        fixture = json.loads(
             (TEST_ROOT / "visible-task-receipt-cases.json").read_text(
                 encoding="utf-8"
             )
         )
-        self.assertEqual(8, len(cases))
+        attempts = fixture["attempts"]
+        cases = fixture["cases"]
+        self.assertEqual(5, len(attempts))
+        self.assertEqual(12, len(cases))
 
         script = SKILL_ROOT / "scripts" / "validate_visible_task_receipt.py"
         self.assertTrue(os.access(script, os.X_OK))
 
         with tempfile.TemporaryDirectory() as temp_dir:
             for case in cases:
+                attempt = attempts[case["attempt"]]
+                attempt_path = Path(temp_dir) / f"{case['id']}-attempt.json"
+                attempt_path.write_text(
+                    json.dumps(attempt, ensure_ascii=False), encoding="utf-8"
+                )
+                receipt = copy.deepcopy(case["receipt"])
+                if receipt["dispatch_attempt_sha256"] == "$ATTEMPT_SHA256":
+                    canonical_attempt = json.dumps(
+                        attempt,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                    receipt["dispatch_attempt_sha256"] = hashlib.sha256(
+                        canonical_attempt
+                    ).hexdigest()
                 receipt_path = Path(temp_dir) / f"{case['id']}.json"
                 receipt_path.write_text(
-                    json.dumps(case["receipt"], ensure_ascii=False), encoding="utf-8"
+                    json.dumps(receipt, ensure_ascii=False), encoding="utf-8"
                 )
                 proc = subprocess.run(
-                    [sys.executable, "-B", str(script), str(receipt_path), "--format", "json"],
+                    [
+                        sys.executable,
+                        "-B",
+                        str(script),
+                        str(receipt_path),
+                        "--dispatch-attempt",
+                        str(attempt_path),
+                        "--format",
+                        "json",
+                    ],
                     text=True,
                     capture_output=True,
                     check=False,
@@ -263,10 +353,24 @@ class ProjectHandoffContractTests(unittest.TestCase):
                         f"{case['id']}: {result['errors']}",
                     )
 
+            attempt = attempts["sol-max"]
+            attempt_path = Path(temp_dir) / "invalid-root-attempt.json"
+            attempt_path.write_text(
+                json.dumps(attempt, ensure_ascii=False), encoding="utf-8"
+            )
             invalid_root_path = Path(temp_dir) / "invalid-root.json"
             invalid_root_path.write_text("[]", encoding="utf-8")
             proc = subprocess.run(
-                [sys.executable, "-B", str(script), str(invalid_root_path), "--format", "json"],
+                [
+                    sys.executable,
+                    "-B",
+                    str(script),
+                    str(invalid_root_path),
+                    "--dispatch-attempt",
+                    str(attempt_path),
+                    "--format",
+                    "json",
+                ],
                 text=True,
                 capture_output=True,
                 check=False,
@@ -303,6 +407,15 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertIn("Resolve `model` and `reasoning` independently", text)
         self.assertIn("model_basis: explicit_user", text)
         self.assertIn("reasoning_basis: explicit_user", text)
+        self.assertIn("explicit_skill_route", text)
+        self.assertIn("explicit_auto", text)
+        self.assertIn("platform_default", text)
+        self.assertIn("silent_default_override", text)
+        self.assertIn("create_thread_arguments", text)
+        self.assertIn("requested_axes", text)
+        self.assertIn("requested_model", text)
+        self.assertIn("requested_reasoning", text)
+        self.assertIn("attempt_sha256", text)
         self.assertIn("dispatch the full ready, conflict-free wave", text)
         self.assertIn("capability is not route authority", text)
         self.assertIn("luna-max", text)
@@ -321,6 +434,10 @@ class ProjectHandoffContractTests(unittest.TestCase):
             "must not be retried",
             "validate_visible_task_receipt.py",
             "collaboration.spawn_agent",
+            "platform_default",
+            "create_thread_arguments",
+            "dispatch_attempt_sha256",
+            "actual_create_thread_arguments",
         ):
             self.assertIn(required, text)
 

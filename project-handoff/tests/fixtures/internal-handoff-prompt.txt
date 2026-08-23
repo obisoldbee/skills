@@ -5,7 +5,7 @@ Background:
 - Current phase: candidate design review
 - Dependencies: none; this lane is ready in the first wave
 - Controller / integration owner: the source task owns routing, writes, and final integration
-- Selected route: no external executor in this fixture; model_basis=auto_unspecified, reasoning_basis=auto_unspecified
+- Selected route: no external executor in this fixture; model_basis=platform_default, reasoning_basis=platform_default; create_thread fields omitted
 - Verified current state: the candidate skill and specification exist in the local Git repository
 - Volatile facts: live Codex model availability must be checked before task creation
 

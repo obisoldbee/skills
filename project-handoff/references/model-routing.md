@@ -16,15 +16,24 @@ Use this reference for automatic selection and for validating that an explicit r
 Resolve `model` and `reasoning` independently:
 
 1. Preserve an explicit user value for that field.
-2. Treat an explicit `auto` for that field as authorization to classify it.
-3. Classify a field only when it is omitted or set to `auto`.
-4. Use a runtime default only when classification remains ambiguous and the user did not make that field explicit.
+2. When the user explicitly selects a Skill alias such as `sol-ultra`, let that alias bind both fields.
+3. Treat an explicit `auto` for that field as authorization to classify it and pass the selected value.
+4. When the user did not select that field, leave it to the platform default and omit it from `create_thread`.
 
-If the user specifies a model but not reasoning, keep the model and select only a compatible reasoning level. If the user specifies reasoning but not a model, keep that reasoning and select only a compatible model. Validate visible-task pairs against the current task-tool schema before dispatch; validate Spark against the bundled wrapper contract, never the visible-task schema.
+Merely invoking `$project-handoff`, triggering the Skill implicitly with “创建任务”, or asking to create a task does not authorize model classification. If neither axis was selected, record `requested_route=platform-default`, set both values to `null`, use `platform_default` for both bases, and call `create_thread` without `model` or `thinking`. This preserves the live platform defaults.
+
+If the user specifies a model but not reasoning, pass only `model`; omit `thinking`. If the user specifies reasoning but not a model, pass only `thinking`; omit `model`. An explicit `auto` applies only to the axis on which it was requested. Validate every value that will be passed against the current task-tool schema before dispatch; validate Spark against the bundled wrapper contract, never the visible-task schema.
 
 An explicit ordered pipeline, lane-to-model mapping, or concurrency cap also wins over automatic planning. Never silently downgrade, upgrade, or substitute an unsupported explicit value; report the unsupported pair and ask for a new choice only when no exact route is possible.
 
-Record each field's basis as `explicit_user`, `auto_requested`, or `auto_unspecified`.
+Record each field's basis as exactly one of:
+
+- `explicit_user` — the user supplied that raw model or reasoning value;
+- `explicit_skill_route` — the user explicitly selected a Skill alias that binds that axis;
+- `explicit_auto` — the user explicitly asked the Skill to select that axis;
+- `platform_default` — the user did not select that axis, so the corresponding tool field must be absent.
+
+The route validator returns `requested_axes` with each axis's basis, requested value, and effective value, plus `create_thread_arguments` using tool field names (`model`, `thinking`) and `omitted_create_thread_fields`. A raw explicit axis must carry `requested_model` or `requested_reasoning`, and its effective value must match. Use the exact argument projection. Supplying a value while its basis is `platform_default` is `silent_default_override` and must fail before dispatch.
 
 ## Aliases
 
@@ -39,6 +48,8 @@ Record each field's basis as `explicit_user`, `auto_requested`, or `auto_unspeci
 Normalize alias casing. Check the live tool declaration before creating a visible task because supported model/reasoning combinations can change. Tool capability is not route authority: an advertised Spark model does not authorize `create_thread`, fork, handoff, or any visible task. `spark` is an atomic CLI-only route, and a nonzero wrapper exit terminates that lane until a new explicit user request changes route. `luna-max` is an atomic max route unless the user explicitly replaces that alias with another route; a later follow-up does not implicitly replace it.
 
 Treat every non-Spark alias above as a visible-task contract, not merely a model selection. Initial dispatch must use the live `create_thread` tool. `spawn_agent`, collaboration subagents, agent paths, and subagent activity receipts never satisfy these aliases.
+
+An explicitly selected alias records both axes as `explicit_skill_route`. If the user instead says `auto`, record `requested_route=auto` and the classified axes as `explicit_auto`; do not relabel an automatic choice as a user-selected alias. A raw model or reasoning value uses `explicit_user` and does not silently bind the other axis.
 
 When the user explicitly names another live-supported reasoning tier such as `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`, preserve it and record a non-alias `requested_route` when it replaces an alias contract. Do not copy a Controller's reasoning tier to workers automatically. Reserve automatic `ultra` for an explicitly requested Controller or a separately documented runtime policy; established worker aliases above remain the default automatic choices.
 
@@ -57,16 +68,18 @@ route_changed: false
 explicit_user_route_change: false
 route:
   requested_route: spark | luna-max | sol-max | terra-max | model-id
-  model:
-  reasoning:
+  requested_model: <required for an explicit raw model; otherwise omit>
+  requested_reasoning: <required for an explicit raw reasoning value; otherwise omit>
+  model: <selected value or null for platform default>
+  reasoning: <selected value or null for platform default>
   surface: visible_thread | bundled_cli
-  model_basis: explicit_user | auto_requested | auto_unspecified
-  reasoning_basis: explicit_user | auto_requested | auto_unspecified
+  model_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
+  reasoning_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
 ~~~
 
-Proceed only when the validator returns `valid: true`. Obey its `terminal`, `next_action`, `visible_task_allowed`, and `route_change_requires_new_user_request` fields. An `unsupported_parameter`, `invalid_request`, or `reasoning.summary` rejection on the visible/Desktop surface is classified as `wrong_surface_or_request`, cannot support a Spark-unavailable claim, and must not be retried by changing or omitting reasoning.
+Proceed only when the validator returns `valid: true`. Retain its `attempt_sha256`. For visible creation, copy only its returned `create_thread_arguments` into the live tool call; do not fill any returned `omitted_create_thread_fields`. Obey its `terminal`, `next_action`, `visible_task_allowed`, and `route_change_requires_new_user_request` fields. An `unsupported_parameter`, `invalid_request`, or `reasoning.summary` rejection on the visible/Desktop surface is classified as `wrong_surface_or_request`, cannot support a Spark-unavailable claim, and must not be retried by changing or omitting reasoning.
 
-After visible creation, normalize the actual `create_thread` return and run `scripts/validate_visible_task_receipt.py`. Do not register a lane until that validator accepts a real ready `thread_id`/`host_id` or queued `client_thread_id`.
+After visible creation, normalize the actual `create_thread` return, exact arguments, and attempt hash, then run `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT`. Do not register a lane until that validator accepts both the binding and a real ready `thread_id`/`host_id` or queued `client_thread_id`.
 
 ## Per-lane classifier
 
@@ -165,6 +178,8 @@ Record:
 ~~~yaml
 lane_id:
 requested_route:
+requested_model:
+requested_reasoning:
 operation:
 action:
 selected_executor:
@@ -172,8 +187,12 @@ planned_tool:
 actual_tool:
 model:
 reasoning:
-model_basis: explicit_user | auto_requested | auto_unspecified
-reasoning_basis: explicit_user | auto_requested | auto_unspecified
+model_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
+reasoning_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
+create_thread_arguments: <exact validator projection; omit platform-default axes>
+omitted_create_thread_fields:
+dispatch_attempt_sha256:
+actual_create_thread_arguments:
 surface:
 selection_basis:
 runtime_pair_verified:
@@ -188,9 +207,11 @@ authority_boundary:
 
 ## Evaluation examples
 
+The offline `resolve_request_case` regression grammar is deliberately bounded, not a general runtime intent parser. It consumes only the fixture forms for explicit Chinese `auto`, raw `模型用`/`推理用` values, Chinese `用`/`使用` aliases, a leading naked alias, or English `use <alias> ... create`; unrecognized or ambiguous text fails closed. Runtime routing must still resolve the full live request. A bare `$project-handoff` or “创建任务” form is tested separately and never counts as an alias.
+
 ### Example 1 — Architecture design
 
-Input: “为一个跨设备 Repo Hub 设计控制面、数据模型和迁移方案。”
+Input: “创建新任务，模型和推理都自动选；为一个跨设备 Repo Hub 设计控制面、数据模型和迁移方案。”
 
 Expected: `gpt-5.6-sol`, `max`, visible task.
 
@@ -198,7 +219,7 @@ Reason: The task requires architecture and trade-offs rather than implementation
 
 ### Example 2 — Accepted-plan implementation
 
-Input: “方案已经批准，按 `docs/specs/api-v2.md` 实现并跑测试。”
+Input: “创建新任务，模型和推理都自动选；方案已经批准，按 `docs/specs/api-v2.md` 实现并跑测试。”
 
 Expected: `gpt-5.6-terra`, `max`, visible task.
 
@@ -206,7 +227,7 @@ Reason: A current accepted design already defines the implementation contract.
 
 ### Example 3 — Design then build
 
-Input: “先设计新的同步协议，方案验收后再开发。”
+Input: “模型和推理都自动选；先设计新的同步协议，方案验收后再开发。”
 
 Expected: `gpt-5.6-sol max -> gpt-5.6-terra max`, sequential visible tasks.
 
@@ -214,7 +235,7 @@ Reason: The user explicitly requires a design gate before implementation.
 
 ### Example 4 — Judgmental audit
 
-Input: “核验三份研究报告的证据是否真的支持工程结论，并标出风险。”
+Input: “创建新任务，模型和推理都自动选；核验三份研究报告的证据是否真的支持工程结论，并标出风险。”
 
 Expected: `gpt-5.6-luna`, `max`, visible task.
 
@@ -222,7 +243,7 @@ Reason: The work requires evidence interpretation and risk judgment.
 
 ### Example 5 — Mechanical audit
 
-Input: “只读检查 80 个 manifest 的 YAML、字段、路径和 SHA，输出异常表，不判断内容价值。”
+Input: “创建新任务，模型和推理都自动选；只读检查 80 个 manifest 的 YAML、字段、路径和 SHA，输出异常表，不判断内容价值。”
 
 Expected: `gpt-5.3-codex-spark`, `xhigh`, bundled CLI.
 
@@ -230,7 +251,7 @@ Reason: The scope is bounded, structural, read-only, and non-authoritative.
 
 ### Example 6 — Sol-ultra Controller development
 
-Input: The verified source Controller is `gpt-5.6-sol` with `ultra` reasoning and is orchestrating a super-large multi-workstream project; hand off an accepted implementation lane without naming a worker.
+Input: The verified source Controller is `gpt-5.6-sol` with `ultra` reasoning and is orchestrating a super-large multi-workstream project; the user asks to auto-select both worker axes for an accepted implementation lane.
 
 Expected: `gpt-5.6-sol`, `max`, visible task.
 
@@ -238,11 +259,11 @@ Reason: Sol-ultra is retained as the orchestration Controller while Sol-max perf
 
 ### Example 7 — Partial explicit route
 
-Input: “实现这个已验收方案，用 Terra，推理档位 auto。”
+Input: “实现这个已验收方案，用 `gpt-5.6-terra`；推理档位用平台默认。”
 
-Expected: preserve `gpt-5.6-terra`; auto-select only a live-compatible reasoning level, ordinarily the alias default `max`.
+Expected: `create_thread_arguments={"model":"gpt-5.6-terra"}`; omit `thinking`.
 
-Reason: Model and reasoning precedence are field-specific.
+Reason: A raw explicit model does not authorize the Skill to override the other axis.
 
 ### Example 8 — Independent mixed lanes
 
@@ -251,3 +272,19 @@ Input: “并行做两件事：Sol-max 设计迁移方案；Luna-max 独立审�
 Expected: dispatch both visible tasks in one ready wave with their explicit routes; current task remains integration owner.
 
 Reason: The lanes have no data dependency or shared writes, and both explicit routes must be preserved.
+
+### Example 9 — Skill trigger only
+
+Input: “帮我创建一个新任务继续处理。” or “`$project-handoff` 创建任务。”
+
+Expected: `requested_route=platform-default`; `create_thread_arguments={}`; omit both `model` and `thinking`.
+
+Reason: Skill discovery or invocation is task-creation authority only; it is not model-selection authority.
+
+### Example 10 — Explicit auto
+
+Input: “创建新任务，模型和推理都自动选。”
+
+Expected: classify both axes, record both as `explicit_auto`, validate the live pair, and pass both returned fields.
+
+Reason: The user explicitly authorized model/reasoning selection rather than leaving either axis to the platform.

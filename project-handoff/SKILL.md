@@ -12,7 +12,8 @@ description: >-
   agent paths, or subAgentActivity. Spark is bundled-CLI-only at xhigh,
   ephemeral, and read-only. Any nonzero Spark CLI exit ends that lane; never
   fall back to an App task or another model without a new explicit user request.
-  Preserve every explicit model/reasoning choice.
+  Preserve every explicit model/reasoning choice, and omit unselected
+  create_thread model/thinking fields so platform defaults remain authoritative.
 ---
 
 # Project Handoff
@@ -35,13 +36,15 @@ Success criteria: The recipient can continue from verified materials without hid
 
 Apply this gate before choosing or calling any task, follow-up, retry, or Spark tool. A live tool schema describes technical capability; capability is not route authority.
 
-1. Resolve `requested_route`, model, reasoning, surface, exact tool, field bases, operation, action, failure class, and whether the user explicitly changed the route.
-2. Validate that receipt with `scripts/validate_dispatch_route.py`. For a multi-lane run, also put `requested_route` and `surface` in every plan route and run `scripts/validate_orchestration_plan.py`.
-3. Proceed only on `valid: true`. After visible creation, normalize the raw tool result and require `scripts/validate_visible_task_receipt.py` to return `valid: true` before recording task creation.
+1. Resolve `requested_route`, each axis's requested value, effective model/reasoning, surface, exact tool, per-axis basis (`explicit_user`, `explicit_skill_route`, `explicit_auto`, or `platform_default`), operation, action, failure class, and whether the user explicitly changed the route.
+2. Validate that attempt with `scripts/validate_dispatch_route.py` and retain its `attempt_sha256`. For a multi-lane run, also put `requested_route` and `surface` in every plan route and run `scripts/validate_orchestration_plan.py`.
+3. Proceed only on `valid: true`. For visible creation, copy only the validator's `create_thread_arguments`; never fill a field listed in `omitted_create_thread_fields`. After creation, record the actual arguments and attempt hash in the normalized receipt, then require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to return `valid: true` before recording task creation.
 4. Do not treat a worker prompt, a tool schema, a planned action, or prose review as proof of the tool actually called.
 
 Hard invariants:
 
+- Invoking this Skill, triggering it implicitly, or saying only “创建任务” does not select an executor axis. Record each unselected axis as `platform_default` with a null value and omit the corresponding `model` or `thinking` field from `create_thread`. Never classify an omitted axis. A value attached to `platform_default` is `silent_default_override` and must stop dispatch.
+- A raw user-supplied model or reasoning value controls only that axis and must be preserved as `requested_model` or `requested_reasoning`; the effective value must match it. An explicitly selected alias such as `sol-ultra` binds both axes as `explicit_skill_route`. An explicit `auto` authorizes classification only for the requested axis and records `explicit_auto`.
 - `sol-ultra`, `sol-max`, `terra-max`, and `luna-max` are `visible_thread` routes. Initial dispatch must call a live task tool whose leaf name is `create_thread`. Never call `spawn_agent`, `collaboration.spawn_agent`, another subagent API, or report `subAgentActivity`/`agentPath`/`agentThreadId` as a visible task. Hidden-subagent slot limits do not cap visible-task creation.
 - `spark` and `spark-xhigh` mean only `scripts/run-spark-cli.sh`, `gpt-5.3-codex-spark`, `xhigh`, `bundled_cli`, ephemeral, and read-only. Never create, fork, hand off, or retry a visible Spark task. Never use `create_thread`, `fork_thread`, `handoff_thread`, or another visible-task API for Spark, even when the API lists that model.
 - Any nonzero `run-spark-cli.sh` exit is terminal for that Spark lane. Honor `PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE`: call no task/thread/follow-up/model tool for the lane, do not substitute local or visible model work as if it were the Spark result, and wait for a new explicit user request before changing route.
@@ -63,13 +66,13 @@ If an older incorrect visible Spark attempt already exists, preserve it as inval
 Apply this precedence:
 
 1. Honor explicit `complete`, `full`, `manual`, `text-only`, `file-only`, or `完整交接` mode.
-2. Preserve an explicit model and reasoning independently. Auto-select only the component the user omitted or set to `auto`.
+2. Preserve model and reasoning independently. Pass a raw explicit value, let an explicitly selected alias bind its documented values, classify only an axis explicitly set to `auto`, and leave every unselected axis to `platform_default`.
 3. Honor an explicit pipeline, `dispatch`, `编排派发`, dependency order, concurrency cap, or Controller assignment.
 4. Use complete handoff when the named recipient cannot receive direct task or CLI dispatch.
-5. Use automatic routing only when the user says `auto` or explicitly requests dispatch without selecting an executor component.
+5. Use automatic routing only when the user explicitly says `auto`. A bare Skill invocation or task-creation request uses platform defaults.
 6. Ask one short question only when destination, authority, or recipient capability remains genuinely ambiguous.
 
-Treat an explicit `$project-handoff` dispatch request as authorization to create only the requested visible task or bounded Spark run. Do not dispatch anything when the user merely asks what the skill does.
+Treat an explicit `$project-handoff` dispatch request as authorization to create only the requested visible task or bounded Spark run. It does not by itself authorize model/reasoning selection: omit both fields unless the request supplies a value, selects an alias, or says `auto`. Do not dispatch anything when the user merely asks what the skill does.
 
 Boundary examples:
 
@@ -86,7 +89,7 @@ Use when: The user explicitly requests visible dispatch/orchestration or an appr
 
 Do not use when: The user asks only for a complete text/file handoff or explanation; task tooling is unavailable; a requested explicit route is unsupported; dependencies or write conflicts are unresolved; or the action would exceed granted authority.
 
-Parameters: Project/host target, lane id and goal, self-contained prompt, exact read/write paths, mutable resources, dependencies, expected outputs, validation, selected model and reasoning with separate bases, concurrency cap, integration owner, retry budget, and archive policy.
+Parameters: Project/host target, lane id and goal, self-contained prompt, exact read/write paths, mutable resources, dependencies, expected outputs, validation, requested/effective model/reasoning axes with separate bases, the validator-produced `create_thread_arguments` and `attempt_sha256`, concurrency cap, integration owner, retry budget, and archive policy.
 
 Returns: A confirmed `thread_id` plus `host_id`, a queued `client_thread_id`, exact `actual_tool`, prompt-delivery/readback state, receipt-guard result, current cursor/status, artifact/validation receipts, or an exact structured failure. Spark returns bounded CLI output and no visible task.
 
@@ -122,7 +125,7 @@ Do not split a task merely to use more Agents. Keep tightly coupled work in one 
 
 ## Select each route
 
-Read `references/model-routing.md` before automatic selection or when validating an explicit route. Check the live task-tool schema for visible routes because model names and supported reasoning pairs can change, but never let advertised Spark task capability override its bundled-CLI-only contract. Never silently downgrade, upgrade, or substitute an unsupported explicit choice.
+Read `references/model-routing.md` before explicit automatic selection or when validating an explicit route. Check the live task-tool schema for every visible field that will be passed because model names and supported reasoning pairs can change. Do not inspect the schema and then fill an unselected axis: `platform_default` means the field stays absent. Never let advertised Spark task capability override its bundled-CLI-only contract or silently downgrade, upgrade, or substitute an unsupported explicit choice.
 
 ## Build the handoff envelope
 
@@ -138,9 +141,9 @@ Read `references/thread-dispatch.md` and use the live Codex task tools exclusive
 
 1. Validate that the lane is a `visible_thread` route; Spark fails this check and must go to the bundled CLI section.
 2. Inspect the current visible-task surface, exact `create_thread` tool name, schema, project target, and supported model/reasoning pairs.
-3. Put that exact tool in the dispatch attempt and pass the route guard before calling it.
-4. Create every currently ready independent lane without waiting for another lane in that wave.
-5. Normalize the returned receipt, pass `validate_visible_task_receipt.py`, and only then record its task id or queued client id; reject agent paths and subagent ids. On rejection, set the lane to `failed` with `invalid_visible_task_evidence`, never `created_unconfirmed`.
+3. Put that exact tool in the dispatch attempt and pass the route guard before calling it. Use its exact `create_thread_arguments`; an empty object is correct when both axes are platform defaults.
+4. Create every currently ready independent lane without waiting for another lane in that wave, without adding omitted model/thinking fields.
+5. Normalize the returned receipt with the exact `actual_create_thread_arguments` and `dispatch_attempt_sha256`, pass it together with the exact attempt to `validate_visible_task_receipt.py`, and only then record its task id or queued client id; reject agent paths and subagent ids. On rejection, set the lane to `failed` with `invalid_visible_task_evidence`, never `created_unconfirmed`.
 6. Set a concise title when supported and confirm prompt delivery from the receipt or readback. Retry only an eligible readback/title synchronization delay against the same task; never retry task creation by changing route fields.
 7. Monitor with bounded task waits/readback and filesystem or artifact checks. Commentary alone is not completion.
 8. Reconcile direct user-to-worker messages before the next dispatch; preserve the task's route on follow-up unless the user explicitly changes it.
@@ -195,6 +198,7 @@ Using multiple Agents, creating tasks, or receiving plausible worker prose is ne
 ## Stop rules
 
 - Do not silently replace an explicit executor or reasoning level.
+- Do not turn Skill invocation, implicit triggering, or a bare task-creation request into automatic model/reasoning selection. Never pass a value for an axis recorded as `platform_default`.
 - Do not dispatch, follow up, retry, or report Spark unavailable without a valid dispatch-guard receipt.
 - Do not create a visible Spark task or downgrade `luna-max` on a follow-up.
 - After `PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE`, stop that lane and call no App task or model tool until the user explicitly requests a new route.

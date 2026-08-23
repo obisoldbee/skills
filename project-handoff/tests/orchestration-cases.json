@@ -19,8 +19,8 @@
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         },
         {
@@ -37,8 +37,8 @@
             "model": "gpt-5.6-luna",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         }
       ]
@@ -70,8 +70,8 @@
             "model": "gpt-5.6-sol",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "explicit_user",
-            "reasoning_basis": "explicit_user"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         },
         {
@@ -88,8 +88,8 @@
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         }
       ]
@@ -118,12 +118,12 @@
           "expected_outputs": ["src/app.py"],
           "validation": "python3 -m unittest",
           "route": {
-            "requested_route": "terra-max",
+            "requested_route": "auto",
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_requested",
-            "reasoning_basis": "auto_requested"
+            "model_basis": "explicit_auto",
+            "reasoning_basis": "explicit_auto"
           }
         },
         {
@@ -136,12 +136,12 @@
           "expected_outputs": ["src/app.py"],
           "validation": "python3 -m unittest",
           "route": {
-            "requested_route": "terra-max",
+            "requested_route": "auto",
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_requested",
-            "reasoning_basis": "auto_requested"
+            "model_basis": "explicit_auto",
+            "reasoning_basis": "explicit_auto"
           }
         }
       ]
@@ -171,8 +171,8 @@
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         },
         {
@@ -189,8 +189,8 @@
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         }
       ]
@@ -220,8 +220,8 @@
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         },
         {
@@ -238,8 +238,8 @@
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         }
       ]
@@ -266,11 +266,13 @@
           "validation": "test -s docs/guide.md",
           "route": {
             "requested_route": "gpt-5.6-terra",
+            "requested_model": "gpt-5.6-terra",
+            "requested_reasoning": "high",
             "model": "gpt-5.6-terra",
             "reasoning": "high",
             "surface": "visible_thread",
             "model_basis": "explicit_user",
-            "reasoning_basis": "auto_unspecified"
+            "reasoning_basis": "explicit_user"
           }
         },
         {
@@ -287,8 +289,8 @@
             "model": "gpt-5.6-terra",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         },
         {
@@ -305,8 +307,8 @@
             "model": "gpt-5.6-sol",
             "reasoning": "max",
             "surface": "visible_thread",
-            "model_basis": "auto_unspecified",
-            "reasoning_basis": "auto_unspecified"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         }
       ]
@@ -339,8 +341,8 @@
             "model": "gpt-5.3-codex-spark",
             "reasoning": "xhigh",
             "surface": "bundled_cli",
-            "model_basis": "explicit_user",
-            "reasoning_basis": "explicit_user"
+            "model_basis": "explicit_skill_route",
+            "reasoning_basis": "explicit_skill_route"
           }
         }
       ]

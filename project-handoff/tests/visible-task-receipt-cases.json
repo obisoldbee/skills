@@ -1,167 +1,404 @@
-[
-  {
-    "id": "ready-visible-task",
-    "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0001",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "readback",
-      "failure": null
+{
+  "attempts": {
+    "sol-max": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "sol-max",
+        "model": "gpt-5.6-sol",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
     },
-    "expected": {
-      "valid": true,
-      "classification": "visible_task_receipt",
-      "registerable": true
+    "terra-max": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "terra-max",
+        "model": "gpt-5.6-terra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "luna-max": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "luna-max",
+        "model": "gpt-5.6-luna",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "platform-default": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "platform-default",
+        "model": null,
+        "reasoning": null,
+        "surface": "visible_thread",
+        "model_basis": "platform_default",
+        "reasoning_basis": "platform_default"
+      }
+    },
+    "model-only": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt-5.6-sol",
+        "requested_model": "gpt-5.6-sol",
+        "model": "gpt-5.6-sol",
+        "reasoning": null,
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "platform_default"
+      }
     }
   },
-  {
-    "id": "queued-visible-task",
-    "receipt": {
-      "actual_tool": "create_thread",
-      "status": "queued",
-      "surface": "visible_thread",
-      "requested_route": "terra-max",
-      "task_kind": "codex",
-      "thread_id": null,
-      "client_thread_id": "client-demo-0001",
-      "host_id": null,
-      "prompt_verified": false,
-      "failure": null
+  "cases": [
+    {
+      "id": "ready-visible-task",
+      "attempt": "sol-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "sol-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0001",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "readback",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "classification": "visible_task_receipt",
+        "registerable": true
+      }
     },
-    "expected": {
-      "valid": true,
-      "classification": "visible_task_receipt",
-      "registerable": true
-    }
-  },
-  {
-    "id": "created-unconfirmed-visible-task",
-    "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_unconfirmed",
-      "surface": "visible_thread",
-      "requested_route": "luna-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0002",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": false,
-      "failure": null
+    {
+      "id": "queued-visible-task",
+      "attempt": "terra-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "queued",
+        "surface": "visible_thread",
+        "requested_route": "terra-max",
+        "task_kind": "codex",
+        "thread_id": null,
+        "client_thread_id": "client-demo-0001",
+        "host_id": null,
+        "prompt_verified": false,
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-terra",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "classification": "visible_task_receipt",
+        "registerable": true
+      }
     },
-    "expected": {
-      "valid": true,
-      "classification": "visible_task_receipt",
-      "registerable": true
-    }
-  },
-  {
-    "id": "reject-subagent-tool",
-    "receipt": {
-      "actual_tool": "collaboration.spawn_agent",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0001",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "readback",
-      "failure": null
+    {
+      "id": "created-unconfirmed-visible-task",
+      "attempt": "luna-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_unconfirmed",
+        "surface": "visible_thread",
+        "requested_route": "luna-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0002",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": false,
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-luna",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "classification": "visible_task_receipt",
+        "registerable": true
+      }
     },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "must not use a collaboration or subagent surface"
-    }
-  },
-  {
-    "id": "reject-agent-path-as-task-id",
-    "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "/synthetic/agent-path",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "readback",
-      "failure": null
+    {
+      "id": "platform-default-omits-both-route-fields",
+      "attempt": "platform-default",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "platform-default",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0003",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "receipt",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {}
+      },
+      "expected": {
+        "valid": true,
+        "classification": "visible_task_receipt",
+        "registerable": true
+      }
     },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "not an agent path"
-    }
-  },
-  {
-    "id": "reject-agent-thread-field",
-    "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": "thread-demo-0001",
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "receipt",
-      "failure": null,
-      "agentThreadId": "agent-thread-demo-0001"
+    {
+      "id": "reject-subagent-tool",
+      "attempt": "sol-max",
+      "receipt": {
+        "actual_tool": "collaboration.spawn_agent",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "sol-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0001",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "readback",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "must not use a collaboration or subagent surface"
+      }
     },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "hidden-subagent field"
-    }
-  },
-  {
-    "id": "reject-confirmed-without-thread-id",
-    "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "created_confirmed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": null,
-      "client_thread_id": null,
-      "host_id": "local",
-      "prompt_verified": "receipt",
-      "failure": null
+    {
+      "id": "reject-agent-path-as-task-id",
+      "attempt": "sol-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "sol-max",
+        "task_kind": "codex",
+        "thread_id": "/synthetic/agent-path",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "readback",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "not an agent path"
+      }
     },
-    "expected": {
-      "valid": false,
-      "classification": "invalid_visible_task_evidence",
-      "registerable": false,
-      "error_contains": "requires thread_id"
-    }
-  },
-  {
-    "id": "well-formed-creation-failure",
-    "receipt": {
-      "actual_tool": "codex_app__create_thread",
-      "status": "failed",
-      "surface": "visible_thread",
-      "requested_route": "sol-max",
-      "task_kind": "codex",
-      "thread_id": null,
-      "client_thread_id": null,
-      "host_id": null,
-      "prompt_verified": false,
-      "failure": "permission denied"
+    {
+      "id": "reject-agent-thread-field",
+      "attempt": "sol-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "sol-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0001",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "receipt",
+        "failure": null,
+        "agentThreadId": "agent-thread-demo-0001",
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "hidden-subagent field"
+      }
     },
-    "expected": {
-      "valid": true,
-      "classification": "creation_failure",
-      "registerable": false
+    {
+      "id": "reject-confirmed-without-thread-id",
+      "attempt": "sol-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "sol-max",
+        "task_kind": "codex",
+        "thread_id": null,
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "receipt",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "requires thread_id"
+      }
+    },
+    {
+      "id": "well-formed-creation-failure",
+      "attempt": "sol-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "failed",
+        "surface": "visible_thread",
+        "requested_route": "sol-max",
+        "task_kind": "codex",
+        "thread_id": null,
+        "client_thread_id": null,
+        "host_id": null,
+        "prompt_verified": false,
+        "failure": "permission denied",
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "classification": "creation_failure",
+        "registerable": false
+      }
+    },
+    {
+      "id": "reject-actual-arguments-drift",
+      "attempt": "sol-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "sol-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0004",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "receipt",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-terra",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "must exactly equal the validated dispatch_attempt projection"
+      }
+    },
+    {
+      "id": "reject-dispatch-attempt-hash-drift",
+      "attempt": "terra-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "terra-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0005",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "receipt",
+        "failure": null,
+        "dispatch_attempt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-terra",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "does not bind this exact dispatch_attempt"
+      }
+    },
+    {
+      "id": "reject-injected-omitted-thinking-field",
+      "attempt": "model-only",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "gpt-5.6-sol",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0006",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "receipt",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "must exactly equal the validated dispatch_attempt projection"
+      }
     }
-  }
-]
+  ]
+}

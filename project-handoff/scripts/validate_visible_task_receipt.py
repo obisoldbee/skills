@@ -7,12 +7,16 @@ from pathlib import Path
 import re
 import sys
 
+from validate_dispatch_route import dispatch_attempt_sha256, validate_attempt
+
 
 STATUSES = {"created_confirmed", "created_unconfirmed", "queued", "failed"}
 PROMPT_STATES = {"receipt", "readback", "false"}
 FORBIDDEN_FIELDS = {"agent_path", "agent_thread_id", "agentPath", "agentThreadId"}
 FORBIDDEN_TOOL_MARKERS = ("spawn_agent", "subagent", "collaboration")
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,}$")
+DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+CREATE_ARGUMENT_FIELDS = {"model", "thinking"}
 
 
 def add_error(errors, message):
@@ -52,7 +56,25 @@ def validate_identifier(value, field, errors):
         add_error(errors, f"{field} has an invalid identifier shape")
 
 
-def validate_receipt(receipt):
+def validate_create_arguments(value, errors):
+    if not isinstance(value, dict):
+        add_error(errors, "actual_create_thread_arguments must be an object")
+        return {}
+    arguments = {}
+    for key, argument in value.items():
+        if key not in CREATE_ARGUMENT_FIELDS:
+            add_error(
+                errors,
+                f"actual_create_thread_arguments contains unsupported field: {key}",
+            )
+            continue
+        arguments[key] = required_string(
+            argument, f"actual_create_thread_arguments.{key}", errors
+        )
+    return arguments
+
+
+def validate_receipt(receipt, dispatch_attempt):
     errors = []
     if not isinstance(receipt, dict):
         return {
@@ -112,6 +134,53 @@ def validate_receipt(receipt):
     validate_identifier(client_thread_id, "client_thread_id", errors)
 
     failure = optional_string(receipt.get("failure"), "failure", errors)
+    attempt_digest = required_string(
+        receipt.get("dispatch_attempt_sha256"),
+        "dispatch_attempt_sha256",
+        errors,
+    ).lower()
+    if attempt_digest and not DIGEST_PATTERN.fullmatch(attempt_digest):
+        add_error(errors, "dispatch_attempt_sha256 must be 64 lowercase hex characters")
+    actual_arguments = validate_create_arguments(
+        receipt.get("actual_create_thread_arguments"), errors
+    )
+
+    attempt_result = validate_attempt(dispatch_attempt)
+    if not attempt_result["valid"]:
+        for error in attempt_result["errors"]:
+            add_error(errors, f"dispatch_attempt invalid: {error}")
+    else:
+        expected_route = attempt_result["route"]
+        if attempt_result["operation"] != "initial_dispatch":
+            add_error(errors, "dispatch_attempt must use operation=initial_dispatch")
+        if attempt_result["action"] != "create_visible_task":
+            add_error(errors, "dispatch_attempt must use action=create_visible_task")
+        if attempt_result["tool"] != actual_tool:
+            add_error(
+                errors,
+                "actual_tool must exactly equal the validated dispatch_attempt tool",
+            )
+        if expected_route.get("requested_route") != requested_route:
+            add_error(
+                errors,
+                "requested_route must exactly equal the validated dispatch_attempt route",
+            )
+        expected_arguments = expected_route.get("create_thread_arguments", {})
+        if actual_arguments != expected_arguments:
+            add_error(
+                errors,
+                "actual_create_thread_arguments must exactly equal the validated "
+                "dispatch_attempt projection",
+            )
+        if (
+            attempt_digest
+            and DIGEST_PATTERN.fullmatch(attempt_digest)
+            and attempt_digest != dispatch_attempt_sha256(dispatch_attempt)
+        ):
+            add_error(
+                errors,
+                "dispatch_attempt_sha256 does not bind this exact dispatch_attempt",
+            )
 
     if status in {"created_confirmed", "created_unconfirmed"}:
         if not thread_id:
@@ -168,6 +237,8 @@ def validate_receipt(receipt):
             "host_id": host_id,
             "prompt_verified": prompt_verified,
             "failure": failure,
+            "dispatch_attempt_sha256": attempt_digest,
+            "actual_create_thread_arguments": actual_arguments,
         },
     }
 
@@ -177,20 +248,28 @@ def main():
         description="Validate a normalized create_thread receipt before task registration."
     )
     parser.add_argument("receipt_file", help="JSON receipt path.")
+    parser.add_argument(
+        "--dispatch-attempt",
+        required=True,
+        help="Exact validated pre-dispatch JSON attempt path.",
+    )
     parser.add_argument("--format", choices=("text", "json"), default="text")
     args = parser.parse_args()
 
     try:
         receipt = json.loads(Path(args.receipt_file).read_text(encoding="utf-8"))
+        dispatch_attempt = json.loads(
+            Path(args.dispatch_attempt).read_text(encoding="utf-8")
+        )
     except (OSError, json.JSONDecodeError) as exc:
         result = {
             "valid": False,
-            "errors": [f"cannot read receipt: {exc}"],
+            "errors": [f"cannot read receipt or dispatch attempt: {exc}"],
             "classification": "invalid_visible_task_evidence",
             "registerable": False,
         }
     else:
-        result = validate_receipt(receipt)
+        result = validate_receipt(receipt, dispatch_attempt)
 
     if args.format == "json":
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

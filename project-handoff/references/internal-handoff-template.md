@@ -14,7 +14,7 @@ Background:
 - Dependencies: <lane ids and exact verified gates, or none>
 - Controller / integration owner: <task or lane responsible for routing and integration>
 - Controller context: <verified model/reasoning or unknown>
-- Selected route: <model + reasoning; model_basis + reasoning_basis>
+- Selected route: <requested route; per-axis requested/effective values; model_basis + reasoning_basis; exact create_thread fields to pass/omit; dispatch attempt SHA-256>
 - Project scale: <normal, large, or super-large plus observable evidence>
 - Verified current state: <facts verified this turn>
 - Volatile facts: <facts marked 需复核>
