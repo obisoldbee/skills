@@ -17,6 +17,7 @@ Use one checkout per device and keep local project governance outside Git:
 │   ├── buddy-travelling/                     # true bounded Buddy travel workflow source
 │   ├── media-creator/                        # true cross-Agent media generation router
 │   ├── project-handoff/                      # true handoff/orchestration controller source
+│   ├── others-manager/                       # true third-party checkout management source
 │   └── document-workspace/                   # true file-based document governance source
 ├── project-conventions/                     # stable local Project Root
 │   ├── docs/
@@ -37,6 +38,8 @@ Use one checkout per device and keep local project governance outside Git:
 │   └── src/media-creator                     # projection to GitHub package
 ├── project-handoff/                          # stable local Project Root
 │   └── src/project-handoff                   # projection to GitHub package
+├── others-manager/                           # stable local Project Root
+│   └── src/others-manager                    # projection to GitHub package
 └── skills/                                  # local collection-control project
     └── src/
         ├── AGENTS.md -> ../../GitHub/AGENTS.md
@@ -67,6 +70,8 @@ python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_
 python3 -B <collection>/GitHub/media-creator/scripts/validate_skill.py
 python3 -B <collection>/GitHub/project-handoff/scripts/validate_package.py \
   <collection>/GitHub/project-handoff
+python3 -B <collection>/GitHub/others-manager/scripts/validate_package.py \
+  <collection>/GitHub/others-manager
 python3 -B <collection>/GitHub/document-workspace/scripts/validate_package.py \
   <collection>/GitHub/document-workspace
 ```
@@ -82,7 +87,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/initialize_skills_con
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-The initializer creates the routing files, complete `skills/` control project, its four projections to the repository-root `AGENTS.md`, `README.md`, `config/`, and `scripts/`, the stable `project-conventions/` wrapper, and its package projection. The control project never receives an aggregate `src/skills` link or package projections. It does not install the Skill into any Agent. Additional package directories present in a checkout, such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `paper-downloader`, `buddy-travelling`, `media-creator`, `document-workspace`, and `project-handoff`, require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members or imply that uncommitted bytes are published.
+The initializer creates the routing files, complete `skills/` control project, its four projections to the repository-root `AGENTS.md`, `README.md`, `config/`, and `scripts/`, the stable `project-conventions/` wrapper, and its package projection. The control project never receives an aggregate `src/skills` link or package projections. It does not install the Skill into any Agent. Additional package directories present in a checkout, such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `paper-downloader`, `buddy-travelling`, `media-creator`, `document-workspace`, `project-handoff`, and `others-manager`, require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members or imply that uncommitted bytes are published.
 
 On macOS/Linux the projection is the relative link:
 
@@ -139,7 +144,7 @@ It never creates another checkout or a missing Agent root, modifies a member pac
 
 Agent installation is a separate explicit action. Exports are declared in [`config/skill-exports.tsv`](config/skill-exports.tsv), and target candidates are declared in [`config/agent-paths.tsv`](config/agent-paths.tsv).
 
-Publication does not imply Agent exposure. For example, `document-workspace` is published and validated here but is not currently declared in `config/skill-exports.tsv`; adding a consumer link requires a separate explicit decision.
+Publication does not imply Agent exposure. `document-workspace` and `others-manager` are validated packages but are not currently declared in `config/skill-exports.tsv`; adding either consumer link requires a separate explicit decision.
 
 Cross-Agent packages can be scoped to the shared `agents` consumer so runtimes that already scan `~/.agents/skills` do not receive duplicate same-name brand-root links.
 
@@ -238,10 +243,13 @@ python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bun
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" paper-downloader
 python3 -B -m unittest discover -s paper-downloader/scripts/tests -p 'test_*.py'
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" buddy-travelling
+python3 -B -m unittest discover -s buddy-travelling/tests -p 'test_*.py'
 python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 python3 -B project-handoff/scripts/validate_package.py project-handoff
 python3 -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
+python3 -B others-manager/scripts/validate_package.py others-manager
+python3 -B -m unittest discover -s others-manager/tests -p 'test_*.py'
 python3 -B document-workspace/scripts/validate_package.py document-workspace
 python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ```
@@ -287,7 +295,9 @@ python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 │   └── scripts/
 ├── buddy-travelling/
 │   ├── SKILL.md
-│   └── agents/
+│   ├── agents/
+│   ├── scripts/
+│   └── tests/
 ├── media-creator/
 │   ├── SKILL.md
 │   ├── agents/
@@ -296,6 +306,12 @@ python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 │   ├── scripts/
 │   └── tests/
 ├── project-handoff/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── references/
+│   ├── scripts/
+│   └── tests/
+├── others-manager/
 │   ├── SKILL.md
 │   ├── agents/
 │   ├── references/

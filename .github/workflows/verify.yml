@@ -178,6 +178,11 @@ jobs:
           python -B -m py_compile paper-downloader/scripts/*.py
           bash -n paper-downloader/scripts/with_playwright_python.sh
 
+      - name: Verify buddy-travelling package behavior
+        shell: bash
+        run: |
+          python -B -m unittest discover -s buddy-travelling/tests -p 'test_*.py'
+
       - name: Verify media-creator package behavior
         shell: bash
         run: |
@@ -190,6 +195,12 @@ jobs:
           python -B project-handoff/scripts/validate_package.py project-handoff
           python -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
           bash -n project-handoff/scripts/run-spark-cli.sh
+
+      - name: Verify others-manager package behavior
+        shell: bash
+        run: |
+          python -B others-manager/scripts/validate_package.py others-manager
+          python -B -m unittest discover -s others-manager/tests -p 'test_*.py'
 
       - name: Verify document-workspace package behavior
         if: runner.os != 'Windows' || matrix.python != '3.11'
