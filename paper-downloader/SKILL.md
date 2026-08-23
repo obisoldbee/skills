@@ -43,6 +43,9 @@ Constraints: These rules protect lawful access, user credentials, package bounda
 - Prefer the separately registered `$ego-browser` for interactive browser follow-up. Use another browser runtime only when Ego is unavailable and the user did not explicitly require it; record the fallback trigger before switching.
 - Do not store browser profiles, cookies, tokens, passwords, or session databases in the package. Runtime browser data belongs under a temporary directory.
 - Do not add PDFs to Git or write outside the declared output root. In Akashic mode, do not write `03-metadata`, `04-extracts`, `05-wiki`, `10-events`, `11-reports`, or `99-system`.
+- The declared output root must be neither the Skill package nor any ancestor or
+  descendant of it. Every persisted path is an explicit CLI argument or a
+  documented child of one, and no output may alias an input.
 - A raw HTTP 403/HTML response is `browser_required`, not final proof that a paper is unavailable. Conversely, browser startup or navigation is not download success.
 - For the Shoulong branch, capture only public article-page text/metadata and explicit citation identifiers. Do not invoke image understanding/OCR, inspect images for citations, or create paper tasks from images.
 
@@ -57,22 +60,42 @@ Every tool contract below states its purpose, when to use or not use it, paramet
 - Tool: `scripts/build_inventory_download_manifest.py`
 - Use for: converting a broad Markdown source inventory into deterministic downloader input.
 - Do not use for: arbitrary title inference or silently shrinking a broader inventory.
+- Return: one `paper-downloader/download-manifest/v2` envelope containing every
+  table data row, the original inventory SHA-256 and row count, ordered canonical
+  row ids, source coordinates, dispositions, and duplicate lineage.
+- Input format: pass `--format auto|markdown|csv`. `auto` uses the suffix and a
+  strict content check; a format conflict or an inventory with zero data rows
+  fails instead of producing an empty manifest.
 - Failure: stop on invalid/missing input; retry limit 0.
 
 ### Dependency-light first pass
 
 - Tool: `scripts/manifest_pdf_downloader.py`
 - Use for: local-file verification, NCBI OA package, Europe PMC render, PMC PDF, DOI landing, and provided PDF URL attempts.
+- Resume: reread any recorded PDF and matching files already in `--paper-dir`
+  before making a request; never redownload or downgrade a verified row.
 - Return: per-row manifest plus status output.
+- Persistence: require `--output-root`, `--paper-dir`, `--manifest-out`, and
+  `--status-out`; never default a write into the package or caller cwd.
 - Failure: queue plausible browser-resolvable rows as `browser_required` or `paywalled_or_no_pdf`; do not finalize them early.
 
 ### Browser follow-up
 
 - Primary tool: separately registered `$ego-browser`, using one named task space for the active download lane.
-- Preparation tools: `scripts/build_browser_followup_inputs.py` and `scripts/extract_doi_papers.py`.
+- Preparation tools: `scripts/build_browser_followup_inputs.py`,
+  `scripts/extract_doi_papers.py`, and `scripts/extract_pmcids.py`.
 - Fallback tools: `scripts/doi_downloader.py`, `scripts/pmc_downloader.py`, and `scripts/with_playwright_python.sh` only when Ego is unavailable and the user did not mandate it.
+- PubMed fallback: `scripts/pubmed_downloader.py` for one explicitly selected,
+  unchecked PMID journal row under the same fallback boundary.
 - Use for: publisher/PMC rows that remain unresolved after the first pass, with explicit browser/network authorization and the shared-egress token.
-- Return: observed URL/title and controls, route outcome, blocker evidence, and any stable PDF URL handed back to the canonical downloader; `downloaded` still requires disk validation.
+- Return: a `paper-downloader/browser-result-journal/v1` attempt bound to the
+  canonical row id, identity, inventory SHA, and base manifest hash. Apply it
+  with `scripts/apply_browser_result_journal.py`; orphan, wrong-identifier,
+  stale-unapplied, globally colliding, or changed replay attempts fail closed.
+  An executor or receiver requires the journal base manifest SHA to equal the
+  current manifest before it navigates or reads a request body. A failure
+  attempt remains in the journal. `downloaded` still requires the common
+  disk/identity gate.
 - Failure: hand off the Ego task space on CAPTCHA/login/human checks and mark `manual_browser_required`. If Ego is unavailable, record the exact failure before an allowed fallback. If fallback Playwright is missing, record `blocked_runtime_missing_python_playwright`; do not mark paper rows failed.
 - Retry: obey the bounded route and smoke-batch rules in `download-rules.md`; never loop the same blocker across the whole inventory.
 - Stop: release the network token before another lane starts; do not run browser or download requests concurrently through the same public IP.
@@ -81,7 +104,13 @@ Every tool contract below states its purpose, when to use or not use it, paramet
 
 - Tools: `scripts/rebuild_manifest.py` and `scripts/summarize_download_manifest.py`.
 - Use for: interrupted processes, disk/manifest readback, coverage, and failure reports.
-- Failure: a manifest claim without a matching validated disk file is invalid and must be repaired before reporting.
+- Failure: a manifest claim without a matching validated disk file is invalid.
+  Missing, extra, tampered, or escaped PDFs fail final reporting. Rebuild writes
+  `reconciled_at`, can rediscover a renamed PDF by disk identity while enforcing
+  one PDF per row, and never invents `downloaded_at`. Final reporting refuses
+  unresolved queue/follow-up/manual-review rows or missing blocker evidence;
+  its receipt records relative output paths, exact bytes and hashes for the
+  manifest, inventory, disk set and reports, but never hashes itself.
 
 ### Shoulong page capture
 
@@ -97,31 +126,59 @@ Task: Download and verify every in-scope paper that has a lawful route, then rep
 1. Freeze the input inventory, authorization, output root, and larger-source coverage denominator.
 2. If the request includes Shoulong URLs, run the Shoulong page-capture branch first. Accept only article text/metadata that passes its DOM/body gate; retain capture status and source URL. Ignore its image/media branch for this Skill.
 3. Extract only explicit DOI/PMID/PMCID/publisher links from supplied inventories or captured article text. Preserve the source page reference for every extracted identifier.
-4. Build the complete downloader input before selecting any hand-picked subset.
+4. Build the complete canonical manifest before selecting any hand-picked
+   subset. Preserve every source row, even missing-id/title, duplicate, or
+   do-not-cite rows.
 5. Acquire the shared-egress token, run the dependency-light first pass with one network worker, and validate any local/OA PDF immediately. Parallel workers may only perform offline work.
 6. Build DOI/publisher follow-up batches and PMCID follow-up queues. Check PubMed full-text links whenever PMID exists and no PDF has been found.
-7. Run interactive browser follow-up through `$ego-browser` with one named task space, pacing, and bounded smoke batches. Keep user-assisted verification points open for the user; never solve them automatically. Use Playwright only under the declared fallback rule.
-8. After interruption or browser work, rebuild the manifest from disk before continuing.
-9. Release the shared-egress token, generate coverage and failure reports from the final manifest, then independently read back files, PDF headers, sizes, hashes, and counts.
+7. Run interactive browser follow-up through `$ego-browser` with one named task
+   space, pacing, and bounded smoke batches. Record each outcome in the prepared
+   row-bound result journal; then apply/reconcile it idempotently. Keep
+   user-assisted verification points open for the user; never solve them
+   automatically. Use Playwright only under the declared fallback rule.
+8. After interruption or browser work, apply the result journal and rebuild the
+   manifest from disk before continuing. Preserve unsuccessful attempts.
+9. Release the shared-egress token, generate coverage and failure reports from
+   the final manifest, then independently read back the frozen inventory SHA and
+   row-id set plus every PDF header, exact byte count, hash, path, and disk set.
 
 Example command shapes:
 
 ```bash
 python3 <skill-root>/scripts/build_inventory_download_manifest.py \
-  --input <inventory.md> --output <output-root>/source-collection/download-input.json
+  --input <inventory.md> \
+  --format auto \
+  --output-root <output-root> \
+  --output source-collection/download-input.json
 
 python3 <skill-root>/scripts/manifest_pdf_downloader.py \
   --input <output-root>/source-collection/download-input.json \
-  --paper-dir <output-root>/papers \
-  --manifest-out <output-root>/source-collection/download-manifest.json \
-  --status-out <output-root>/source-collection/download-status.md \
+  --output-root <output-root> \
+  --paper-dir papers \
+  --manifest-out source-collection/download-manifest.json \
+  --status-out source-collection/download-status.md \
   --local-root <approved-readable-root> --workers 1
 
-python3 <skill-root>/scripts/summarize_download_manifest.py \
+python3 <skill-root>/scripts/build_browser_followup_inputs.py \
   --manifest <output-root>/source-collection/download-manifest.json \
-  --coverage-out <output-root>/source-collection/download-coverage.md \
-  --failed-out <output-root>/source-collection/failed-downloads.md \
-  --inventory <inventory.md>
+  --output-root <output-root> \
+  --output-dir source-collection/browser-inputs \
+  --journal-out source-collection/browser-result-journal.json
+
+python3 <skill-root>/scripts/apply_browser_result_journal.py \
+  --manifest <output-root>/source-collection/download-manifest.json \
+  --journal <output-root>/source-collection/browser-result-journal.json \
+  --output-root <output-root> \
+  --manifest-out source-collection/download-manifest-browser-applied.json \
+  --receipt-out source-collection/browser-apply-receipt.json
+
+python3 <skill-root>/scripts/summarize_download_manifest.py \
+  --manifest <output-root>/source-collection/download-manifest-browser-applied.json \
+  --inventory <inventory.md> \
+  --output-root <output-root> \
+  --coverage-out source-collection/download-coverage.md \
+  --failed-out source-collection/failed-downloads.md \
+  --receipt-out source-collection/final-report-receipt.json
 ```
 
 Boundary examples:
@@ -137,7 +194,18 @@ Boundary examples:
 
 Output format: Persist the manifest and reports below, then give a concise Chinese summary unless the user requests another language.
 
-For each row, record the stable identifier, input/source page, every attempted route, status, exact failure reason, observed browser URL/title, failure screenshot or screenshot error when applicable, local PDF path, size, SHA-256, and validation result. Use these queue/final distinctions honestly: `browser_required`, `manual_browser_required`, `downloaded`, `verified_abstract`, `paywalled`, `access_blocked`, `unverified_citation`, `duplicate`, `needs_manual_review`, or `failed`.
+For each row, record the stable identifier, source coordinate/disposition,
+duplicate lineage, input/source page, every attempted route, one exact `status`,
+exact failure reason, observed browser URL/title, failure screenshot or error,
+and one `pdf` receipt with path, `bytes`, SHA-256, magic and identity-match
+evidence derived from the PDF bytes. A strict-boundary DOI/PMID/PMCID in the
+actual PDF bytes or an exact PDF Title metadata match is required; filename,
+route URL, response header, and client-supplied strings are claims only and
+cannot independently prove identity. Never add `download_status`,
+size-kilobyte fields, or route-specific
+manifest variants. Use the exact enum declared by
+`paper-downloader/download-manifest/v2`; a substring such as `not_downloaded`
+never counts as success.
 
 Produce `download-manifest.json`, `download-status.md`, `download-coverage.md`, and `failed-downloads.md`; in Shoulong mode also retain the page-capture batch state and source-page-to-identifier mapping. Respond in the user's language; default to Chinese.
 
@@ -145,8 +213,14 @@ Produce `download-manifest.json`, `download-status.md`, `download-coverage.md`, 
 
 Success criteria: Close every gate below; partial acquisition must be labeled partial.
 
-- Every downloaded file exists inside the output root, starts with `%PDF`, is larger than 5 KB unless explicitly justified, and has a recorded SHA-256.
-- Manifest counts exactly match disk readback; every non-download row has a specific reason and every browser-attempted blocker has observable evidence or a recorded screenshot error.
+- Every downloaded file exists inside the declared output root, is reread from
+  disk, starts with `%PDF`, is strictly larger than 5120 bytes, has exact bytes
+  and SHA-256, and has a strict identifier match in its actual bytes or an exact
+  PDF Title metadata match.
+- Manifest counts and PDF set exactly match disk readback; extra, missing,
+  tampered, or escaped paths fail. Every non-download row has a specific reason
+  and every browser-attempted blocker has observable evidence or a screenshot
+  error.
 - The full frozen inventory denominator appears in coverage; a successful subset is not mislabeled as complete acquisition.
 - All applicable legal fallback routes were either attempted or explicitly marked unavailable; repeated same-blocker batches stop according to the bounded rule.
 - Shoulong page capture, when used, remains text-only for this workflow and produces no image-derived paper tasks.

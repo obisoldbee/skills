@@ -44,7 +44,10 @@ Use `unverified_citation` when title, URL, DOI, PMID, PMCID, or article page can
 
 Use `browser_required` when a command-line route reaches a DOI/publisher/PMC URL but returns 403, HTML, a browser-check page, timeout, or another result that can plausibly be resolved by a normal browser session. `browser_required` is a queue state, not a final failure.
 
-Use `paywalled_or_no_pdf` from a dependency-light first pass as a queue state when PMID or PMCID exists. It becomes a final status only after PubMed full-text links and the PMCID route are checked or shown unavailable.
+Use `paywalled_or_no_pdf` from a dependency-light first pass only as a queue
+state when PMID or PMCID exists. Before final reporting, replace that ambiguous queue state with the exact
+observed terminal status and reason; `paywalled_or_no_pdf` itself never passes
+the completion gate.
 
 Use `manual_browser_required` when the browser route reaches a captcha, human verification, institutional-login prompt, or other user-intervention point. Open or leave the browser at the blocker, ask the user to handle it, and record the exact page state.
 
@@ -65,7 +68,9 @@ When the publisher page visibly exposes `Download -> PDF`, `PDF`, or a download 
 1. `extract_doi_papers.py` to classify DOI rows by publisher without network access.
 2. `$ego-browser` to inspect the real page, operate visible controls, and capture the observed URL/title or stable PDF URL.
 3. The canonical downloader to persist and validate the resulting PDF under the declared output root.
-4. `doi_downloader.py` or `pmc_downloader.py` only as a recorded fallback when Ego is unavailable and the user did not explicitly require it.
+4. `doi_downloader.py`, `pmc_downloader.py`, or `pubmed_downloader.py` only as a
+   recorded fallback when Ego is unavailable and the user did not explicitly
+   require it.
 
 Do not substitute another browser merely because it is convenient. If the user explicitly selected Ego, an Ego failure is a blocker until the user changes the route.
 
@@ -110,10 +115,17 @@ For Oxford, JAMA, Endocrine Society, Thieme, RSC, AACR, Elsevier, Wiley, Nature,
 Downloaded PDFs must:
 
 - start with `%PDF`;
-- be larger than 5 KB unless an explicit exception is recorded;
+- be strictly larger than 5120 bytes, with no route-specific exception;
 - have a stable filename;
-- appear in the manifest;
+- appear in the canonical manifest with exact `bytes`, SHA-256, and an explicit
+  disk-derived identity method and evidence;
 - be counted in the final disk-state check.
+
+A `%PDF` header and size alone do not prove paper identity. Only a strict-boundary
+DOI/PMID/PMCID found in the actual PDF bytes or an exact PDF Title metadata
+match may bind the file. Filename, route URL, and response/client headers do not
+independently prove identity. Otherwise preserve the candidate and use
+`needs_manual_review` rather than `downloaded`.
 
 HTML-only or abstract-only captures must be labeled as such and cannot be treated as full text.
 

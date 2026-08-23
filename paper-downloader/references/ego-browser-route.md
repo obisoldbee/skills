@@ -36,9 +36,19 @@ and interactive browser work is authorized.
 4. If a stable PDF URL is exposed, pass it to the canonical downloader or an
    existing package tool for persistence. Do not invent a temporary downloader.
 5. Validate the resulting file from disk: `%PDF`, more than 5120 bytes,
-   SHA-256, and DOI/title identity. Only then set `downloaded`.
-6. Reconcile the manifest, close or hand off the task space as required, write
+   SHA-256, and a strict identifier in the actual PDF bytes or exact PDF Title
+   metadata. Filename, route, and browser headers are not identity proof. Only
+   then set `downloaded`.
+6. Append a row-id/identifier-bound result-journal attempt, apply it
+   idempotently, reconcile the canonical manifest, close or hand off the task
+   space as required, write
    the lane checkpoint, and release the shared-egress token.
+
+Before any fallback executor navigates, and before the loopback receiver reads
+a request body, require the journal base manifest SHA to equal the current
+manifest, reject attempt-id collisions across all rows, and reserve a
+non-existing target path. Recheck manifest, journal, and target CAS immediately
+before writing the PDF.
 
 ## Fallback Boundary
 

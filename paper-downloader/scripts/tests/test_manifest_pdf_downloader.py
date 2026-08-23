@@ -18,8 +18,8 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 
-def valid_pdf_bytes() -> bytes:
-    return b"%PDF" + b"\nfixture\n" + b"x" * MODULE.PDF_MIN_BYTES
+def valid_pdf_bytes(identifier: str = "DOI: 10.1000/test") -> bytes:
+    return b"%PDF" + f"\n{identifier}\n".encode("ascii") + b"x" * MODULE.PDF_MIN_BYTES
 
 
 class ManifestPdfDownloaderTest(unittest.TestCase):
@@ -43,15 +43,23 @@ class ManifestPdfDownloaderTest(unittest.TestCase):
                 "status": "pending",
                 "failure_reason": "",
             }
-            args = argparse.Namespace(skip_recursive_local_scan=False)
+            args = argparse.Namespace(
+                output_root=root,
+                paper_dir=root / "papers",
+                skip_recursive_local_scan=False,
+                skip_doi_landing=True,
+                skip_oa_package=True,
+                timeout=1,
+                europepmc_timeout=1,
+            )
 
             result = MODULE.process_row(row, args, [root])
 
-        self.assertEqual(result["status"], "already_local_pdf")
-        self.assertEqual(result["attempted_routes"], [])
-        self.assertEqual(result["file_size_bytes"], len(payload))
-        self.assertEqual(result["sha256"], hashlib.sha256(payload).hexdigest())
-        self.assertTrue(result["validated"])
+        self.assertEqual(result["status"], "downloaded")
+        self.assertEqual(result["attempts"][0]["route"], "local_identifier_precheck")
+        self.assertEqual(result["pdf"]["bytes"], len(payload))
+        self.assertEqual(result["pdf"]["sha256"], hashlib.sha256(payload).hexdigest())
+        self.assertTrue(result["pdf"]["validated"])
 
     def test_tgz_extraction_accepts_only_valid_pdf_member(self) -> None:
         valid = valid_pdf_bytes()
@@ -100,6 +108,8 @@ class ManifestPdfDownloaderTest(unittest.TestCase):
                     str(SCRIPT),
                     "--input",
                     str(input_path),
+                    "--output-root",
+                    str(root),
                     "--paper-dir",
                     str(root / "papers"),
                     "--manifest-out",

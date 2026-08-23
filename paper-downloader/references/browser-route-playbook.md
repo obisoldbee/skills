@@ -23,10 +23,11 @@ the user did not explicitly require it.
 Use the formal scripts in `../scripts/` for inventory preparation, first-pass
 acquisition, persistence, reconciliation, and an allowed browser fallback:
 
-- `extract_pmcids.py`: extract PMCID rows from Markdown or inventories.
-- `extract_doi_papers.py`: extract DOI rows and group them into publisher waves.
-- `pmc_downloader.py`: slow browser route for small PMC batches.
-- `doi_downloader.py`: persistent browser DOI/publisher route.
+- `extract_pmcids.py`: export PMCID rows from the canonical v2 manifest.
+- `extract_doi_papers.py`: export DOI rows from the canonical v2 manifest.
+- `pmc_downloader.py`: one explicitly selected PMCID browser attempt.
+- `doi_downloader.py`: one explicitly selected DOI browser attempt.
+- `pubmed_downloader.py`: one explicitly selected PMID full-text-link browser attempt.
 - `manifest_pdf_downloader.py`: first-line repair route for manifest rows; it
   performs local PMCID/PMID/DOI precheck, NCBI OA package lookup, Europe PMC
   PDF render fallback, PMC PDF URL attempts, and DOI/provided PDF URL attempts
@@ -35,8 +36,12 @@ acquisition, persistence, reconciliation, and an allowed browser fallback:
 - `build_inventory_download_manifest.py`: converts `paper-source-inventory.md`
   or `source-library-frozen.md` into downloader input so broad QA runs do not
   silently shrink to a tiny hand-picked manifest.
-- `summarize_download_manifest.py`: writes `download-coverage.md` and
-  `failed-downloads.md` from a manifest, including rows missing failure reasons.
+- `build_browser_followup_inputs.py`: writes offline browser inputs plus the
+  row-and-identifier-bound result journal.
+- `apply_browser_result_journal.py`: validates and idempotently applies browser
+  attempts to the canonical manifest.
+- `summarize_download_manifest.py`: rereads the frozen inventory, manifest,
+  reports, and exact disk PDF set before writing its non-circular receipt.
 - `rebuild_manifest.py`: reconcile disk state after crash or restart.
 - `pdf_receiver.py`: local receiver when the route posts browser-fetched PDFs.
 
@@ -51,16 +56,23 @@ Use this order before taking manual browser actions:
 |---|---|---|
 | Broad package inventory exists | `build_inventory_download_manifest.py` | Convert `paper-source-inventory.md` or `source-library-frozen.md` into manifest rows. |
 | Need local/OA/public-route first pass | `manifest_pdf_downloader.py` | Local precheck, Europe PMC render, NCBI OA package, PMC PDF, DOI/provided PDF URL. |
-| DOI rows remain unresolved | `extract_doi_papers.py` | Classify DOI rows by publisher and write batch JSON files. |
+| DOI rows remain unresolved | `build_browser_followup_inputs.py` | Classify follow-up rows and create the bound result journal. |
 | Publisher or PubMed/PMC page needs interaction | `$ego-browser` | Primary real-page route; observe, act, and verify in one named task space. |
-| Ego unavailable and fallback allowed; publisher page has PDF/download menu | `doi_downloader.py` | Fallback browser route for DOI landing pages and visible download actions. |
-| Ego unavailable and fallback allowed; PMCID rows remain unresolved | `pmc_downloader.py` | Fallback slow browser route with pacing and manual human-check wait. |
+| Ego unavailable and fallback allowed; publisher page has PDF/download menu | `doi_downloader.py` | One bounded fallback attempt for an explicit journal row. |
+| Ego unavailable and fallback allowed; PMCID row remains unresolved | `pmc_downloader.py` | One bounded fallback attempt for an explicit journal row. |
+| Ego unavailable and fallback allowed; unchecked PMID remains | `pubmed_downloader.py` | One bounded PubMed full-text-link attempt for an explicit journal row. |
 | Browser/process interrupted | `rebuild_manifest.py` | Reconcile files already on disk back into the manifest. |
 | Need final reports | `summarize_download_manifest.py` | Write `download-coverage.md` and `failed-downloads.md`. |
 
 For AHA/JAHA/Circulation rows, DOI prefix `10.1161` is classified as `JAHA_AHA` by `extract_doi_papers.py`. If the page shows a `Download` menu with a `PDF` item, that is a browser-follow-up target for `doi_downloader.py`; do not leave it as `access_blocked` because raw HTTP got 403.
 
-Before an allowed `doi_downloader.py` or `pmc_downloader.py` fallback, record why Ego was unavailable and confirm the user did not mandate Ego. Then use `with_playwright_python.sh` so the script uses the Python interpreter that owns the local `playwright` CLI. If the wrapper fails, the route is blocked by the local runtime, not by the paper source. Record `blocked_runtime_missing_python_playwright` and do not summarize the row as a paper access failure.
+Before an allowed `doi_downloader.py`, `pmc_downloader.py`, or
+`pubmed_downloader.py` fallback, record why Ego was unavailable and confirm the
+user did not mandate Ego. Then use `with_playwright_python.sh` so the script uses
+the Python interpreter that owns the local `playwright` CLI. If the wrapper
+fails, the route is blocked by the local runtime, not by the paper source.
+Record `blocked_runtime_missing_python_playwright` and do not summarize the row
+as a paper access failure.
 
 ## PubMed Full Text Link Route
 
@@ -78,7 +90,9 @@ Repair-run examples that must not regress:
 - PMID `32497744`, PMCID `PMC7977482`, DOI `10.1016/j.diabres.2020.108233`: first pass can look like `paywalled_or_no_pdf`, but PMC provides a downloadable PDF.
 - PMID `34015477`, PMCID `PMC8324525`, DOI `10.1016/j.jacc.2021.05.004`: PubMed exposes both publisher and PMC routes; the PMC route provides a downloadable PDF.
 
-When a row changes from `paywalled_or_no_pdf` to a downloaded PDF through this route, update the manifest row and the package coverage report in the same pass.
+When a row changes from `paywalled_or_no_pdf` to a downloaded PDF through this
+route, append the row/identity-bound journal attempt, apply it idempotently, and
+then regenerate coverage. Do not directly edit a second browser manifest.
 
 ## Large PMC Batches
 
@@ -109,9 +123,10 @@ the article has no PDF.
 
 Formal downloader behavior:
 
-- keep the row as `manual_browser_required`, `browser_required`, or
-  `access_control_challenge` until a normal browser route, Europe PMC route, or
-  user-assisted route confirms the outcome;
+- keep the row as `manual_browser_required` or `browser_required` until a normal
+  browser route, Europe PMC route, or user-assisted route confirms the outcome;
+  use `access_blocked` only after those applicable routes are exhausted and the
+  observed reason is recorded;
 - do not add package-local challenge solvers to the formal downloader by
   default;
 - do not solve captchas, login walls, paywalls, robots blocks, or DRM;
@@ -138,7 +153,11 @@ same access blocker.
 
 If a normal browser displays a cookie banner, accept or reject it as needed for navigation. If a captcha or human verification appears, stop the automated step, leave the browser on that page, and ask the user to complete it. Do not record captcha as a final download failure until the user declines or the manual wait times out.
 
-Browser profiles are runtime state. Do not write Chrome profile folders, Cookies, Login Data, History, or other browser databases into `12-agent-submissions`. Use a temp directory such as `${TMPDIR:-/tmp}/akashic-paperdownloader/<package_id>/...` and keep only PDFs, manifests, status reports, and blocker notes in the package.
+Browser profiles are credential-bearing runtime state. The bundled Playwright
+fallback uses an ephemeral context and must not create or persist Chrome profile
+folders, Cookies, Login Data, History, or session databases. Keep only declared
+PDFs, manifests, row-bound journals, reports, receipts, and blocker screenshots
+inside the output root.
 
 ## Reporting Standard
 

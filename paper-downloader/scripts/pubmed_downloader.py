@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one explicitly authorized DOI browser attempt and append its journal result."""
+"""Run one explicitly authorized PubMed browser attempt and append its journal result."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def main() -> int:
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--timeout-ms", default=30000, type=int)
     args = parser.parse_args()
-    result = execute_browser_route("doi", args)
+    result = execute_browser_route("pubmed", args)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

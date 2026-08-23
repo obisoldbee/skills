@@ -9,6 +9,12 @@ Selected implementation baseline:
 - source tree SHA-256: `ae324842a1d78b8295e0460864dcd2259380bace9ceb46cedae5b25eb897a3da`;
 - reason: it contains the v3 browser downloaders plus the later manifest-first pass, runtime wrapper, coverage summarizer, failure screenshots, package contract, and regression test absent from the earlier v3 package snapshots.
 
+The current public package repairs those historical tools around the canonical
+`paper-downloader/download-manifest/v2`, strict PDF/identity gate, explicit
+declared output root, row-bound browser journal, idempotent apply/reconcile, and
+final disk readback receipt. Historical v3 array manifests and browser
+self-reports are provenance only; they are not accepted execution evidence.
+
 Other compared lines:
 
 - MiniMax/Trae/Qwen runtime v2.1.0 tree: `cd0e39268c4213c85dd537277daa8162e881983c33dff43164bc3c21545a19da`;
