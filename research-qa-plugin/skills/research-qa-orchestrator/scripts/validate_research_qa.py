@@ -9,7 +9,9 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
+import zlib
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
@@ -22,6 +24,12 @@ PLUGIN_VERSION = "0.2.0"
 SKILL_NAME = "research-qa-orchestrator"
 PAPER_DOWNLOADER_NAME = "paper-downloader"
 BUNDLED_SCHEMA = "research-qa-orchestrator/bundled-source-manifest/v1"
+PLUGIN_RECEIPT_SCHEMA = "research-qa-orchestrator/plugin-validation-receipt/v2"
+RUNTIME_OPERATION_SCHEMA = "research-qa-orchestrator/runtime-operation-receipt/v1"
+SKILL_DISCOVERY_SCHEMA = "research-qa-orchestrator/skill-discovery-receipt/v1"
+ACQUISITION_OPERATION_SCHEMA = (
+    "research-qa-orchestrator/acquisition-operation-receipt/v1"
+)
 TREE_HASH_ALGORITHM = (
     "sha256(concat(sorted_utf8(relative_path) + NUL + "
     "sha256(content)_hex + LF))"
@@ -34,6 +42,18 @@ DEFAULT_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 SKILL_RELATIVE = Path("skills") / SKILL_NAME
 BUNDLED_RELATIVE = SKILL_RELATIVE / "bundled"
 SOURCE_MANIFEST_RELATIVE = BUNDLED_RELATIVE / "source-manifest.json"
+VALIDATOR_RELATIVE = SKILL_RELATIVE / "scripts" / "validate_research_qa.py"
+CRITICAL_RUNTIME_RELATIVES = (
+    Path("plugin.json"),
+    SKILL_RELATIVE / "SKILL.md",
+    SKILL_RELATIVE / "references" / "workflow-contract.md",
+    SKILL_RELATIVE / "references" / "executor-and-audit-contract.md",
+    SKILL_RELATIVE / "references" / "artifact-contract.md",
+    SKILL_RELATIVE / "references" / "external-executors.md",
+    VALIDATOR_RELATIVE,
+    SOURCE_MANIFEST_RELATIVE,
+    BUNDLED_RELATIVE / "verify_bundled.py",
+)
 ALLOWED_PLUGIN_FIELDS = {
     "$schema",
     "name",
@@ -48,6 +68,7 @@ ALLOWED_PLUGIN_FIELDS = {
 }
 EXCLUDED_BUNDLED_NAMES = {".DS_Store", ".git", "__pycache__"}
 HEX64 = re.compile(r"\A[0-9a-f]{64}\Z")
+RUNTIME_ID_PATTERN = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._:-]{7,}\Z")
 PLUGIN_NAME_PATTERN = re.compile(
     r"\A(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\Z"
 )
@@ -156,6 +177,21 @@ TERMINAL_FAILURE_EVENTS = {
     "output_boundary_invalid",
     "acquisition_executor_unavailable",
 }
+FORBIDDEN_RUNTIME_FIELDS = {
+    "agent_path",
+    "agent_thread_id",
+    "agentPath",
+    "agentThreadId",
+    "subAgentActivity",
+    "subagent_activity",
+}
+FORBIDDEN_RUNTIME_TOOL_MARKERS = ("spawn_agent", "subagent", "collaboration")
+PACKAGE_LOCAL_ATTESTATION_FIELDS = {
+    "host_attestation",
+    "independent_host_attestation",
+}
+STRUCTURAL_RUN_STATUS = "structurally_complete_runtime_unverified"
+RUNTIME_NOT_VERIFIED = "runtime_not_verified"
 
 
 class ValidationError(Exception):
@@ -231,6 +267,59 @@ def require_nonempty_string(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         fail("invalid_string", f"{field} must be a non-empty string")
     return value
+
+
+def require_runtime_identifier(value: Any, field: str) -> str:
+    identifier = require_nonempty_string(value, field).strip()
+    if (
+        identifier.startswith("/")
+        or "/root/" in identifier
+        or "\\" in identifier
+        or not RUNTIME_ID_PATTERN.fullmatch(identifier)
+    ):
+        fail(
+            "invalid_runtime_identifier",
+            f"{field} must be a runtime identifier, not an agent path",
+            value=identifier,
+        )
+    return identifier
+
+
+def tool_leaf(tool: str) -> str:
+    leaf = tool.replace("\\", "/").rsplit("/", 1)[-1]
+    if "__" in leaf:
+        return leaf.rsplit("__", 1)[-1]
+    return leaf.rsplit(".", 1)[-1]
+
+
+def reject_hidden_runtime_evidence(value: Any, field: str) -> None:
+    if isinstance(value, dict):
+        forbidden = sorted(FORBIDDEN_RUNTIME_FIELDS.intersection(value))
+        if forbidden:
+            fail(
+                "hidden_subagent_evidence",
+                f"{field} contains hidden-subagent fields",
+                fields=forbidden,
+            )
+        attestation_fields = sorted(
+            PACKAGE_LOCAL_ATTESTATION_FIELDS.intersection(value)
+        )
+        success_overclaims = sorted(
+            key
+            for key in ("runtime_execution_verified", "run_success_verified")
+            if value.get(key) is True
+        )
+        if attestation_fields or success_overclaims:
+            fail(
+                "runtime_attestation_boundary",
+                f"{field} contains a package-local runtime attestation claim",
+                fields=attestation_fields + success_overclaims,
+            )
+        for key, child in value.items():
+            reject_hidden_runtime_evidence(child, f"{field}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            reject_hidden_runtime_evidence(child, f"{field}[{index}]")
 
 
 def normalized_root(path: Path, label: str) -> Path:
@@ -578,6 +667,147 @@ def tree_sha256(files_by_path: dict[str, str]) -> str:
     return digest.hexdigest()
 
 
+def plugin_runtime_inventory(plugin_root: Path) -> tuple[dict[str, str], int]:
+    """Inventory exactly the runtime-bearing plugin manifest and Skill tree."""
+
+    plugin_path = confined(plugin_root, "plugin.json", field="plugin manifest")
+    skill_root = confined(
+        plugin_root,
+        SKILL_RELATIVE,
+        kind="directory",
+        field="orchestrator Skill root",
+    )
+    skill_files, skill_bytes = inventory_tree(
+        skill_root,
+        exclude_names=EXCLUDED_BUNDLED_NAMES,
+    )
+    files = {"plugin.json": sha256_file(plugin_path)}
+    files.update(
+        {
+            (SKILL_RELATIVE / relative).as_posix(): digest
+            for relative, digest in skill_files.items()
+        }
+    )
+    return files, plugin_path.stat().st_size + skill_bytes
+
+
+def observe_git_state(plugin_root: Path, runtime_paths: set[str]) -> dict[str, Any]:
+    """Return independent current Git observations, or explicit nulls off Git."""
+
+    def run_git_at(
+        directory: Path,
+        *arguments: str,
+    ) -> subprocess.CompletedProcess[bytes] | None:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(directory), *arguments],
+                check=False,
+                capture_output=True,
+            )
+        except OSError:
+            return None
+
+    root_result = run_git_at(plugin_root, "rev-parse", "--show-toplevel")
+    if root_result is None or root_result.returncode != 0:
+        return {
+            "repository_present": False,
+            "repository_root": None,
+            "head_commit": None,
+            "runtime_tree_tracked": None,
+            "package_dirty": None,
+        }
+    try:
+        repository_root = Path(root_result.stdout.decode("utf-8").strip()).resolve()
+        plugin_relative = plugin_root.relative_to(repository_root).as_posix()
+    except (UnicodeError, OSError, ValueError):
+        return {
+            "repository_present": False,
+            "repository_root": None,
+            "head_commit": None,
+            "runtime_tree_tracked": None,
+            "package_dirty": None,
+        }
+
+    head_result = run_git_at(repository_root, "rev-parse", "--verify", "HEAD")
+    head_commit: str | None = None
+    if head_result is not None and head_result.returncode == 0:
+        candidate = head_result.stdout.decode("ascii", errors="ignore").strip()
+        if re.fullmatch(r"[0-9a-f]{40,64}", candidate):
+            head_commit = candidate
+
+    tracked_result = run_git_at(
+        repository_root,
+        "ls-files",
+        "-z",
+        "--",
+        plugin_relative,
+    )
+    runtime_tree_tracked: bool | None = None
+    if tracked_result is not None and tracked_result.returncode == 0:
+        tracked = {
+            item.decode("utf-8")
+            for item in tracked_result.stdout.split(b"\0")
+            if item
+        }
+        expected = {
+            (PurePosixPath(plugin_relative) / PurePosixPath(relative)).as_posix()
+            for relative in runtime_paths
+        }
+        runtime_tree_tracked = expected.issubset(tracked)
+
+    dirty_result = run_git_at(
+        repository_root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--",
+        plugin_relative,
+    )
+    package_dirty: bool | None = None
+    if dirty_result is not None and dirty_result.returncode == 0:
+        package_dirty = bool(dirty_result.stdout)
+
+    return {
+        "repository_present": True,
+        "repository_root": str(repository_root),
+        "head_commit": head_commit,
+        "runtime_tree_tracked": runtime_tree_tracked,
+        "package_dirty": package_dirty,
+    }
+
+
+def plugin_evidence(plugin_root: Path) -> dict[str, Any]:
+    runtime_files, runtime_bytes = plugin_runtime_inventory(plugin_root)
+    bundled_root = confined(
+        plugin_root,
+        BUNDLED_RELATIVE,
+        kind="directory",
+        field="bundled runtime tree",
+    )
+    bundled_files, bundled_bytes = inventory_tree(
+        bundled_root,
+        exclude_names=EXCLUDED_BUNDLED_NAMES,
+    )
+    critical_files: dict[str, str] = {}
+    for relative in CRITICAL_RUNTIME_RELATIVES:
+        path = confined(plugin_root, relative, field=f"critical runtime file {relative}")
+        critical_files[relative.as_posix()] = sha256_file(path)
+    return {
+        "runtime_tree": {
+            "file_count": len(runtime_files),
+            "total_bytes": runtime_bytes,
+            "tree_sha256": tree_sha256(runtime_files),
+        },
+        "critical_files": critical_files,
+        "bundled_tree": {
+            "file_count": len(bundled_files),
+            "total_bytes": bundled_bytes,
+            "tree_sha256": tree_sha256(bundled_files),
+        },
+        "git_observation": observe_git_state(plugin_root, set(runtime_files)),
+    }
+
+
 def validate_skill_frontmatter(path: Path) -> None:
     try:
         text = path.read_text(encoding="utf-8")
@@ -734,13 +964,14 @@ def validate_plugin(plugin_root_input: Path) -> dict[str, Any]:
     if discovered != [SKILL_NAME]:
         fail(
             "skill_discovery_mismatch",
-            "Agent Plugins v1 must discover exactly one immediate Skill",
-            discovered=discovered,
+            "Agent Plugins v1 layout must expose exactly one immediate Skill",
+            discoverable=discovered,
         )
     skill_path = confined(plugin_root, SKILL_RELATIVE / "SKILL.md", field="orchestrator SKILL.md")
     validate_skill_frontmatter(skill_path)
     source_manifest_path = confined(plugin_root, SOURCE_MANIFEST_RELATIVE, field="bundled source manifest")
     bundled_manifest, components = validate_bundled_manifest(plugin_root, source_manifest_path)
+    evidence = plugin_evidence(plugin_root)
     return {
         "ok": True,
         "mode": "plugin",
@@ -750,7 +981,8 @@ def validate_plugin(plugin_root_input: Path) -> dict[str, Any]:
             "version": plugin_manifest["version"],
             "schema": plugin_manifest["$schema"],
         },
-        "discovered_skills": discovered,
+        "discoverable_skills": discovered,
+        "runtime_discovery_state": "not_evaluated",
         "mcp_present": False,
         "bundled_manifest_sha256": sha256_file(source_manifest_path),
         "bundled_schema": bundled_manifest["schema"],
@@ -759,6 +991,7 @@ def validate_plugin(plugin_root_input: Path) -> dict[str, Any]:
         "component_count": len(components),
         "symlinks": False,
         "candidate_only": True,
+        **evidence,
     }
 
 
@@ -799,6 +1032,186 @@ def normalize_windows_link_target(raw_target: str) -> str:
     return raw_target
 
 
+def validate_runtime_operation_receipt(
+    package: Path,
+    receipt_relative_value: Any,
+    *,
+    runtime_kind: str,
+    role: str,
+    context_id: str,
+    artifact_relative: str,
+    artifact_sha256: str,
+    field: str,
+) -> dict[str, Any]:
+    try:
+        receipt_relative = relative_posix(
+            receipt_relative_value,
+            f"{field}.operation_receipt_path",
+        ).as_posix()
+    except ValidationError as error:
+        fail(
+            "execution_receipt_missing",
+            f"{field} requires a confined runtime operation receipt",
+            cause=error.code,
+        )
+    if not receipt_relative.startswith("payload/runtime-receipts/"):
+        fail(
+            "execution_receipt_binding",
+            f"{field} operation receipt must live below payload/runtime-receipts",
+            path=receipt_relative,
+        )
+    receipt_path = package / receipt_relative
+    if receipt_path.is_symlink() or not receipt_path.is_file():
+        fail(
+            "execution_receipt_missing",
+            f"{field} runtime operation receipt is missing",
+            path=receipt_relative,
+        )
+    receipt_path = confined(
+        package,
+        receipt_relative,
+        field=f"{field}.operation_receipt_path",
+    )
+    receipt = load_json(receipt_path, f"{field} runtime operation receipt")
+    reject_hidden_runtime_evidence(receipt, field)
+    if (
+        receipt.get("schema") != RUNTIME_OPERATION_SCHEMA
+        or receipt.get("evidence_origin") != "runtime_tool_result"
+        or receipt.get("runtime") != runtime_kind
+        or receipt.get("role") != role
+        or receipt.get("status") != "succeeded"
+        or receipt.get("context_id") != context_id
+        or receipt.get("artifact_path") != artifact_relative
+        or receipt.get("artifact_sha256") != artifact_sha256
+    ):
+        fail(
+            "execution_receipt_binding",
+            f"{field} runtime operation receipt does not bind the completed artifact",
+            path=receipt_relative,
+        )
+    require_runtime_identifier(receipt.get("operation_id"), f"{field}.operation_id")
+    started = parsed_time(receipt.get("started_at"), f"{field}.started_at")
+    completed = parsed_time(receipt.get("completed_at"), f"{field}.completed_at")
+    if completed < started:
+        fail("execution_receipt_order", f"{field} completion precedes its start")
+
+    if runtime_kind == "codex":
+        creation = require_object(receipt.get("create_thread"), f"{field}.create_thread")
+        actual_tool = require_nonempty_string(
+            creation.get("actual_tool"),
+            f"{field}.create_thread.actual_tool",
+        )
+        lowered_tool = actual_tool.lower()
+        if (
+            any(marker in lowered_tool for marker in FORBIDDEN_RUNTIME_TOOL_MARKERS)
+            or tool_leaf(actual_tool) != "create_thread"
+        ):
+            fail(
+                "invalid_visible_task_evidence",
+                f"{field} Codex execution must come from create_thread",
+                actual_tool=actual_tool,
+            )
+        if (
+            creation.get("status") != "created_confirmed"
+            or creation.get("surface") != "visible_thread"
+            or creation.get("task_kind") != "codex"
+            or creation.get("thread_id") != context_id
+            or creation.get("client_thread_id") is not None
+            or not isinstance(creation.get("host_id"), str)
+            or not creation["host_id"].strip()
+            or creation.get("prompt_verified") not in {"receipt", "readback"}
+            or creation.get("failure") is not None
+        ):
+            fail(
+                "invalid_visible_task_evidence",
+                f"{field} lacks a confirmed visible create_thread receipt",
+            )
+        require_runtime_identifier(context_id, f"{field}.context_id")
+        readback = require_object(
+            receipt.get("result_readback"),
+            f"{field}.result_readback",
+        )
+        if (
+            readback.get("status") != "succeeded"
+            or readback.get("thread_id") != context_id
+            or readback.get("host_id") != creation.get("host_id")
+            or readback.get("artifact_path") != artifact_relative
+            or readback.get("artifact_sha256") != artifact_sha256
+        ):
+            fail(
+                "execution_readback_binding",
+                f"{field} visible task result readback does not bind the artifact",
+            )
+        parse_time(readback.get("read_at"), f"{field}.result_readback.read_at")
+    else:
+        operation = require_object(
+            receipt.get("provider_operation"),
+            f"{field}.provider_operation",
+        )
+        actual_tool = require_nonempty_string(
+            operation.get("actual_tool"),
+            f"{field}.provider_operation.actual_tool",
+        )
+        if any(
+            marker in actual_tool.lower()
+            for marker in FORBIDDEN_RUNTIME_TOOL_MARKERS
+        ):
+            fail(
+                "hidden_subagent_evidence",
+                f"{field} provider operation cannot be hidden-subagent evidence",
+            )
+        require_runtime_identifier(
+            operation.get("receipt_id"),
+            f"{field}.provider_operation.receipt_id",
+        )
+        if operation.get("result_state") != "succeeded":
+            fail(
+                "execution_readback_binding",
+                f"{field} provider operation has no successful result readback",
+            )
+    return {
+        "path": receipt_relative,
+        "sha256": sha256_file(receipt_path),
+        "context_id": context_id,
+    }
+
+
+def validate_executor_binding(
+    value: Any,
+    *,
+    package: Path,
+    runtime: dict[str, Any],
+    expected_kind: str,
+    role: str,
+    artifact_relative: str,
+    artifact_sha256: str,
+    field: str,
+) -> tuple[str, dict[str, Any]]:
+    executor = require_object(value, field)
+    reject_hidden_runtime_evidence(executor, field)
+    if executor.get("runtime") != runtime["kind"] or executor.get("kind") != expected_kind:
+        fail(
+            "executor_identity_mismatch",
+            f"{field} used the wrong runtime executor",
+            role=role,
+        )
+    context_id = require_runtime_identifier(
+        executor.get("context_id"),
+        f"{field}.context_id",
+    )
+    operation = validate_runtime_operation_receipt(
+        package,
+        executor.get("operation_receipt_path"),
+        runtime_kind=runtime["kind"],
+        role=role,
+        context_id=context_id,
+        artifact_relative=artifact_relative,
+        artifact_sha256=artifact_sha256,
+        field=field,
+    )
+    return context_id, operation
+
+
 def validate_runtime(runtime_value: Any) -> dict[str, Any]:
     runtime = require_object(runtime_value, "manifest.runtime")
     kind = require_nonempty_string(runtime.get("kind"), "manifest.runtime.kind")
@@ -812,7 +1225,166 @@ def validate_runtime(runtime_value: Any) -> dict[str, Any]:
     return runtime
 
 
-def validate_acquisition_executor(value: Any, plugin_root: Path) -> dict[str, Any]:
+def plugin_validation_command(plugin_root: Path) -> list[str]:
+    return [
+        "python3",
+        "-B",
+        VALIDATOR_RELATIVE.as_posix(),
+        "plugin",
+        "--plugin-root",
+        str(plugin_root),
+    ]
+
+
+def validate_plugin_validation_receipt(
+    package: Path,
+    plugin_root: Path,
+    plugin_report: dict[str, Any],
+) -> dict[str, Any]:
+    relative = "payload/receipts/plugin-validation.json"
+    path = confined(package, relative, field="plugin-validation receipt")
+    receipt = load_json(path, "plugin-validation receipt")
+    expected_fields = {
+        "schema",
+        "schema_version",
+        "ok",
+        "plugin",
+        "runtime_tree",
+        "critical_files",
+        "bundled",
+        "validator",
+        "validator_result",
+        "git_observation",
+        "validated_at",
+    }
+    expected_bundled = {
+        "manifest_path": SOURCE_MANIFEST_RELATIVE.as_posix(),
+        "manifest_sha256": plugin_report["bundled_manifest_sha256"],
+        "tree": plugin_report["bundled_tree"],
+    }
+    expected_validator = {
+        "path": VALIDATOR_RELATIVE.as_posix(),
+        "sha256": plugin_report["critical_files"][VALIDATOR_RELATIVE.as_posix()],
+        "command": plugin_validation_command(plugin_root),
+    }
+    if (
+        set(receipt) != expected_fields
+        or receipt.get("schema") != PLUGIN_RECEIPT_SCHEMA
+        or receipt.get("schema_version") != 2
+        or receipt.get("ok") is not True
+        or receipt.get("plugin") != plugin_report["plugin"]
+        or receipt.get("runtime_tree") != plugin_report["runtime_tree"]
+        or receipt.get("critical_files") != plugin_report["critical_files"]
+        or receipt.get("bundled") != expected_bundled
+        or receipt.get("validator") != expected_validator
+        or receipt.get("git_observation") != plugin_report["git_observation"]
+    ):
+        fail(
+            "plugin_validation_binding",
+            "plugin-validation receipt v2 does not bind the current runtime tree and validator",
+        )
+    result_ref = require_object(
+        receipt.get("validator_result"),
+        "plugin-validation.validator_result",
+    )
+    result_relative = relative_posix(
+        result_ref.get("path"),
+        "plugin-validation.validator_result.path",
+    ).as_posix()
+    if result_relative != "payload/validation/plugin-validator-result.json":
+        fail(
+            "plugin_validation_binding",
+            "plugin validator result must use the declared validation path",
+            path=result_relative,
+        )
+    result_path = confined(package, result_relative, field="plugin validator result")
+    if require_hex(
+        result_ref.get("sha256"),
+        "plugin-validation.validator_result.sha256",
+    ) != sha256_file(result_path):
+        fail("plugin_validation_binding", "plugin validator result hash is stale")
+    result = load_json(result_path, "plugin validator result")
+    if result != plugin_report:
+        fail(
+            "plugin_validation_binding",
+            "recorded plugin validator result differs from current validation",
+        )
+    parse_time(receipt.get("validated_at"), "plugin-validation.validated_at")
+    return {
+        "path": relative,
+        "sha256": sha256_file(path),
+        "schema": PLUGIN_RECEIPT_SCHEMA,
+        "runtime_tree_sha256": plugin_report["runtime_tree"]["tree_sha256"],
+        "git_observation": plugin_report["git_observation"],
+    }
+
+
+def validate_skill_discovery_receipt(
+    package: Path,
+    binding: dict[str, Any],
+    *,
+    runtime: dict[str, Any],
+    registered_skill: Path,
+    canonical_realpath: Path,
+    skill_sha256: str,
+) -> dict[str, Any]:
+    relative = relative_posix(
+        binding.get("discovery_receipt_path"),
+        "run-init.acquisition_executor.discovery_receipt_path",
+    ).as_posix()
+    if not relative.startswith("payload/runtime-receipts/"):
+        fail(
+            "acquisition_executor_discovery_unverified",
+            "Paper Downloader discovery receipt must live below payload/runtime-receipts",
+        )
+    path = package / relative
+    if path.is_symlink() or not path.is_file():
+        fail(
+            "acquisition_executor_discovery_unverified",
+            "Paper Downloader link exists but runtime discovery is not receipted",
+            path=relative,
+        )
+    path = confined(package, relative, field="Paper Downloader discovery receipt")
+    expected_sha = require_hex(
+        binding.get("discovery_receipt_sha256"),
+        "run-init.acquisition_executor.discovery_receipt_sha256",
+    )
+    if sha256_file(path) != expected_sha:
+        fail(
+            "acquisition_executor_discovery_unverified",
+            "Paper Downloader discovery receipt hash is stale",
+        )
+    receipt = load_json(path, "Paper Downloader discovery receipt")
+    reject_hidden_runtime_evidence(receipt, "Paper Downloader discovery receipt")
+    if (
+        receipt.get("schema") != SKILL_DISCOVERY_SCHEMA
+        or receipt.get("evidence_origin") != "runtime_skill_catalog"
+        or receipt.get("runtime") != runtime["kind"]
+        or receipt.get("status") != "discovered"
+        or receipt.get("consumer_skill_path") != str(registered_skill)
+        or receipt.get("canonical_realpath") != str(canonical_realpath)
+        or receipt.get("skill_sha256") != skill_sha256
+    ):
+        fail(
+            "acquisition_executor_discovery_unverified",
+            "Paper Downloader discovery receipt does not bind the linked consumer and canonical source",
+        )
+    require_runtime_identifier(receipt.get("receipt_id"), "skill-discovery.receipt_id")
+    parse_time(receipt.get("observed_at"), "skill-discovery.observed_at")
+    return {
+        "path": relative,
+        "sha256": expected_sha,
+        "receipt_structurally_validated": True,
+        "runtime_state": RUNTIME_NOT_VERIFIED,
+    }
+
+
+def validate_acquisition_executor(
+    value: Any,
+    plugin_root: Path,
+    package: Path,
+    runtime: dict[str, Any],
+) -> dict[str, Any]:
     binding = require_object(value, "run-init.acquisition_executor")
     required = {
         "name",
@@ -820,11 +1392,18 @@ def validate_acquisition_executor(value: Any, plugin_root: Path) -> dict[str, An
         "canonical_realpath",
         "skill_sha256",
         "verified_at",
+        "consumer_link_state",
+        "discovery_receipt_path",
+        "discovery_receipt_sha256",
     }
-    if set(binding) != required or binding.get("name") != PAPER_DOWNLOADER_NAME:
+    if (
+        set(binding) != required
+        or binding.get("name") != PAPER_DOWNLOADER_NAME
+        or binding.get("consumer_link_state") != "linked"
+    ):
         fail(
             "acquisition_executor_binding",
-            "run-init must bind the registered Paper Downloader path, canonical realpath, and Skill hash",
+            "run-init must separate Paper Downloader source, linked consumer, and discovery evidence",
         )
 
     canonical_root = plugin_root.parent / PAPER_DOWNLOADER_NAME
@@ -930,11 +1509,27 @@ def validate_acquisition_executor(value: Any, plugin_root: Path) -> dict[str, An
         binding.get("verified_at"),
         "run-init.acquisition_executor.verified_at",
     )
+    discovery = validate_skill_discovery_receipt(
+        package,
+        binding,
+        runtime=runtime,
+        registered_skill=registered_skill,
+        canonical_realpath=expected_realpath,
+        skill_sha256=expected_sha,
+    )
     return {
         "name": PAPER_DOWNLOADER_NAME,
         "registered_skill_path": str(registered_skill),
         "canonical_realpath": str(expected_realpath),
         "skill_sha256": expected_sha,
+        "source_state": "validated",
+        "consumer_link_state": "linked",
+        "runtime_discovery_state": discovery["runtime_state"],
+        "discovery_receipt_structurally_validated": discovery[
+            "receipt_structurally_validated"
+        ],
+        "runtime_execution_verified": False,
+        "discovery_receipt": discovery,
     }
 
 
@@ -1010,6 +1605,487 @@ def validate_candidate_text(path: Path, artifact_type: str, artifact_id: str) ->
         )
 
 
+PDF_WHITESPACE = b" \t\r\n\f\x00"
+PDF_HEADER_PATTERN = re.compile(br"\A%PDF-(?:1\.[0-7]|2\.0)(?:\r\n|\r|\n)")
+PDF_TERMINAL_PATTERN = re.compile(
+    br"startxref[ \t]*(?:\r\n|\r|\n)+(\d+)[ \t]*"
+    br"(?:\r\n|\r|\n)+%%EOF[ \t\r\n\f\x00]*\Z"
+)
+
+
+def invalid_pdf(source_id: str, message: str, **details: Any) -> None:
+    fail("invalid_downloaded_pdf", message, source_id=source_id, **details)
+
+
+def skip_pdf_whitespace(data: bytes, position: int, limit: int) -> int:
+    while position < limit and data[position] in PDF_WHITESPACE:
+        position += 1
+    return position
+
+
+def read_pdf_line(
+    data: bytes,
+    position: int,
+    limit: int,
+    source_id: str,
+) -> tuple[bytes, int]:
+    if position >= limit:
+        invalid_pdf(source_id, "PDF cross-reference table ended unexpectedly")
+    end = position
+    while end < limit and data[end] not in b"\r\n":
+        end += 1
+    if end == limit:
+        invalid_pdf(source_id, "PDF cross-reference line has no line ending")
+    next_position = end + 1
+    if data[end : end + 2] == b"\r\n":
+        next_position = end + 2
+    return data[position:end], next_position
+
+
+def extract_pdf_dictionary(
+    data: bytes,
+    position: int,
+    limit: int,
+    source_id: str,
+) -> tuple[bytes, int]:
+    position = skip_pdf_whitespace(data, position, limit)
+    if data[position : position + 2] != b"<<":
+        invalid_pdf(source_id, "PDF cross-reference data has no trailer dictionary")
+    start = position
+    depth = 0
+    literal_depth = 0
+    while position < limit:
+        if literal_depth:
+            byte = data[position]
+            if byte == 0x5C:  # backslash escape inside a literal string
+                position += 2
+                continue
+            if byte == 0x28:
+                literal_depth += 1
+            elif byte == 0x29:
+                literal_depth -= 1
+            position += 1
+            continue
+        if data[position] == 0x25:  # comment
+            while position < limit and data[position] not in b"\r\n":
+                position += 1
+            continue
+        if data[position] == 0x28:
+            literal_depth = 1
+            position += 1
+            continue
+        if data[position : position + 2] == b"<<":
+            depth += 1
+            position += 2
+            continue
+        if data[position : position + 2] == b">>":
+            depth -= 1
+            position += 2
+            if depth == 0:
+                return data[start:position], position
+            if depth < 0:
+                break
+            continue
+        if data[position] == 0x3C:  # hexadecimal string, not a dictionary
+            end = data.find(b">", position + 1, limit)
+            if end < 0:
+                invalid_pdf(source_id, "PDF trailer contains an unterminated hex string")
+            position = end + 1
+            continue
+        position += 1
+    invalid_pdf(source_id, "PDF trailer dictionary is unterminated")
+
+
+def pdf_dictionary_integer(
+    dictionary: bytes,
+    name: bytes,
+    source_id: str,
+) -> int:
+    match = re.search(
+        br"/" + re.escape(name) + br"(?![A-Za-z0-9#])"
+        br"[ \t\r\n\f\x00]+(\d+)(?!\d)",
+        dictionary,
+    )
+    if match is None:
+        invalid_pdf(source_id, f"PDF cross-reference dictionary lacks /{name.decode('ascii')}")
+    return int(match.group(1))
+
+
+def pdf_dictionary_reference(
+    dictionary: bytes,
+    name: bytes,
+    source_id: str,
+) -> tuple[int, int]:
+    match = re.search(
+        br"/" + re.escape(name) + br"(?![A-Za-z0-9#])"
+        br"[ \t\r\n\f\x00]+(\d+)[ \t\r\n\f\x00]+"
+        br"(\d+)[ \t\r\n\f\x00]+R(?![A-Za-z0-9])",
+        dictionary,
+    )
+    if match is None:
+        invalid_pdf(source_id, f"PDF cross-reference dictionary lacks /{name.decode('ascii')} reference")
+    return int(match.group(1)), int(match.group(2))
+
+
+def validate_pdf_object_offset(
+    data: bytes,
+    object_number: int,
+    generation: int,
+    offset: int,
+    xref_offset: int,
+    source_id: str,
+) -> None:
+    if offset <= 0 or offset > xref_offset:
+        invalid_pdf(
+            source_id,
+            "PDF cross-reference entry points outside the object body",
+            object_number=object_number,
+            offset=offset,
+        )
+    marker = f"{object_number} {generation} obj".encode("ascii")
+    if data[offset : offset + len(marker)] != marker:
+        invalid_pdf(
+            source_id,
+            "PDF cross-reference entry does not match its indirect object",
+            object_number=object_number,
+            offset=offset,
+        )
+    following = offset + len(marker)
+    if following >= len(data) or data[following] not in PDF_WHITESPACE:
+        invalid_pdf(source_id, "PDF indirect object header has no token boundary")
+
+
+def validate_classic_pdf_xref(
+    data: bytes,
+    xref_offset: int,
+    startxref_position: int,
+    source_id: str,
+) -> None:
+    if not data.startswith(b"xref", xref_offset):
+        invalid_pdf(source_id, "PDF startxref does not point to an xref table")
+    boundary = xref_offset + 4
+    if boundary >= len(data) or data[boundary] not in PDF_WHITESPACE:
+        invalid_pdf(source_id, "PDF xref token has no boundary")
+    position = boundary
+    entries: dict[int, tuple[int, int, bytes]] = {}
+    saw_section = False
+    while position < startxref_position:
+        line, position = read_pdf_line(data, position, startxref_position, source_id)
+        stripped = line.strip(PDF_WHITESPACE)
+        if not stripped:
+            continue
+        if stripped == b"trailer":
+            break
+        section = re.fullmatch(br"(\d+)[ \t]+(\d+)", stripped)
+        if section is None:
+            invalid_pdf(source_id, "PDF xref subsection header is malformed")
+        first_object = int(section.group(1))
+        count = int(section.group(2))
+        if count <= 0:
+            invalid_pdf(source_id, "PDF xref subsection cannot be empty")
+        saw_section = True
+        for index in range(count):
+            entry_line, position = read_pdf_line(
+                data,
+                position,
+                startxref_position,
+                source_id,
+            )
+            entry = re.fullmatch(
+                br"(\d{10})[ \t]+(\d{5})[ \t]+([nf])[ \t]*",
+                entry_line,
+            )
+            if entry is None:
+                invalid_pdf(source_id, "PDF xref entry is malformed")
+            object_number = first_object + index
+            if object_number in entries:
+                invalid_pdf(source_id, "PDF xref table repeats an object entry")
+            entries[object_number] = (
+                int(entry.group(1)),
+                int(entry.group(2)),
+                entry.group(3),
+            )
+    else:
+        invalid_pdf(source_id, "PDF xref table has no trailer")
+    if not saw_section or 0 not in entries or entries[0][2] != b"f":
+        invalid_pdf(source_id, "PDF xref table lacks the required free object zero")
+
+    dictionary, dictionary_end = extract_pdf_dictionary(
+        data,
+        position,
+        startxref_position,
+        source_id,
+    )
+    if data[dictionary_end:startxref_position].strip(PDF_WHITESPACE):
+        invalid_pdf(source_id, "PDF has unexpected bytes between trailer and startxref")
+    size = pdf_dictionary_integer(dictionary, b"Size", source_id)
+    root_object, root_generation = pdf_dictionary_reference(
+        dictionary,
+        b"Root",
+        source_id,
+    )
+    if size <= max(entries):
+        invalid_pdf(source_id, "PDF trailer /Size does not cover the xref table")
+    root_entry = entries.get(root_object)
+    if root_entry is None or root_entry[2] != b"n" or root_entry[1] != root_generation:
+        invalid_pdf(source_id, "PDF trailer /Root is not an in-use xref object")
+    for object_number, (offset, generation, state) in entries.items():
+        if state == b"n":
+            validate_pdf_object_offset(
+                data,
+                object_number,
+                generation,
+                offset,
+                xref_offset,
+                source_id,
+            )
+
+
+def validate_pdf_xref_stream(
+    data: bytes,
+    xref_offset: int,
+    startxref_position: int,
+    source_id: str,
+) -> None:
+    header = re.match(
+        br"(\d+)[ \t\r\n\f\x00]+(\d+)[ \t\r\n\f\x00]+obj"
+        br"(?=[ \t\r\n\f\x00])",
+        data[xref_offset:startxref_position],
+    )
+    if header is None:
+        invalid_pdf(source_id, "PDF startxref points to neither xref nor an xref stream")
+    position = xref_offset + header.end()
+    dictionary, dictionary_end = extract_pdf_dictionary(
+        data,
+        position,
+        startxref_position,
+        source_id,
+    )
+    if not re.search(br"/Type[ \t\r\n\f\x00]+/XRef(?![A-Za-z0-9#])", dictionary):
+        invalid_pdf(source_id, "PDF startxref object is not an /XRef stream")
+    size = pdf_dictionary_integer(dictionary, b"Size", source_id)
+    root_object, _ = pdf_dictionary_reference(dictionary, b"Root", source_id)
+    length = pdf_dictionary_integer(dictionary, b"Length", source_id)
+    widths_match = re.search(br"/W[ \t\r\n\f\x00]*\[([^]]+)\]", dictionary)
+    if widths_match is None:
+        invalid_pdf(source_id, "PDF xref stream lacks /W")
+    widths = [int(value) for value in re.findall(br"\d+", widths_match.group(1))]
+    if len(widths) != 3 or sum(widths) <= 0:
+        invalid_pdf(source_id, "PDF xref stream /W must contain three widths")
+    index_match = re.search(br"/Index[ \t\r\n\f\x00]*\[([^]]+)\]", dictionary)
+    indexes = (
+        [int(value) for value in re.findall(br"\d+", index_match.group(1))]
+        if index_match is not None
+        else [0, size]
+    )
+    if len(indexes) % 2 or not indexes:
+        invalid_pdf(source_id, "PDF xref stream /Index is malformed")
+    indexed_objects: list[int] = []
+    for first, count in zip(indexes[0::2], indexes[1::2]):
+        if count <= 0:
+            invalid_pdf(source_id, "PDF xref stream /Index contains an empty range")
+        indexed_objects.extend(range(first, first + count))
+    if size <= max(indexed_objects):
+        invalid_pdf(source_id, "PDF xref stream /Size does not cover /Index")
+
+    position = skip_pdf_whitespace(data, dictionary_end, startxref_position)
+    if not data.startswith(b"stream", position):
+        invalid_pdf(source_id, "PDF xref stream dictionary has no stream body")
+    position += len(b"stream")
+    if data[position : position + 2] == b"\r\n":
+        position += 2
+    elif data[position : position + 1] in {b"\r", b"\n"}:
+        position += 1
+    else:
+        invalid_pdf(source_id, "PDF xref stream keyword has no line ending")
+    stream_end = position + length
+    if stream_end > startxref_position:
+        invalid_pdf(source_id, "PDF xref stream /Length exceeds the file body")
+    stream_data = data[position:stream_end]
+    tail = skip_pdf_whitespace(data, stream_end, startxref_position)
+    if not data.startswith(b"endstream", tail):
+        invalid_pdf(source_id, "PDF xref stream length does not end at endstream")
+    endstream = tail + len(b"endstream")
+    endobj = skip_pdf_whitespace(data, endstream, startxref_position)
+    if not data.startswith(b"endobj", endobj):
+        invalid_pdf(source_id, "PDF xref stream object has no endobj")
+
+    filter_match = re.search(br"/Filter[ \t\r\n\f\x00]+/([A-Za-z0-9]+)", dictionary)
+    if b"/Filter" in dictionary and filter_match is None:
+        invalid_pdf(source_id, "PDF xref stream uses an unsupported filter form")
+    if filter_match is None:
+        decoded = stream_data
+    elif filter_match.group(1) == b"FlateDecode":
+        try:
+            decoded = zlib.decompress(stream_data)
+        except zlib.error as error:
+            invalid_pdf(source_id, "PDF xref stream Flate data is invalid", error=str(error))
+    else:
+        invalid_pdf(
+            source_id,
+            "PDF xref stream filter is unsupported by the strict structural gate",
+            filter=filter_match.group(1).decode("ascii", errors="replace"),
+        )
+    entry_width = sum(widths)
+    if len(decoded) != len(indexed_objects) * entry_width:
+        invalid_pdf(source_id, "PDF xref stream byte count does not match /W and /Index")
+    entries: dict[int, tuple[int, int, int]] = {}
+    cursor = 0
+    for object_number in indexed_objects:
+        fields: list[int] = []
+        for width in widths:
+            raw = decoded[cursor : cursor + width]
+            cursor += width
+            fields.append(int.from_bytes(raw, "big") if width else 0)
+        entry_type = fields[0] if widths[0] else 1
+        if entry_type not in {0, 1, 2}:
+            invalid_pdf(source_id, "PDF xref stream contains an unknown entry type")
+        entries[object_number] = (entry_type, fields[1], fields[2])
+    root_entry = entries.get(root_object)
+    if root_entry is None or root_entry[0] not in {1, 2}:
+        invalid_pdf(source_id, "PDF xref stream /Root is not an in-use object")
+    for object_number, (entry_type, field_two, field_three) in entries.items():
+        if entry_type == 1:
+            validate_pdf_object_offset(
+                data,
+                object_number,
+                field_three,
+                field_two,
+                xref_offset,
+                source_id,
+            )
+        elif entry_type == 2:
+            object_stream = entries.get(field_two)
+            if object_stream is None or object_stream[0] != 1:
+                invalid_pdf(source_id, "PDF compressed object references no object stream")
+
+
+def validate_pdf_structure(path: Path, source_id: str) -> None:
+    data = path.read_bytes()
+    if PDF_HEADER_PATTERN.match(data) is None:
+        invalid_pdf(source_id, "downloaded payload lacks a valid PDF header")
+    terminal = PDF_TERMINAL_PATTERN.search(data)
+    if terminal is None:
+        invalid_pdf(source_id, "downloaded PDF lacks terminal startxref and %%EOF")
+    xref_offset = int(terminal.group(1))
+    if xref_offset <= 0 or xref_offset >= terminal.start():
+        invalid_pdf(source_id, "PDF startxref offset is outside the document body")
+    if data.startswith(b"xref", xref_offset):
+        validate_classic_pdf_xref(
+            data,
+            xref_offset,
+            terminal.start(),
+            source_id,
+        )
+    else:
+        validate_pdf_xref_stream(
+            data,
+            xref_offset,
+            terminal.start(),
+            source_id,
+        )
+
+
+def validate_acquisition_operation_receipt(
+    row: dict[str, Any],
+    acquisition_receipt: dict[str, Any],
+    *,
+    package: Path,
+    executor_skill_sha256: str,
+) -> bool:
+    source_id = str(row.get("source_id"))
+    relative_value = acquisition_receipt.get("executor_operation_receipt_path")
+    if row.get("download_attempted") is not True:
+        if relative_value is not None:
+            fail(
+                "unexpected_acquisition_operation",
+                "a non-download row cannot claim a Paper Downloader operation",
+                source_id=source_id,
+            )
+        return False
+    try:
+        relative = relative_posix(
+            relative_value,
+            "acquisition.executor_operation_receipt_path",
+        ).as_posix()
+    except ValidationError as error:
+        fail(
+            "acquisition_operation_missing",
+            "download_attempted=true requires a Paper Downloader runtime operation receipt",
+            source_id=source_id,
+            cause=error.code,
+        )
+    if not relative.startswith("payload/runtime-receipts/acquisition/"):
+        fail(
+            "acquisition_operation_binding",
+            "Paper Downloader operation receipt must use the acquisition receipt directory",
+            source_id=source_id,
+        )
+    path = package / relative
+    if path.is_symlink() or not path.is_file():
+        fail(
+            "acquisition_operation_missing",
+            "downloaded bytes alone do not prove Paper Downloader execution",
+            source_id=source_id,
+            path=relative,
+        )
+    path = confined(package, relative, field="Paper Downloader operation receipt")
+    operation = load_json(path, "Paper Downloader operation receipt")
+    reject_hidden_runtime_evidence(operation, "Paper Downloader operation receipt")
+    result = require_object(operation.get("result"), "acquisition-operation.result")
+    if (
+        operation.get("schema") != ACQUISITION_OPERATION_SCHEMA
+        or operation.get("evidence_origin") != "runtime_tool_result"
+        or operation.get("executor_name") != PAPER_DOWNLOADER_NAME
+        or operation.get("executor_skill_sha256") != executor_skill_sha256
+        or operation.get("status") != "completed"
+        or operation.get("source_id") != source_id
+        or operation.get("publication_identity") != row.get("publication_identity")
+        or result.get("access_status") != row.get("access_status")
+        or result.get("local_payload_path") != row.get("local_payload_path")
+        or result.get("payload_sha256") != row.get("payload_sha256")
+        or result.get("payload_bytes") != row.get("payload_bytes")
+    ):
+        fail(
+            "acquisition_operation_binding",
+            "Paper Downloader operation receipt does not bind the source result",
+            source_id=source_id,
+        )
+    actual_tool = require_nonempty_string(
+        operation.get("actual_tool"),
+        "acquisition-operation.actual_tool",
+    )
+    if (
+        any(marker in actual_tool.lower() for marker in FORBIDDEN_RUNTIME_TOOL_MARKERS)
+        or tool_leaf(actual_tool) != PAPER_DOWNLOADER_NAME
+    ):
+        fail(
+            "acquisition_operation_binding",
+            "acquisition operation did not use Paper Downloader",
+            source_id=source_id,
+            actual_tool=actual_tool,
+        )
+    require_runtime_identifier(
+        operation.get("operation_id"),
+        "acquisition-operation.operation_id",
+    )
+    started = parsed_time(
+        operation.get("started_at"),
+        "acquisition-operation.started_at",
+    )
+    completed = parsed_time(
+        operation.get("completed_at"),
+        "acquisition-operation.completed_at",
+    )
+    if completed < started:
+        fail(
+            "acquisition_operation_order",
+            "Paper Downloader operation completed before it started",
+            source_id=source_id,
+        )
+    return True
+
+
 def validate_acquisition_receipt(
     row: dict[str, Any],
     *,
@@ -1017,7 +2093,8 @@ def validate_acquisition_receipt(
     package_root: Path,
     package: Path,
     akashic_root: Path,
-) -> tuple[Path | None, dict[str, Any]]:
+    executor_skill_sha256: str,
+) -> tuple[Path | None, dict[str, Any], bool]:
     source_id = require_nonempty_string(row.get("source_id"), f"source[{index}].source_id")
     receipt_relative = relative_posix(
         row.get("acquisition_receipt_path"),
@@ -1027,6 +2104,7 @@ def validate_acquisition_receipt(
     receipt = load_json(receipt_path, receipt_relative)
     if (
         receipt.get("schema_version") != 1
+        or "executor_operation_receipt_path" not in receipt
         or receipt.get("source_id") != source_id
         or receipt.get("publication_identity") != row.get("publication_identity")
         or receipt.get("status") != row.get("access_status")
@@ -1051,6 +2129,13 @@ def validate_acquisition_receipt(
     elif receipt.get("download_started_at") is not None or receipt.get("download_completed_at") is not None:
         fail("false_download_timestamps", "non-download receipt cannot contain download timestamps", source_id=source_id)
 
+    operation_verified = validate_acquisition_operation_receipt(
+        row,
+        receipt,
+        package=package,
+        executor_skill_sha256=executor_skill_sha256,
+    )
+
     payload_path: Path | None = None
     payload_relative = row.get("local_payload_path")
     if payload_relative not in {None, ""}:
@@ -1073,8 +2158,9 @@ def validate_acquisition_receipt(
     if status == "downloaded":
         if not attempted or payload_path is None:
             fail("false_download_claim", "downloaded requires a real local payload and download attempt", source_id=source_id)
-        if payload_path.stat().st_size <= MIN_PDF_BYTES or payload_path.read_bytes()[:4] != b"%PDF":
-            fail("invalid_downloaded_pdf", "downloaded payload must be a validated PDF larger than 5 KiB", source_id=source_id)
+        if payload_path.stat().st_size <= MIN_PDF_BYTES:
+            fail("invalid_downloaded_pdf", "downloaded payload must be larger than 5 KiB", source_id=source_id)
+        validate_pdf_structure(payload_path, source_id)
         if validation.get("exists") is not True or validation.get("kind") != "pdf" or validation.get("magic") != "%PDF":
             fail("false_download_claim", "download validation receipt is incomplete", source_id=source_id)
     elif status == "verified_abstract":
@@ -1110,7 +2196,7 @@ def validate_acquisition_receipt(
         if validation.get("exists") is not True or validation.get("kind") != "akashic_reuse":
             fail("akashic_source_binding", "Akashic reuse validation receipt is incomplete", source_id=source_id)
     parse_time(receipt.get("recorded_at"), "acquisition.recorded_at")
-    return payload_path, receipt
+    return payload_path, receipt, operation_verified
 
 
 def validate_source_row(
@@ -1120,7 +2206,8 @@ def validate_source_row(
     package_root: Path,
     package: Path,
     akashic_root: Path,
-) -> tuple[bool, str, str]:
+    executor_skill_sha256: str,
+) -> tuple[bool, str, str, bool]:
     missing = sorted(REQUIRED_SOURCE_FIELDS - set(row))
     if missing:
         fail("source_fields_missing", "source inventory row is incomplete", line=index, missing=missing)
@@ -1165,12 +2252,13 @@ def validate_source_row(
     declared_record_sha = require_hex(row.get("record_sha256"), f"source[{index}].record_sha256")
     if declared_record_sha != sha256_bytes(canonical_without(row, "record_sha256")):
         fail("source_record_hash_mismatch", "source record self-hash mismatch", source_id=source_id)
-    validate_acquisition_receipt(
+    _, _, operation_verified = validate_acquisition_receipt(
         row,
         index=index,
         package_root=package_root,
         package=package,
         akashic_root=akashic_root,
+        executor_skill_sha256=executor_skill_sha256,
     )
     reviewable = row.get("reviewable") is True
     if reviewable:
@@ -1196,7 +2284,7 @@ def validate_source_row(
             fail("invalid_reviewable_source", "reviewable source requires a retained local payload", source_id=source_id)
         if not route_verified:
             fail("invalid_reviewable_source", "reviewable source lacks a verified publication route", source_id=source_id)
-    return reviewable, identity, source_id
+    return reviewable, identity, source_id, operation_verified
 
 
 def nonempty_string_list(value: Any, field: str) -> list[str]:
@@ -1253,10 +2341,17 @@ def validate_topic_stage(
             }.items()
         ):
             fail("topic_skill_binding", "topic contribution does not bind its manifest Skill", artifact_id=component_id)
-        executor = require_object(contribution.get("executor"), "topic.executor")
-        if executor.get("runtime") != runtime["kind"] or executor.get("kind") != "author":
-            fail("executor_identity_mismatch", "topic contribution used the wrong runtime", artifact_id=component_id)
-        contexts.append(require_nonempty_string(executor.get("context_id"), "topic.executor.context_id"))
+        context_id, _ = validate_executor_binding(
+            contribution.get("executor"),
+            package=package,
+            runtime=runtime,
+            expected_kind="author",
+            role="topic_expert",
+            artifact_relative=relative,
+            artifact_sha256=sha256_file(path),
+            field=f"topic contribution {component_id} executor",
+        )
+        contexts.append(context_id)
         nonempty_string_list(contribution.get("research_angles"), "topic.research_angles")
         nonempty_string_list(contribution.get("search_terms"), "topic.search_terms")
         require_list(contribution.get("candidate_exclusions"), "topic.candidate_exclusions")
@@ -1277,7 +2372,21 @@ def validate_topic_stage(
         or brief.get("contributions") != contribution_bindings
     ):
         fail("research_brief_binding", "research brief does not bind the question and all eight contributions")
-    brief_context = require_nonempty_string(brief.get("author_context_id"), "research-brief.author_context_id")
+    brief_context, _ = validate_executor_binding(
+        brief.get("executor"),
+        package=package,
+        runtime=runtime,
+        expected_kind="integrator",
+        role="topic_integrator",
+        artifact_relative=brief_relative,
+        artifact_sha256=sha256_file(brief_path),
+        field="research brief executor",
+    )
+    if brief.get("author_context_id") != brief_context:
+        fail(
+            "research_brief_binding",
+            "research brief author_context_id must match its runtime operation receipt",
+        )
     if brief_context in contexts:
         fail("research_brief_context_reuse", "research brief author must be separate from topic expert contexts")
     nonempty_string_list(brief.get("search_queries"), "research-brief.search_queries")
@@ -1301,6 +2410,8 @@ def validate_acquisition_summary(
     *,
     reviewable_count: int,
     unique_publication_count: int,
+    runtime: dict[str, Any],
+    acquisition_operation_receipts_structurally_validated: int,
 ) -> tuple[dict[str, Any], str]:
     relative = "payload/sources/acquisition-summary.json"
     path = package_path(package_root, package, relative)
@@ -1316,10 +2427,27 @@ def validate_acquisition_summary(
         or summary.get("unique_publication_count") != unique_publication_count
         or summary.get("status_counts") != status_counts
         or summary.get("all_akashic_lookups_completed") is not True
-        or summary.get("download_claims_verified") is not True
+        or summary.get("download_payloads_structurally_validated") is not True
+        or summary.get("executor_operation_receipts_structurally_validated")
+        != acquisition_operation_receipts_structurally_validated
+        or summary.get("runtime_execution_verified") is not False
     ):
         fail("acquisition_summary_binding", "acquisition summary does not match the validated source inventory")
-    require_nonempty_string(summary.get("collector_context_id"), "acquisition-summary.collector_context_id")
+    collector_context, _ = validate_executor_binding(
+        summary.get("executor"),
+        package=package,
+        runtime=runtime,
+        expected_kind="collector",
+        role="source_collector",
+        artifact_relative=relative,
+        artifact_sha256=sha256_file(path),
+        field="acquisition summary executor",
+    )
+    if summary.get("collector_context_id") != collector_context:
+        fail(
+            "acquisition_summary_binding",
+            "collector_context_id must match the source collection operation receipt",
+        )
     parse_time(summary.get("completed_at"), "acquisition-summary.completed_at")
     return summary, sha256_file(path)
 
@@ -1327,6 +2455,8 @@ def validate_acquisition_summary(
 def validate_audit(
     audit: dict[str, Any],
     *,
+    package: Path,
+    audit_relative: str,
     artifact_type: str,
     artifact_id: str,
     attempt: int,
@@ -1336,7 +2466,7 @@ def validate_audit(
     author_context: str,
     rule_sha: str,
     rule_bytes: int,
-) -> str:
+) -> tuple[str, str]:
     if audit.get("schema_version") != 1:
         fail("audit_schema", "audit schema_version must be 1", artifact_id=artifact_id, attempt=attempt)
     if audit.get("artifact_type") != artifact_type or audit.get("artifact_id") != artifact_id or audit.get("attempt") != attempt:
@@ -1375,10 +2505,17 @@ def validate_audit(
                 attempt=attempt,
                 failed=failed_checks,
             )
-    auditor = require_object(audit.get("auditor"), "audit.auditor")
-    if auditor.get("runtime") != runtime["kind"] or auditor.get("kind") != runtime["auditor_kind"]:
-        fail("auditor_identity_mismatch", "audit used the wrong runtime auditor", artifact_id=artifact_id, attempt=attempt)
-    auditor_context = require_nonempty_string(auditor.get("context_id"), "audit.auditor.context_id")
+    audit_path = confined(package, audit_relative, field="audit artifact")
+    auditor_context, _ = validate_executor_binding(
+        audit.get("auditor"),
+        package=package,
+        runtime=runtime,
+        expected_kind=runtime["auditor_kind"],
+        role=f"{artifact_type}_auditor",
+        artifact_relative=audit_relative,
+        artifact_sha256=sha256_file(audit_path),
+        field=f"{artifact_type} audit executor",
+    )
     if auditor_context == author_context:
         fail("auditor_not_independent", "author and auditor contexts must differ", artifact_id=artifact_id, attempt=attempt)
     if require_hex(audit.get("input_sha256"), "audit.input_sha256") != receipt_sha:
@@ -1392,7 +2529,7 @@ def validate_audit(
         expected_bytes=rule_bytes,
     )
     parse_time(audit.get("decided_at"), "audit.decided_at")
-    return decision
+    return decision, auditor_context
 
 
 def validate_attempt_chain(
@@ -1462,10 +2599,16 @@ def validate_attempt_chain(
             "receipt.akashic_rule",
             expected_bytes=rule_bytes,
         )
-        executor = require_object(receipt.get("executor"), "receipt.executor")
-        if executor.get("runtime") != runtime["kind"] or executor.get("kind") != "author":
-            fail("executor_identity_mismatch", "attempt used the wrong author runtime", artifact_id=artifact_id, attempt=attempt)
-        author_context = require_nonempty_string(executor.get("context_id"), "receipt.executor.context_id")
+        author_context, _ = validate_executor_binding(
+            receipt.get("executor"),
+            package=package,
+            runtime=runtime,
+            expected_kind="author",
+            role=f"{artifact_type}_author",
+            artifact_relative=candidate_rel,
+            artifact_sha256=candidate_sha,
+            field=f"{artifact_type} {artifact_id} attempt {attempt} executor",
+        )
         retry_of = receipt.get("retry_of_audit_sha256")
         if attempt == 1:
             if retry_of is not None:
@@ -1518,8 +2661,10 @@ def validate_attempt_chain(
         parse_time(receipt.get("created_at"), "receipt.created_at")
         receipt_sha = sha256_file(receipt_path)
         audit = load_json(audit_path, audit_rel)
-        decision = validate_audit(
+        decision, auditor_context = validate_audit(
             audit,
+            package=package,
+            audit_relative=audit_rel,
             artifact_type=artifact_type,
             artifact_id=artifact_id,
             attempt=attempt,
@@ -1544,10 +2689,7 @@ def validate_attempt_chain(
                 "audit_path": audit_rel,
                 "audit_sha256": audit_sha,
                 "author_context": author_context,
-                "auditor_context": require_nonempty_string(
-                    require_object(audit.get("auditor"), "audit.auditor").get("context_id"),
-                    "audit.auditor.context_id",
-                ),
+                "auditor_context": auditor_context,
             }
         )
         previous_decision = decision
@@ -1617,8 +2759,14 @@ def validate_events(
         previous_line_sha = sha256_bytes(raw_line)
     if events[0].get("event_type") != "run_initialized" or events[0].get("state_from") is not None or events[0].get("state_to") != "initialized":
         fail("event_chain_start", "event chain must begin with run_initialized -> initialized")
-    if events[-1].get("event_type") != "success" or events[-1].get("state_to") != "success":
-        fail("event_chain_terminal", "event chain must terminate in success")
+    if (
+        events[-1].get("event_type") != "structure_validated_runtime_unverified"
+        or events[-1].get("state_to") != RUNTIME_NOT_VERIFIED
+    ):
+        fail(
+            "event_chain_terminal",
+            "offline event chain must terminate without claiming runtime success",
+        )
     if any(event_type in TERMINAL_FAILURE_EVENTS for event_type in observed_types):
         fail("contradictory_success_chain", "success event chain contains a terminal failure")
     for required in (
@@ -1635,7 +2783,7 @@ def validate_events(
         "experts_8_of_8_passed",
         "synthesis_passed",
         "chain_validated",
-        "success",
+        "structure_validated_runtime_unverified",
     ):
         if required not in observed_types:
             fail("event_missing", "required event is absent", event_type=required)
@@ -1659,7 +2807,7 @@ def validate_events(
         "experts_8_of_8_passed",
         "synthesis_passed",
         "chain_validated",
-        "success",
+        "structure_validated_runtime_unverified",
     )
     positions = [first_position[event_type] for event_type in ordered]
     if positions != sorted(positions) or len(set(positions)) != len(positions):
@@ -1729,8 +2877,23 @@ def validate_run(
         or manifest.get("package_relative_path") != package_relative_path
     ):
         fail("run_manifest_identity", "run manifest identity mismatch")
-    if manifest.get("status") != "candidate_success":
-        fail("run_not_success", "run manifest is not in candidate_success state", status=manifest.get("status"))
+    if manifest.get("status") != STRUCTURAL_RUN_STATUS:
+        fail(
+            "runtime_success_overclaim",
+            "package-local evidence cannot declare candidate or runtime success",
+            status=manifest.get("status"),
+        )
+    expected_runtime_attestation = {
+        "evidence_scope": "package_local_only",
+        "independent_host_attestation": "not_provided",
+        "runtime_execution_verified": False,
+        "run_success_verified": False,
+    }
+    if manifest.get("runtime_attestation") != expected_runtime_attestation:
+        fail(
+            "runtime_attestation_boundary",
+            "run manifest must record that independent host attestation is absent",
+        )
     task_id = require_nonempty_string(manifest.get("task_id"), "manifest.task_id")
     runtime = validate_runtime(manifest.get("runtime"))
     topic = validate_topic_stage(package_root, package, components, runtime)
@@ -1783,19 +2946,20 @@ def validate_run(
     acquisition_executor = validate_acquisition_executor(
         run_init.get("acquisition_executor"),
         plugin_root,
+        package,
+        runtime,
     )
 
-    plugin_validation_path = package_path(package_root, package, "payload/receipts/plugin-validation.json")
-    plugin_validation = load_json(plugin_validation_path, "plugin-validation receipt")
-    if (
-        plugin_validation.get("schema_version") != 1
-        or plugin_validation.get("ok") is not True
-        or plugin_validation.get("plugin_name") != PLUGIN_NAME
-        or plugin_validation.get("plugin_version") != PLUGIN_VERSION
-        or plugin_validation.get("source_manifest_sha256") != plugin_report["bundled_manifest_sha256"]
-    ):
-        fail("plugin_validation_binding", "plugin-validation receipt is stale or incomplete")
-    parse_time(plugin_validation.get("validated_at"), "plugin-validation.validated_at")
+    plugin_validation = validate_plugin_validation_receipt(
+        package,
+        plugin_root,
+        plugin_report,
+    )
+    if manifest.get("plugin_validation") != plugin_validation:
+        fail(
+            "plugin_validation_binding",
+            "run manifest does not bind plugin-validation receipt v2",
+        )
 
     live_receipt_path = package_path(package_root, package, "payload/receipts/live-rule.json")
     live_receipt = load_json(live_receipt_path, "live-rule receipt")
@@ -1814,6 +2978,7 @@ def validate_run(
     publication_identities: dict[str, str] = {}
     reviewable_source_ids: list[str] = []
     reviewable_count = 0
+    acquisition_operation_receipts_structurally_validated = 0
     akashic_root = akashic_root_input.expanduser().absolute()
     for index, row in enumerate(source_rows, 1):
         source_id = str(row.get("source_id"))
@@ -1833,16 +2998,20 @@ def validate_run(
                 )
         else:
             publication_identities[identity] = source_id
-        reviewable, validated_identity, validated_source_id = validate_source_row(
+        reviewable, validated_identity, validated_source_id, operation_verified = validate_source_row(
             row,
             index,
             package_root=package_root,
             package=package,
             akashic_root=akashic_root,
+            executor_skill_sha256=acquisition_executor["skill_sha256"],
         )
         if validated_identity != identity or validated_source_id != source_id:
             fail("source_identity_drift", "source identity changed during validation", source_id=source_id)
         reviewable_count += int(reviewable)
+        acquisition_operation_receipts_structurally_validated += int(
+            operation_verified
+        )
         if reviewable:
             reviewable_source_ids.append(source_id)
     if reviewable_count < MIN_REVIEWABLE:
@@ -1853,6 +3022,21 @@ def validate_run(
         fail("reviewable_count_mismatch", "manifest reviewable count does not match inventory")
     if manifest.get("reviewable_source_ids_sha256") != reviewable_ids_sha:
         fail("reviewable_source_ids_mismatch", "manifest reviewable source roster is stale")
+    expected_acquisition_evidence = {
+        "source_state": "validated",
+        "consumer_link_state": "linked",
+        "runtime_discovery_state": RUNTIME_NOT_VERIFIED,
+        "discovery_receipt_structurally_validated": True,
+        "operation_receipts_structurally_validated": (
+            acquisition_operation_receipts_structurally_validated
+        ),
+        "runtime_execution_verified": False,
+    }
+    if manifest.get("acquisition_executor_evidence") != expected_acquisition_evidence:
+        fail(
+            "acquisition_executor_evidence",
+            "run manifest must keep source, link, discovery, and execution axes separate",
+        )
     package_path(package_root, package, "payload/sources/search-log.md")
     package_path(package_root, package, "payload/sources/access-log.jsonl")
     acquisition_summary, acquisition_summary_sha = validate_acquisition_summary(
@@ -1861,6 +3045,10 @@ def validate_run(
         source_rows,
         reviewable_count=reviewable_count,
         unique_publication_count=len(publication_identities),
+        runtime=runtime,
+        acquisition_operation_receipts_structurally_validated=(
+            acquisition_operation_receipts_structurally_validated
+        ),
     )
     sources_root = package_path(package_root, package, "payload/sources", kind="directory")
     frozen_path = package_path(package_root, package, "payload/sources/frozen-set.json")
@@ -1921,10 +3109,16 @@ def validate_run(
     material_author_context = require_nonempty_string(material.get("author_context_id"), "material-audit.author_context_id")
     if material_author_context != acquisition_summary.get("collector_context_id"):
         fail("material_audit_binding", "material audit author must be the recorded collector context")
-    material_auditor = require_object(material.get("auditor"), "material-audit.auditor")
-    if material_auditor.get("runtime") != runtime["kind"] or material_auditor.get("kind") != runtime["auditor_kind"]:
-        fail("auditor_identity_mismatch", "material audit used the wrong auditor")
-    material_auditor_context = require_nonempty_string(material_auditor.get("context_id"), "material-audit.auditor.context_id")
+    material_auditor_context, _ = validate_executor_binding(
+        material.get("auditor"),
+        package=package,
+        runtime=runtime,
+        expected_kind=runtime["auditor_kind"],
+        role="material_auditor",
+        artifact_relative=material_ref["receipt"],
+        artifact_sha256=sha256_file(material_path),
+        field="material audit executor",
+    )
     if material_auditor_context == material_author_context:
         fail("auditor_not_independent", "material author and auditor contexts must differ")
     topic_contexts = set(topic["expert_contexts"] + [topic["brief_context"]])
@@ -2006,11 +3200,31 @@ def validate_run(
     if sha256_file(submission_path) != accepted_synthesis["candidate_sha256"]:
         fail("submission_binding", "submission.md must be byte-identical to accepted synthesis")
 
+    runtime_operation_receipts_structurally_validated = (
+        8
+        + 1  # topic integrator
+        + 1  # source collector
+        + 1  # material auditor
+        + 2 * sum(len(records) for records in expert_audits.values())
+        + 2 * len(synthesis_audits)
+    )
+    if (
+        manifest.get("runtime_operation_receipts_structurally_validated")
+        != runtime_operation_receipts_structurally_validated
+    ):
+        fail(
+            "execution_receipt_count",
+            "run manifest does not bind every structurally validated operation receipt",
+        )
+
     event_head_sha = validate_events(
         package,
         expert_audits,
         synthesis_audits,
         {
+            "run_initialized": "payload/receipts/run-init.json",
+            "plugin_validated": plugin_validation["path"],
+            "live_rule_pinned": "payload/receipts/live-rule.json",
             "topic_locked": topic["question_path"],
             "research_brief_frozen": topic["brief_path"],
             "akashic_reuse_checked": "payload/sources/acquisition-summary.json",
@@ -2023,17 +3237,26 @@ def validate_run(
     completion = load_json(completion_path, "completion receipt")
     if (
         completion.get("schema_version") != 1
-        or completion.get("status") != "candidate_success"
+        or completion.get("status") != STRUCTURAL_RUN_STATUS
         or completion.get("reviewable_source_count") != reviewable_count
         or completion.get("reviewable_source_ids_sha256") != reviewable_ids_sha
         or completion.get("topic_experts_completed") != 8
         or completion.get("akashic_lookup_complete") is not True
-        or completion.get("download_claims_verified") is not True
+        or completion.get("download_payloads_structurally_validated") is not True
+        or completion.get("acquisition_operation_receipts_structurally_validated")
+        != acquisition_operation_receipts_structurally_validated
         or completion.get("experts_passed") != 8
         or completion.get("synthesis_passed") is not True
+        or completion.get("runtime_operation_receipts_structurally_validated")
+        != runtime_operation_receipts_structurally_validated
+        or completion.get("runtime_execution_verified") is not False
+        or completion.get("run_success_verified") is not False
         or completion.get("event_chain_head_sha256") != event_head_sha
     ):
-        fail("completion_binding", "completion receipt does not bind all success gates")
+        fail(
+            "completion_binding",
+            "completion receipt does not bind the structural and runtime-unverified axes",
+        )
     parse_time(completion.get("completed_at"), "completion.completed_at")
     if manifest.get("receipt_chain_complete") is not True:
         fail("receipt_chain_incomplete", "manifest must declare a complete receipt chain")
@@ -2044,8 +3267,22 @@ def validate_run(
             fail("stale_structural_result", "recorded structural result is not passing")
 
     return {
-        "ok": True,
+        "ok": False,
         "mode": "run",
+        "status": RUNTIME_NOT_VERIFIED,
+        "structural_validation_ok": True,
+        "runtime_execution_verified": False,
+        "run_success_verified": False,
+        "runtime_attestation": {
+            "required_source": "independent_host",
+            "provided": False,
+            "verified": False,
+            "status": RUNTIME_NOT_VERIFIED,
+            "reason": (
+                "package-local normalized receipts are structurally valid but are "
+                "not independent host attestation"
+            ),
+        },
         "package": str(package),
         "package_id": package.name,
         "package_date": package_date,
@@ -2057,18 +3294,24 @@ def validate_run(
         "reviewable_source_ids_sha256": reviewable_ids_sha,
         "topic_experts_completed": 8,
         "akashic_lookup_complete": True,
-        "download_claims_verified": True,
-        "material_audit": "pass",
-        "experts_passed": len(accepted_experts),
+        "download_payloads_structurally_validated": True,
+        "acquisition_operation_receipts_structurally_validated": (
+            acquisition_operation_receipts_structurally_validated
+        ),
+        "material_audit_receipt_structurally_validated": True,
+        "expert_pass_receipts_structurally_validated": len(accepted_experts),
         "expert_attempts": {
             component_id: len(expert_audits[component_id]) for component_id, _ in EXPERT_COMPONENTS
         },
         "synthesis_attempts": len(synthesis_audits),
-        "synthesis_audit": "pass",
+        "synthesis_audit_receipt_structurally_validated": True,
+        "runtime_operation_receipts_structurally_validated": (
+            runtime_operation_receipts_structurally_validated
+        ),
         "rule_path": str(LIVE_RULE),
         "rule_sha256": rule_sha,
         "source_set_sha256": source_set_sha,
-        "receipt_chain_complete": True,
+        "receipt_chain_structurally_validated": True,
         "formal_absorption": "not_authorized",
         "plugin_installation": "not_performed",
         "fuxi": "available_not_invoked",
@@ -2085,7 +3328,10 @@ def parser() -> argparse.ArgumentParser:
         help="preflight a new strict calendar package destination without writing",
     )
     destination_parser.add_argument("--package", type=Path, required=True)
-    run_parser = subparsers.add_parser("run", help="validate a completed candidate run package")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="validate a run package structurally; host execution remains unverified",
+    )
     run_parser.add_argument("--plugin-root", type=Path, default=DEFAULT_PLUGIN_ROOT)
     run_parser.add_argument("--package", type=Path, required=True)
     return root
@@ -2101,7 +3347,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         else:
             report = validate_run(args.plugin_root, args.package)
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
-        return 0
+        return 0 if report.get("ok") is True else 3
     except ValidationError as error:
         payload = {
             "ok": False,

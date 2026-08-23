@@ -45,24 +45,41 @@ def excluded(path: Path) -> bool:
     return any(part in EXCLUDED_NAMES for part in path.parts) or path.suffix == ".pyc"
 
 
+def link_like(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(os.path, "isjunction", None)
+    if is_junction is None:
+        return False
+    try:
+        return bool(is_junction(path))
+    except OSError:
+        return False
+
+
 def inventory(root: Path) -> tuple[dict[str, str], int]:
+    if link_like(root):
+        raise ValueError(f"symlink is forbidden: {root}")
     if not root.is_dir():
         raise ValueError(f"missing directory: {root}")
     result: dict[str, str] = {}
     total_bytes = 0
     for current, directories, files in os.walk(root, followlinks=False):
         current_path = Path(current)
-        directories[:] = sorted(
-            name
-            for name in directories
-            if name not in EXCLUDED_NAMES and not (current_path / name).is_symlink()
-        )
+        kept_directories: list[str] = []
+        for name in sorted(directories):
+            path = current_path / name
+            if link_like(path):
+                raise ValueError(f"symlink is forbidden: {path}")
+            if name not in EXCLUDED_NAMES:
+                kept_directories.append(name)
+        directories[:] = kept_directories
         for name in sorted(files):
             path = current_path / name
             relative = path.relative_to(root)
             if excluded(relative):
                 continue
-            if path.is_symlink():
+            if link_like(path):
                 raise ValueError(f"symlink is forbidden: {path}")
             if not path.is_file():
                 raise ValueError(f"non-regular payload entry: {path}")
@@ -140,6 +157,11 @@ def main() -> int:
     parser.add_argument("--write-manifest", action="store_true")
     parser.add_argument("--minimax-root", type=Path)
     parser.add_argument("--claude-root", type=Path)
+    parser.add_argument(
+        "--require-source-match",
+        action="store_true",
+        help="require both upstream roots and complete byte-for-byte source equality",
+    )
     args = parser.parse_args()
 
     actual = build_manifest()
@@ -158,19 +180,31 @@ def main() -> int:
         raise SystemExit("pass both --minimax-root and --claude-root")
     if args.minimax_root and args.claude_root:
         source_comparisons = compare_sources(args.minimax_root, args.claude_root)
+        sources_ok: bool | None = all(
+            not item["missing"] and not item["extra"] and not item["content_mismatch"]
+            for item in source_comparisons
+        )
+        source_comparison = "matched" if sources_ok else "mismatched"
+    else:
+        sources_ok = None
+        source_comparison = "not_compared"
 
-    sources_ok = all(
-        not item["missing"] and not item["extra"] and not item["content_mismatch"]
-        for item in source_comparisons
-    )
+    strict_roots_missing = args.require_source_match and sources_ok is None
     report = {
         "manifest_ok": manifest_ok,
         "component_count": len(actual["components"]),
+        "source_comparison": source_comparison,
         "source_comparisons": source_comparisons,
         "sources_ok": sources_ok,
+        "source_match_required": args.require_source_match,
     }
+    if strict_roots_missing:
+        report["error"] = (
+            "--require-source-match requires both --minimax-root and --claude-root"
+        )
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if manifest_ok and sources_ok else 1
+    comparison_failed = sources_ok is False or strict_roots_missing
+    return 0 if manifest_ok and not comparison_failed else 1
 
 
 if __name__ == "__main__":

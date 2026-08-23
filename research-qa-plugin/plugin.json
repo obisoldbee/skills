@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "research-qa-plugin",
   "version": "0.2.0",
-  "description": "Research QA plugin with an audited five-stage workflow, Akashic-first literature reuse, truthful acquisition receipts, thirty-publication readiness, and eight independent manifest-bound expert reviews.",
+  "description": "Research QA plugin with an audited five-stage workflow, runtime-tree and operation receipts, Akashic-first literature reuse, truthful acquisition evidence, thirty-publication readiness, and eight independent manifest-bound expert reviews.",
   "keywords": [
     "research",
     "literature-review",

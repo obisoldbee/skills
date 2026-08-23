@@ -38,6 +38,10 @@ research-qa-plugin/
       live-rule.json
       material-audit.json
       completion.json
+    runtime-receipts/
+      paper-downloader-discovery.json
+      acquisition/<source_id>.json
+      tasks/<role>-<artifact>.json
     sources/
       inventory.jsonl
       search-log.md
@@ -57,12 +61,26 @@ research-qa-plugin/
       attempt-01.receipt.json
       attempt-01.audit.json
       accepted.json
-    validation/structural-result.json
+    validation/
+      plugin-validator-result.json
+      structural-result.json
 ```
 
 Attempts 02-04 use the same naming pattern and appear only after a rejection. No attempt 05 is legal.
 
 The root reservation must use `akashic-package-reservation/v2`. Root `manifest.yaml` stays `status: pending` and `formal_absorption: false`; the internal QA result lives in `payload/receipts/run-manifest.json`. This prevents a successful QA candidate from impersonating formal Akashic absorption.
+
+## Plugin validation receipt v2
+
+`payload/receipts/plugin-validation.json` uses `research-qa-orchestrator/plugin-validation-receipt/v2`. It must bind:
+
+- the complete runtime tree consisting of `plugin.json` plus every regular file below the orchestrator Skill, with file count, total bytes, and tree SHA-256;
+- explicit SHA-256 values for `plugin.json`, the orchestrator `SKILL.md`, workflow/executor/artifact/external-executor contracts, validator, bundled verifier, and bundled source manifest;
+- the complete bundled tree count/bytes/hash and bundled manifest path/hash;
+- validator path, SHA-256, exact argv-style command, and a package-confined `plugin-validator-result.json` path/hash whose parsed JSON equals a fresh plugin validation result; and
+- a separate current Git observation object: `repository_present`, `repository_root`, `head_commit`, `runtime_tree_tracked`, and `package_dirty`.
+
+Git fields are independent observations, not a combined PASS label. When Git is unavailable, commit/tracked/dirty are null. A clean checkout records `package_dirty: false`; do not preserve a static string such as `Git-untracked 30/30 PASS` or infer dirty state from package history.
 
 ## Topic artifacts
 
@@ -79,9 +97,15 @@ The root reservation must use `akashic-package-reservation/v2`. Root `manifest.y
 }
 ```
 
-Each `contributions/<persona-id>.json` binds its manifest component and contains a distinct author context, non-empty `research_angles`, non-empty `search_terms`, optional `candidate_exclusions`, and `created_at`.
+Each `contributions/<persona-id>.json` binds its manifest component and contains a distinct author context, package-relative runtime operation receipt path, non-empty `research_angles`, non-empty `search_terms`, optional `candidate_exclusions`, and `created_at`.
 
-`research-brief.json` binds the exact question SHA and all eight contribution paths/hashes in manifest order. Its integrator context differs from all eight contributor contexts. It contains non-empty search queries, inclusion criteria, exclusion criteria, and `frozen_at`.
+`research-brief.json` binds the exact question SHA and all eight contribution paths/hashes in manifest order. Its integrator context differs from all eight contributor contexts and binds its own runtime operation receipt. It contains non-empty search queries, inclusion criteria, exclusion criteria, and `frozen_at`.
+
+## Runtime operation receipt
+
+Every topic expert, integrator, source collector, material auditor, expert author/auditor, and synthesis author/auditor binds one `research-qa-orchestrator/runtime-operation-receipt/v1` file below `payload/runtime-receipts/`. It records `evidence_origin: runtime_tool_result`, runtime, role, operation ID, `status: succeeded`, runtime-backed context ID, artifact path/SHA, and ordered start/end timestamps.
+
+For Codex it additionally contains the normalized claimed `create_thread` result and result readback for the same thread/host and artifact hash. Hidden subagent fields, path-like IDs, queued/unconfirmed creation, or missing readback are invalid. Other runtimes require a named provider operation, provider receipt ID, and successful result state. These are package-local normalized records: offline validation can establish only their structural and byte-binding consistency. They are not independent host attestation and cannot set `runtime_execution_verified: true` or overall run success.
 
 ## Source inventory
 
@@ -105,7 +129,7 @@ Eligible `document_kind` values are scholarly publications: trials, observationa
 
 Reviewable access statuses are:
 
-- `downloaded`: full text, real PDF over 5 KiB, `%PDF`, disk bytes and SHA match;
+- `downloaded`: full text, real PDF over 5 KiB, valid `%PDF` header, terminal `%%EOF`, consistent `startxref` plus classic xref/trailer or supported xref-stream structure, and matching disk bytes/SHA;
 - `akashic_reused`: full text, exact registry/source path readback, materialized payload hash equals the Akashic source, `download_attempted: false`;
 - `verified_abstract`: retained abstract payload of meaningful size, `access_depth: abstract_only`, and an honest non-download state.
 
@@ -133,13 +157,14 @@ Every row binds one acquisition receipt:
   "download_started_at": "<RFC3339>",
   "download_completed_at": "<RFC3339>",
   "validation": {"exists": true, "kind": "pdf", "magic": "%PDF"},
+  "executor_operation_receipt_path": "payload/runtime-receipts/acquisition/src-001.json",
   "recorded_at": "<RFC3339>"
 }
 ```
 
-For reuse, `akashic_lookup.result` is `reused` with an Akashic `source_id`; both download timestamps are null and validation kind is `akashic_reuse`. A lookup match and a download attempt in the same row is always invalid.
+For every `download_attempted: true` row, the operation receipt uses `acquisition-operation-receipt/v1` and binds the Paper Downloader Skill hash, actual tool, operation ID, source/publication identity, ordered times, terminal access status, and payload path/hash/bytes. Disk bytes alone do not prove executor execution. For reuse, `akashic_lookup.result` is `reused` with an Akashic `source_id`; both download timestamps and the executor operation receipt path are null, and validation kind is `akashic_reuse`. A lookup match and a download attempt in the same row is always invalid.
 
-`acquisition-summary.json` binds total rows, unique identities, reviewable count, status counts, collector context, and the assertions `all_akashic_lookups_completed: true` and `download_claims_verified: true`.
+`acquisition-summary.json` binds total rows, unique identities, reviewable count, status counts, collector context plus its runtime operation receipt, `executor_operation_receipts_structurally_validated`, `runtime_execution_verified: false`, and the assertions `all_akashic_lookups_completed: true` and `download_payloads_structurally_validated: true`.
 
 ## Frozen source set and material audit
 
@@ -177,18 +202,23 @@ acquisition_executor.name: paper-downloader
 acquisition_executor.registered_skill_path: <absolute consumer SKILL.md path>
 acquisition_executor.canonical_realpath: <collection>/GitHub/paper-downloader
 acquisition_executor.skill_sha256: <canonical SKILL.md sha256>
+acquisition_executor.consumer_link_state: linked
+acquisition_executor.discovery_receipt_path: payload/runtime-receipts/paper-downloader-discovery.json
+acquisition_executor.discovery_receipt_sha256: <sha256>
 acquisition_executor.verified_at: <RFC3339>
 ```
 
-The validator resolves `registered_skill_path` at validation time. It must resolve to the sibling canonical package's real `SKILL.md`, and the recorded hash must match current canonical bytes. A copied consumer, wrapper projection, former `working-skills` path, missing file, or hash drift fails before Stage 3.
+The validator resolves `registered_skill_path` at validation time. It must be a direct Unix symlink or Windows junction to the sibling canonical package's real `SKILL.md`, and the recorded hash must match current canonical bytes. That establishes only `consumer_link_state: linked`. A separate `skill-discovery-receipt/v1` must bind the claimed runtime catalog observation, consumer path, canonical real path, and Skill hash before the receipt is structurally complete; offline output still reports discovery as `runtime_not_verified`. A copied consumer, wrapper projection, former `working-skills` path, missing file, hash drift, or link without a normalized receipt fails before Stage 3.
 
 `run-manifest.json` contains the internal result:
 
 ```json
 {
   "schema_version": 1,
-  "status": "candidate_success",
+  "status": "structurally_complete_runtime_unverified",
+  "runtime_attestation": {"evidence_scope": "package_local_only", "independent_host_attestation": "not_provided", "runtime_execution_verified": false, "run_success_verified": false},
   "plugin": {"name": "research-qa-plugin", "version": "0.2.0"},
+  "plugin_validation": {"path": "payload/receipts/plugin-validation.json", "sha256": "<sha256>", "schema": "research-qa-orchestrator/plugin-validation-receipt/v2", "runtime_tree_sha256": "<sha256>", "git_observation": {"repository_present": true, "repository_root": "<current repo root>", "head_commit": "<current commit or null>", "runtime_tree_tracked": true, "package_dirty": false}},
   "formal_absorption": "not_authorized",
   "plugin_installation": "not_performed",
   "fuxi": "available_not_invoked",
@@ -196,8 +226,10 @@ The validator resolves `registered_skill_path` at validation time. It must resol
   "reviewable_source_count": 30,
   "reviewable_source_ids_sha256": "<sha256>",
   "source_set_sha256": "<sha256>",
+  "acquisition_executor_evidence": {"source_state": "validated", "consumer_link_state": "linked", "runtime_discovery_state": "runtime_not_verified", "discovery_receipt_structurally_validated": true, "operation_receipts_structurally_validated": 30, "runtime_execution_verified": false},
   "experts_passed": 8,
-  "receipt_chain_complete": true
+  "receipt_chain_complete": true,
+  "runtime_operation_receipts_structurally_validated": 29
 }
 ```
 
@@ -205,7 +237,7 @@ It also binds package identity/date, task/runtime, live rule, material audit, an
 
 ## Expert attempt and coverage
 
-Every attempt receipt binds candidate path/hash, source-set hash, live rule, executor, retry pointer, and a `corpus_delivery` object containing:
+Every attempt receipt binds candidate path/hash, source-set hash, live rule, executor identity plus package-relative runtime operation receipt, retry pointer, and a `corpus_delivery` object containing:
 
 ```text
 frozen_set_path, frozen_set_sha256, source_set_sha256,
@@ -218,7 +250,7 @@ Synthesis receipts replace bundled Skill/coverage fields with exactly eight acce
 
 ## Audit receipt
 
-A passing audit requires non-empty `evidence_refs`, independent auditor identity, candidate/receipt/rule hashes, and structured `quality_checks`:
+A passing audit requires non-empty `evidence_refs`, independent auditor identity plus its package-relative runtime operation receipt, candidate/receipt/rule hashes, and structured `quality_checks`:
 
 ```text
 nonempty, substantive, citations_traceable,
@@ -235,7 +267,7 @@ Expert reports must have at least 400 non-whitespace characters and five non-emp
 
 `events.jsonl` is append-only with contiguous sequence, unique event ID, state continuity, artifact path/hash, previous-line hash, and timestamp.
 
-Successful stage order is:
+Structurally complete stage order is:
 
 ```text
 run_initialized -> plugin_validated -> live_rule_pinned
@@ -244,9 +276,9 @@ run_initialized -> plugin_validated -> live_rule_pinned
 -> material_audit_passed -> sources_frozen
 -> expert attempt/audit/retry events -> experts_8_of_8_passed
 -> synthesis attempt/audit/retry events -> synthesis_passed
--> chain_validated -> success
+-> chain_validated -> structure_validated_runtime_unverified
 ```
 
-`completion.json` binds the final event-line SHA, reviewable count/roster hash, `topic_experts_completed: 8`, complete Akashic lookup, verified download claims, `experts_passed: 8`, passing synthesis, and completion time.
+`completion.json` binds the final event-line SHA, reviewable count/roster hash, `topic_experts_completed: 8`, complete Akashic lookup, structurally validated download payloads, structurally validated acquisition/runtime-operation receipt counts, `experts_passed: 8`, the package-declared passing synthesis receipt, `runtime_execution_verified: false`, `run_success_verified: false`, and completion time.
 
-`candidate_success` requires all of the above. It never proves plugin installation, provider execution beyond the receipted run, Git publication, or formal Akashic absorption.
+All of the above establishes only `structurally_complete_runtime_unverified`. The offline validator deliberately returns `ok: false` and `runtime_not_verified` because package-local JSON cannot independently attest host execution. It never proves candidate success, plugin installation, provider execution, Git publication, or formal Akashic absorption.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -18,6 +19,16 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
 import validate_research_qa as validator  # noqa: E402
+
+
+VERIFY_BUNDLED_PATH = SKILL_ROOT / "bundled" / "verify_bundled.py"
+VERIFY_SPEC = importlib.util.spec_from_file_location(
+    "research_qa_verify_bundled",
+    VERIFY_BUNDLED_PATH,
+)
+assert VERIFY_SPEC is not None and VERIFY_SPEC.loader is not None
+verify_bundled = importlib.util.module_from_spec(VERIFY_SPEC)
+VERIFY_SPEC.loader.exec_module(verify_bundled)
 
 
 NOW = "2026-08-07T12:00:00+08:00"
@@ -143,6 +154,15 @@ def build_plugin(root: Path) -> tuple[Path, dict[str, dict[str, Any]]]:
             "components": components,
         },
     )
+    for relative in validator.CRITICAL_RUNTIME_RELATIVES:
+        path = plugin / relative
+        if path.exists():
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"# Deterministic fixture for {relative.as_posix()}\n",
+            encoding="utf-8",
+        )
     _, records = validator.validate_bundled_manifest(
         plugin.resolve(),
         (bundled / "source-manifest.json").resolve(),
@@ -192,6 +212,82 @@ def source_row(index: int, reviewable: bool = True) -> dict[str, Any]:
         validator.canonical_without(row, "record_sha256")
     )
     return row
+
+
+def minimal_valid_pdf_bytes(label: str) -> bytes:
+    """Build a real classic-xref PDF larger than the validator's 5 KiB gate."""
+
+    content = (
+        b"q\n0 0 100 100 re S\nQ\n" * 260
+        + f"% fixture {label}\n".encode("utf-8")
+    )
+    objects = {
+        1: b"<< /Type /Catalog /Pages 2 0 R >>",
+        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        3: (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] "
+            b"/Contents 4 0 R >>"
+        ),
+        4: (
+            f"<< /Length {len(content)} >>\nstream\n".encode("ascii")
+            + content
+            + b"endstream"
+        ),
+    }
+    output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets: dict[int, int] = {}
+    for object_number, body in objects.items():
+        offsets[object_number] = len(output)
+        output.extend(f"{object_number} 0 obj\n".encode("ascii"))
+        output.extend(body)
+        output.extend(b"\nendobj\n")
+    xref_offset = len(output)
+    output.extend(b"xref\n0 5\n")
+    output.extend(b"0000000000 65535 f \n")
+    for object_number in range(1, 5):
+        output.extend(f"{offsets[object_number]:010d} 00000 n \n".encode("ascii"))
+    output.extend(b"trailer\n<< /Size 5 /Root 1 0 R >>\n")
+    output.extend(f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii"))
+    assert len(output) > validator.MIN_PDF_BYTES
+    return bytes(output)
+
+
+def minimal_xref_stream_pdf_bytes() -> bytes:
+    output = bytearray(b"%PDF-1.5\n%\xe2\xe3\xcf\xd3\n")
+    offsets: dict[int, int] = {}
+    objects = {
+        1: b"<< /Type /Catalog /Pages 2 0 R >>",
+        2: b"<< /Type /Pages /Kids [] /Count 0 >>",
+    }
+    for object_number, body in objects.items():
+        offsets[object_number] = len(output)
+        output.extend(f"{object_number} 0 obj\n".encode("ascii"))
+        output.extend(body)
+        output.extend(b"\nendobj\n")
+    xref_offset = len(output)
+    entries = [
+        (0, 0, 65535),
+        (1, offsets[1], 0),
+        (1, offsets[2], 0),
+        (1, xref_offset, 0),
+    ]
+    xref_data = b"".join(
+        entry_type.to_bytes(1, "big")
+        + field_two.to_bytes(4, "big")
+        + field_three.to_bytes(2, "big")
+        for entry_type, field_two, field_three in entries
+    )
+    output.extend(b"3 0 obj\n")
+    output.extend(
+        (
+            "<< /Type /XRef /Size 4 /Root 1 0 R /W [1 4 2] "
+            f"/Index [0 4] /Length {len(xref_data)} >>\nstream\n"
+        ).encode("ascii")
+    )
+    output.extend(xref_data)
+    output.extend(b"\nendstream\nendobj\n")
+    output.extend(f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii"))
+    return bytes(output)
 
 
 class RunFixture:
@@ -297,6 +393,79 @@ class RunFixture:
         )
         self.state = state_to
 
+    def _operation_receipt_path(self, role: str, key: str) -> Path:
+        safe_key = key.replace("/", "-")
+        return (
+            self.package
+            / "payload"
+            / "runtime-receipts"
+            / "tasks"
+            / f"{role}-{safe_key}.json"
+        )
+
+    def _executor_record(
+        self,
+        *,
+        kind: str,
+        role: str,
+        context_id: str,
+        key: str,
+    ) -> dict[str, Any]:
+        return {
+            "runtime": "codex",
+            "kind": kind,
+            "context_id": context_id,
+            "operation_receipt_path": self.rel(
+                self._operation_receipt_path(role, key)
+            ),
+        }
+
+    def _write_runtime_operation(
+        self,
+        artifact: Path,
+        *,
+        role: str,
+        context_id: str,
+        key: str,
+    ) -> None:
+        receipt_path = self._operation_receipt_path(role, key)
+        write_json(
+            receipt_path,
+            {
+                "schema": validator.RUNTIME_OPERATION_SCHEMA,
+                "evidence_origin": "runtime_tool_result",
+                "runtime": "codex",
+                "role": role,
+                "operation_id": f"operation-{role}-{key}",
+                "status": "succeeded",
+                "context_id": context_id,
+                "artifact_path": self.rel(artifact),
+                "artifact_sha256": sha(artifact),
+                "started_at": NOW,
+                "completed_at": NOW,
+                "create_thread": {
+                    "actual_tool": "codex_app__create_thread",
+                    "status": "created_confirmed",
+                    "surface": "visible_thread",
+                    "requested_route": "sol-max",
+                    "task_kind": "codex",
+                    "thread_id": context_id,
+                    "client_thread_id": None,
+                    "host_id": "local-host",
+                    "prompt_verified": "readback",
+                    "failure": None,
+                },
+                "result_readback": {
+                    "status": "succeeded",
+                    "thread_id": context_id,
+                    "host_id": "local-host",
+                    "artifact_path": self.rel(artifact),
+                    "artifact_sha256": sha(artifact),
+                    "read_at": NOW,
+                },
+            },
+        )
+
     def _write_attempt(
         self,
         lane: Path,
@@ -323,6 +492,8 @@ class RunFixture:
             if artifact_type == "expert" and attempt == 1 and self.expert_context_reuse
             else f"author-{artifact_id}-{attempt}"
         )
+        author_role = f"{artifact_type}_author"
+        author_key = f"{artifact_id}-{attempt:02d}-author"
         receipt: dict[str, Any] = {
             "schema_version": 1,
             "artifact_type": artifact_type,
@@ -345,14 +516,21 @@ class RunFixture:
                 "bytes": self.rule.stat().st_size,
                 "read_at": NOW,
             },
-            "executor": {
-                "runtime": "codex",
-                "kind": "author",
-                "context_id": author_context,
-            },
+            "executor": self._executor_record(
+                kind="author",
+                role=author_role,
+                context_id=author_context,
+                key=author_key,
+            ),
             "retry_of_audit_sha256": previous_audit_sha,
             "created_at": NOW,
         }
+        self._write_runtime_operation(
+            candidate,
+            role=author_role,
+            context_id=author_context,
+            key=author_key,
+        )
         if artifact_type == "expert":
             component = self.components[artifact_id]
             receipt["bundled_skill"] = {
@@ -392,6 +570,9 @@ class RunFixture:
             ]
         receipt_path = lane / f"{prefix}.receipt.json"
         write_json(receipt_path, receipt)
+        auditor_context = f"auditor-{artifact_id}-{attempt}"
+        auditor_role = f"{artifact_type}_auditor"
+        auditor_key = f"{artifact_id}-{attempt:02d}-auditor"
         audit = {
             "schema_version": 1,
             "artifact_type": artifact_type,
@@ -414,11 +595,12 @@ class RunFixture:
                     else "expert_roster_complete"
                 ): decision == "pass",
             },
-            "auditor": {
-                "runtime": "codex",
-                "kind": "codex-independent",
-                "context_id": f"auditor-{artifact_id}-{attempt}",
-            },
+            "auditor": self._executor_record(
+                kind="codex-independent",
+                role=auditor_role,
+                context_id=auditor_context,
+                key=auditor_key,
+            ),
             "input_sha256": sha(receipt_path),
             "artifact_sha256": sha(candidate),
             "akashic_rule": {
@@ -431,6 +613,12 @@ class RunFixture:
         }
         audit_path = lane / f"{prefix}.audit.json"
         write_json(audit_path, audit)
+        self._write_runtime_operation(
+            audit_path,
+            role=auditor_role,
+            context_id=auditor_context,
+            key=auditor_key,
+        )
         record = {
             "attempt": attempt,
             "decision": decision,
@@ -472,6 +660,7 @@ class RunFixture:
                 if self.topic_context_reuse
                 else f"topic-author-{component_id}"
             )
+            operation_key = f"topic-{component_id}"
             write_json(
                 contribution,
                 {
@@ -484,16 +673,23 @@ class RunFixture:
                         "skill_md_sha256": component["skill_md_sha256"],
                         "tree_sha256": component["tree_sha256"],
                     },
-                    "executor": {
-                        "runtime": "codex",
-                        "kind": "author",
-                        "context_id": context_id,
-                    },
+                    "executor": self._executor_record(
+                        kind="author",
+                        role="topic_expert",
+                        context_id=context_id,
+                        key=operation_key,
+                    ),
                     "research_angles": [f"Angle from {component_id}"],
                     "search_terms": [f"query {component_id}"],
                     "candidate_exclusions": [],
                     "created_at": NOW,
                 },
+            )
+            self._write_runtime_operation(
+                contribution,
+                role="topic_expert",
+                context_id=context_id,
+                key=operation_key,
             )
             contribution_bindings.append(
                 {
@@ -503,6 +699,8 @@ class RunFixture:
                 }
             )
         self.research_brief = topic / "research-brief.json"
+        brief_context = "topic-integrator"
+        brief_operation_key = "research-brief"
         write_json(
             self.research_brief,
             {
@@ -510,22 +708,35 @@ class RunFixture:
                 "question_path": self.rel(question),
                 "question_sha256": sha(question),
                 "contributions": contribution_bindings,
-                "author_context_id": "topic-integrator",
+                "author_context_id": brief_context,
+                "executor": self._executor_record(
+                    kind="integrator",
+                    role="topic_integrator",
+                    context_id=brief_context,
+                    key=brief_operation_key,
+                ),
                 "search_queries": ["complete fixture evidence query"],
                 "inclusion_criteria": ["eligible scholarly publication"],
                 "exclusion_criteria": ["duplicate or non-scholarly item"],
                 "frozen_at": NOW,
             },
         )
+        self._write_runtime_operation(
+            self.research_brief,
+            role="topic_integrator",
+            context_id=brief_context,
+            key=brief_operation_key,
+        )
 
     def _build_sources(self) -> None:
         sources = self.package / "payload" / "sources"
         sources.mkdir(parents=True)
         rows = [source_row(index) for index in range(1, self.reviewable_count + 1)]
+        self.acquisition_operation_receipts_structurally_validated = 0
         for index, row in enumerate(rows, 1):
             payload = self.package / row["local_payload_path"]
             payload.parent.mkdir(parents=True, exist_ok=True)
-            pdf_bytes = b"%PDF-1.7\n" + (f"fixture publication {index}\n".encode("utf-8") * 320)
+            pdf_bytes = minimal_valid_pdf_bytes(f"publication-{index}")
             payload.write_bytes(pdf_bytes)
             lookup: dict[str, Any] = {
                 "performed": True,
@@ -573,6 +784,41 @@ class RunFixture:
             row["record_sha256"] = validator.sha256_bytes(
                 validator.canonical_without(row, "record_sha256")
             )
+            operation_relative: str | None = None
+            if row["download_attempted"]:
+                operation_path = (
+                    self.package
+                    / "payload"
+                    / "runtime-receipts"
+                    / "acquisition"
+                    / f"{row['source_id']}.json"
+                )
+                write_json(
+                    operation_path,
+                    {
+                        "schema": validator.ACQUISITION_OPERATION_SCHEMA,
+                        "evidence_origin": "runtime_tool_result",
+                        "executor_name": validator.PAPER_DOWNLOADER_NAME,
+                        "executor_skill_sha256": sha(
+                            self.paper_downloader_root / "SKILL.md"
+                        ),
+                        "actual_tool": "paper-downloader",
+                        "operation_id": f"acquire-{row['source_id']}",
+                        "status": "completed",
+                        "source_id": row["source_id"],
+                        "publication_identity": row["publication_identity"],
+                        "result": {
+                            "access_status": row["access_status"],
+                            "local_payload_path": row["local_payload_path"],
+                            "payload_sha256": row["payload_sha256"],
+                            "payload_bytes": row["payload_bytes"],
+                        },
+                        "started_at": NOW,
+                        "completed_at": NOW,
+                    },
+                )
+                operation_relative = self.rel(operation_path)
+                self.acquisition_operation_receipts_structurally_validated += 1
             receipt = self.package / row["acquisition_receipt_path"]
             write_json(
                 receipt,
@@ -593,6 +839,7 @@ class RunFixture:
                         "kind": validation_kind,
                         "magic": "%PDF" if validation_kind == "pdf" else None,
                     },
+                    "executor_operation_receipt_path": operation_relative,
                     "recorded_at": NOW,
                 },
             )
@@ -605,6 +852,8 @@ class RunFixture:
         for row in rows:
             status_counts[row["access_status"]] = status_counts.get(row["access_status"], 0) + 1
         acquisition_summary = sources / "acquisition-summary.json"
+        collector_context = "source-collector"
+        collector_operation_key = "source-collection"
         write_json(
             acquisition_summary,
             {
@@ -614,10 +863,26 @@ class RunFixture:
                 "unique_publication_count": len(rows),
                 "status_counts": status_counts,
                 "all_akashic_lookups_completed": True,
-                "download_claims_verified": True,
-                "collector_context_id": "source-collector",
+                "download_payloads_structurally_validated": True,
+                "executor_operation_receipts_structurally_validated": (
+                    self.acquisition_operation_receipts_structurally_validated
+                ),
+                "runtime_execution_verified": False,
+                "collector_context_id": collector_context,
+                "executor": self._executor_record(
+                    kind="collector",
+                    role="source_collector",
+                    context_id=collector_context,
+                    key=collector_operation_key,
+                ),
                 "completed_at": NOW,
             },
+        )
+        self._write_runtime_operation(
+            acquisition_summary,
+            role="source_collector",
+            context_id=collector_context,
+            key=collector_operation_key,
         )
         source_files, _ = validator.inventory_tree(
             sources,
@@ -642,6 +907,28 @@ class RunFixture:
 
     def _build_receipts(self) -> None:
         receipts = self.package / "payload" / "receipts"
+        discovery_path = (
+            self.package
+            / "payload"
+            / "runtime-receipts"
+            / "paper-downloader-discovery.json"
+        )
+        write_json(
+            discovery_path,
+            {
+                "schema": validator.SKILL_DISCOVERY_SCHEMA,
+                "evidence_origin": "runtime_skill_catalog",
+                "runtime": "codex",
+                "status": "discovered",
+                "receipt_id": "discovery-paper-downloader-001",
+                "consumer_skill_path": str(
+                    self.paper_downloader_consumer / "SKILL.md"
+                ),
+                "canonical_realpath": str(self.paper_downloader_root.resolve()),
+                "skill_sha256": sha(self.paper_downloader_root / "SKILL.md"),
+                "observed_at": NOW,
+            },
+        )
         write_json(
             receipts / "run-init.json",
             {
@@ -665,21 +952,63 @@ class RunFixture:
                     "canonical_realpath": str(self.paper_downloader_root.resolve()),
                     "skill_sha256": sha(self.paper_downloader_root / "SKILL.md"),
                     "verified_at": NOW,
+                    "consumer_link_state": "linked",
+                    "discovery_receipt_path": self.rel(discovery_path),
+                    "discovery_receipt_sha256": sha(discovery_path),
                 },
                 "initialized_at": NOW,
             },
         )
+        plugin_result = (
+            self.package
+            / "payload"
+            / "validation"
+            / "plugin-validator-result.json"
+        )
+        write_json(plugin_result, self.plugin_report)
+        plugin_validation_path = receipts / "plugin-validation.json"
         write_json(
-            receipts / "plugin-validation.json",
+            plugin_validation_path,
             {
-                "schema_version": 1,
+                "schema": validator.PLUGIN_RECEIPT_SCHEMA,
+                "schema_version": 2,
                 "ok": True,
-                "plugin_name": validator.PLUGIN_NAME,
-                "plugin_version": validator.PLUGIN_VERSION,
-                "source_manifest_sha256": self.plugin_report["bundled_manifest_sha256"],
+                "plugin": self.plugin_report["plugin"],
+                "runtime_tree": self.plugin_report["runtime_tree"],
+                "critical_files": self.plugin_report["critical_files"],
+                "bundled": {
+                    "manifest_path": validator.SOURCE_MANIFEST_RELATIVE.as_posix(),
+                    "manifest_sha256": self.plugin_report[
+                        "bundled_manifest_sha256"
+                    ],
+                    "tree": self.plugin_report["bundled_tree"],
+                },
+                "validator": {
+                    "path": validator.VALIDATOR_RELATIVE.as_posix(),
+                    "sha256": self.plugin_report["critical_files"][
+                        validator.VALIDATOR_RELATIVE.as_posix()
+                    ],
+                    "command": validator.plugin_validation_command(
+                        self.plugin.resolve()
+                    ),
+                },
+                "validator_result": {
+                    "path": self.rel(plugin_result),
+                    "sha256": sha(plugin_result),
+                },
+                "git_observation": self.plugin_report["git_observation"],
                 "validated_at": NOW,
             },
         )
+        self.plugin_validation_binding = {
+            "path": self.rel(plugin_validation_path),
+            "sha256": sha(plugin_validation_path),
+            "schema": validator.PLUGIN_RECEIPT_SCHEMA,
+            "runtime_tree_sha256": self.plugin_report["runtime_tree"][
+                "tree_sha256"
+            ],
+            "git_observation": self.plugin_report["git_observation"],
+        }
         write_json(
             receipts / "live-rule.json",
             {
@@ -690,8 +1019,11 @@ class RunFixture:
                 "read_at": NOW,
             },
         )
+        material_audit_path = receipts / "material-audit.json"
+        material_auditor_context = "material-auditor"
+        material_auditor_key = "material-audit"
         write_json(
-            receipts / "material-audit.json",
+            material_audit_path,
             {
                 "schema_version": 1,
                 "artifact_type": "materials",
@@ -717,13 +1049,20 @@ class RunFixture:
                     "read_at": NOW,
                 },
                 "author_context_id": "source-collector",
-                "auditor": {
-                    "runtime": "codex",
-                    "kind": "codex-independent",
-                    "context_id": "material-auditor",
-                },
+                "auditor": self._executor_record(
+                    kind="codex-independent",
+                    role="material_auditor",
+                    context_id=material_auditor_context,
+                    key=material_auditor_key,
+                ),
                 "decided_at": NOW,
             },
+        )
+        self._write_runtime_operation(
+            material_audit_path,
+            role="material_auditor",
+            context_id=material_auditor_context,
+            key=material_auditor_key,
         )
 
     def _build_experts(self) -> None:
@@ -786,6 +1125,11 @@ class RunFixture:
 
     def _build_manifest(self) -> None:
         synthesis_attempt = getattr(self, "accepted_synthesis", {"attempt": None})["attempt"]
+        runtime_operation_receipts_structurally_validated = (
+            11
+            + 2 * sum(len(records) for records in self.expert_audits.values())
+            + 2 * len(self.synthesis_audits)
+        )
         write_json(
             self.package / "payload" / "receipts" / "run-manifest.json",
             {
@@ -793,19 +1137,36 @@ class RunFixture:
                 "package_id": self.package.name,
                 "package_date": self.package_date,
                 "package_relative_path": self.package_relative_path,
-                "status": "candidate_success",
+                "status": validator.STRUCTURAL_RUN_STATUS,
+                "runtime_attestation": {
+                    "evidence_scope": "package_local_only",
+                    "independent_host_attestation": "not_provided",
+                    "runtime_execution_verified": False,
+                    "run_success_verified": False,
+                },
                 "task_id": "fixture-task",
                 "runtime": self.runtime,
                 "plugin": {
                     "name": validator.PLUGIN_NAME,
                     "version": validator.PLUGIN_VERSION,
                 },
+                "plugin_validation": self.plugin_validation_binding,
                 "formal_absorption": "not_authorized",
                 "plugin_installation": "not_performed",
                 "fuxi": "available_not_invoked",
                 "reviewable_source_count": self.reviewable_count,
                 "reviewable_source_ids_sha256": self.reviewable_ids_sha,
                 "source_set_sha256": self.source_set_sha,
+                "acquisition_executor_evidence": {
+                    "source_state": "validated",
+                    "consumer_link_state": "linked",
+                    "runtime_discovery_state": validator.RUNTIME_NOT_VERIFIED,
+                    "discovery_receipt_structurally_validated": True,
+                    "operation_receipts_structurally_validated": (
+                        self.acquisition_operation_receipts_structurally_validated
+                    ),
+                    "runtime_execution_verified": False,
+                },
                 "research_brief": {
                     "path": self.rel(self.research_brief),
                     "sha256": sha(self.research_brief),
@@ -824,6 +1185,9 @@ class RunFixture:
                     "accepted_attempt": synthesis_attempt,
                 },
                 "receipt_chain_complete": True,
+                "runtime_operation_receipts_structurally_validated": (
+                    runtime_operation_receipts_structurally_validated
+                ),
             },
         )
 
@@ -870,7 +1234,10 @@ class RunFixture:
                 if not self.omit_retry_event:
                     self.add_event("synthesis_retry_dispatched", "synthesis_in_progress", next_receipt)
         self.add_event("chain_validated", "chain_validated")
-        self.add_event("success", "success")
+        self.add_event(
+            "structure_validated_runtime_unverified",
+            validator.RUNTIME_NOT_VERIFIED,
+        )
         output: list[bytes] = []
         previous: str | None = None
         for sequence, item in enumerate(self.events, 1):
@@ -907,18 +1274,33 @@ class RunFixture:
         self._build_manifest()
         if not self.exhausted_expert:
             event_head = self._build_events()
+            runtime_operation_receipts_structurally_validated = (
+                11
+                + 2 * sum(
+                    len(records) for records in self.expert_audits.values()
+                )
+                + 2 * len(self.synthesis_audits)
+            )
             write_json(
                 self.package / "payload" / "receipts" / "completion.json",
                 {
                     "schema_version": 1,
-                    "status": "candidate_success",
+                    "status": validator.STRUCTURAL_RUN_STATUS,
                     "reviewable_source_count": self.reviewable_count,
                     "reviewable_source_ids_sha256": self.reviewable_ids_sha,
                     "topic_experts_completed": 8,
                     "akashic_lookup_complete": True,
-                    "download_claims_verified": True,
+                    "download_payloads_structurally_validated": True,
+                    "acquisition_operation_receipts_structurally_validated": (
+                        self.acquisition_operation_receipts_structurally_validated
+                    ),
                     "experts_passed": 8,
                     "synthesis_passed": True,
+                    "runtime_operation_receipts_structurally_validated": (
+                        runtime_operation_receipts_structurally_validated
+                    ),
+                    "runtime_execution_verified": False,
+                    "run_success_verified": False,
                     "event_chain_head_sha256": event_head,
                     "completed_at": NOW,
                 },
@@ -926,6 +1308,98 @@ class RunFixture:
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_bundled_verifier_without_upstream_roots_is_not_compared(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-B", str(VERIFY_BUNDLED_PATH)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["source_comparison"], "not_compared")
+        self.assertIsNone(report["sources_ok"])
+        self.assertEqual(report["source_comparisons"], [])
+
+    def test_bundled_verifier_strict_match_requires_both_roots(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                str(VERIFY_BUNDLED_PATH),
+                "--require-source-match",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["source_comparison"], "not_compared")
+        self.assertIsNone(report["sources_ok"])
+        self.assertIn("requires both", report["error"])
+
+    def test_bundled_source_comparison_checks_every_component(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target_root = root / "bundled"
+            minimax_root = root / "minimax"
+            claude_root = root / "claude"
+            for component in verify_bundled.COMPONENTS:
+                target = target_root / component["target"]
+                upstream_root = (
+                    minimax_root
+                    if component["source_scope"] == "minimax-user-skills"
+                    else claude_root
+                )
+                upstream = upstream_root / component["source_name"]
+                target.mkdir(parents=True)
+                upstream.mkdir(parents=True)
+                content = f"{component['id']}\n"
+                (target / "SKILL.md").write_text(content, encoding="utf-8")
+                (upstream / "SKILL.md").write_text(content, encoding="utf-8")
+            original_root = verify_bundled.ROOT
+            verify_bundled.ROOT = target_root
+            try:
+                comparisons = verify_bundled.compare_sources(
+                    minimax_root,
+                    claude_root,
+                )
+                self.assertEqual(len(comparisons), len(verify_bundled.COMPONENTS))
+                self.assertTrue(
+                    all(
+                        not item["missing"]
+                        and not item["extra"]
+                        and not item["content_mismatch"]
+                        for item in comparisons
+                    )
+                )
+                drifted = minimax_root / "Nick Norwitz" / "SKILL.md"
+                drifted.write_text("drift\n", encoding="utf-8")
+                comparisons = verify_bundled.compare_sources(
+                    minimax_root,
+                    claude_root,
+                )
+                nick = next(item for item in comparisons if item["id"] == "persona-01")
+                self.assertEqual(nick["content_mismatch"], ["SKILL.md"])
+            finally:
+                verify_bundled.ROOT = original_root
+
+    def test_bundled_inventory_rejects_symlinked_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            tree = root / "tree"
+            external = root / "external"
+            tree.mkdir()
+            external.mkdir()
+            (external / "SKILL.md").write_text("linked payload\n", encoding="utf-8")
+            try:
+                create_directory_link(tree / "linked-directory", external)
+            except OSError as error:
+                self.skipTest(str(error))
+            with self.assertRaisesRegex(ValueError, "symlink is forbidden"):
+                verify_bundled.inventory(tree)
+
     def test_windows_link_targets_drop_nt_namespace_prefixes(self) -> None:
         self.assertEqual(
             validator.normalize_windows_link_target(r"\\?\C:\repo\paper-downloader"),
@@ -948,6 +1422,9 @@ class ValidatorTests(unittest.TestCase):
         self.assertIn("$paper-downloader", binding)
         self.assertIn("<collection>/GitHub/paper-downloader/SKILL.md", binding)
         self.assertIn("never to the `paper-downloader/src/paper-downloader`", binding)
+        self.assertIn("Windows junction", binding)
+        self.assertIn("proves only `consumer_link_state: linked`", binding)
+        self.assertIn("acquisition-operation-receipt/v1", binding)
         self.assertIn("registered `$paper-downloader` consumer", workflow)
 
     def assert_run_error(
@@ -966,12 +1443,67 @@ class ValidatorTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, expected_code)
 
-    def test_repository_plugin_passes_and_discovers_only_orchestrator(self) -> None:
+    def rewrite_download_payload(
+        self,
+        fixture: RunFixture,
+        source_index: int,
+        data: bytes,
+    ) -> None:
+        inventory = fixture.package / "payload/sources/inventory.jsonl"
+        rows = read_jsonl(inventory)
+        row = rows[source_index]
+        payload = fixture.package / row["local_payload_path"]
+        payload.write_bytes(data)
+        row["payload_sha256"] = sha(payload)
+        row["payload_bytes"] = payload.stat().st_size
+        rehash_source(row)
+        write_jsonl(inventory, rows)
+        receipt_path = fixture.package / row["acquisition_receipt_path"]
+        receipt = read_json(receipt_path)
+        receipt["payload_sha256"] = row["payload_sha256"]
+        receipt["payload_bytes"] = row["payload_bytes"]
+        write_json(receipt_path, receipt)
+        operation_path = (
+            fixture.package / receipt["executor_operation_receipt_path"]
+        )
+        operation = read_json(operation_path)
+        operation["result"]["payload_sha256"] = row["payload_sha256"]
+        operation["result"]["payload_bytes"] = row["payload_bytes"]
+        write_json(operation_path, operation)
+
+    def test_repository_plugin_passes_and_exposes_one_discoverable_skill(self) -> None:
         report = validator.validate_plugin(validator.DEFAULT_PLUGIN_ROOT)
         self.assertTrue(report["ok"])
-        self.assertEqual(report["discovered_skills"], [validator.SKILL_NAME])
+        self.assertEqual(report["discoverable_skills"], [validator.SKILL_NAME])
+        self.assertEqual(report["runtime_discovery_state"], "not_evaluated")
         self.assertEqual(report["component_count"], 9)
         self.assertFalse(report["mcp_present"])
+        self.assertEqual(
+            set(report["git_observation"]),
+            {
+                "repository_present",
+                "repository_root",
+                "head_commit",
+                "runtime_tree_tracked",
+                "package_dirty",
+            },
+        )
+        expected_dirty = bool(
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(validator.DEFAULT_PLUGIN_ROOT.parent),
+                    "status",
+                    "--porcelain=v1",
+                    "--",
+                    validator.DEFAULT_PLUGIN_ROOT.name,
+                ],
+                check=True,
+                capture_output=True,
+            ).stdout
+        )
+        self.assertIs(report["git_observation"]["package_dirty"], expected_dirty)
 
     def test_missing_bundled_manifest_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -997,7 +1529,7 @@ class ValidatorTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, "verifier_route_mismatch")
 
-    def test_complete_run_passes(self) -> None:
+    def test_complete_package_local_fixture_is_runtime_not_verified(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             plugin, components = build_plugin(root)
@@ -1008,18 +1540,272 @@ class ValidatorTests(unittest.TestCase):
                 submissions_root_input=fixture.submissions_root,
                 live_rule_input=fixture.rule,
             )
-            self.assertTrue(report["ok"])
+            self.assertFalse(report["ok"])
+            self.assertTrue(report["structural_validation_ok"])
+            self.assertFalse(report["runtime_execution_verified"])
+            self.assertFalse(report["run_success_verified"])
+            self.assertEqual(report["status"], validator.RUNTIME_NOT_VERIFIED)
+            self.assertEqual(
+                report["runtime_attestation"],
+                {
+                    "required_source": "independent_host",
+                    "provided": False,
+                    "verified": False,
+                    "status": validator.RUNTIME_NOT_VERIFIED,
+                    "reason": (
+                        "package-local normalized receipts are structurally valid but are "
+                        "not independent host attestation"
+                    ),
+                },
+            )
             self.assertEqual(report["package_date"], "2026-08-07")
             self.assertEqual(
                 report["package_relative_path"],
                 "2026/08/07/research-qa-fixture",
             )
             self.assertEqual(report["reviewable_source_count"], 30)
-            self.assertEqual(report["experts_passed"], 8)
-            self.assertEqual(report["synthesis_audit"], "pass")
+            self.assertEqual(
+                report["expert_pass_receipts_structurally_validated"],
+                8,
+            )
+            self.assertTrue(
+                report["synthesis_audit_receipt_structurally_validated"]
+            )
             self.assertEqual(
                 report["acquisition_executor"]["canonical_realpath"],
                 str(fixture.paper_downloader_root.resolve()),
+            )
+            self.assertEqual(
+                report["acquisition_executor"]["consumer_link_state"],
+                "linked",
+            )
+            self.assertEqual(
+                report["acquisition_executor"]["runtime_discovery_state"],
+                validator.RUNTIME_NOT_VERIFIED,
+            )
+            self.assertTrue(
+                report["acquisition_executor"]
+                ["discovery_receipt_structurally_validated"]
+            )
+            self.assertFalse(
+                report["acquisition_executor"]["runtime_execution_verified"]
+            )
+            self.assertEqual(
+                report[
+                    "acquisition_operation_receipts_structurally_validated"
+                ],
+                30,
+            )
+            self.assertEqual(
+                report["runtime_operation_receipts_structurally_validated"],
+                29,
+            )
+
+    def test_package_local_candidate_success_claim_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            manifest_path = (
+                fixture.package / "payload/receipts/run-manifest.json"
+            )
+            manifest = read_json(manifest_path)
+            manifest["status"] = "candidate_success"
+            write_json(manifest_path, manifest)
+            self.assert_run_error(fixture, plugin, "runtime_success_overclaim")
+
+    def test_package_local_host_attestation_claim_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            manifest_path = (
+                fixture.package / "payload/receipts/run-manifest.json"
+            )
+            manifest = read_json(manifest_path)
+            manifest["runtime_attestation"] = {
+                "evidence_scope": "package_local_only",
+                "independent_host_attestation": "verified",
+                "runtime_execution_verified": True,
+                "run_success_verified": True,
+            }
+            write_json(manifest_path, manifest)
+            self.assert_run_error(
+                fixture,
+                plugin,
+                "runtime_attestation_boundary",
+            )
+
+    def test_plugin_validation_v1_cannot_impersonate_v2(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            receipt_path = fixture.package / "payload/receipts/plugin-validation.json"
+            receipt = read_json(receipt_path)
+            receipt["schema_version"] = 1
+            receipt.pop("schema")
+            write_json(receipt_path, receipt)
+            self.assert_run_error(fixture, plugin, "plugin_validation_binding")
+
+    def test_plugin_receipt_rejects_runtime_contract_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            contract = (
+                plugin
+                / validator.SKILL_RELATIVE
+                / "references"
+                / "workflow-contract.md"
+            )
+            contract.write_text(
+                contract.read_text(encoding="utf-8") + "drift\n",
+                encoding="utf-8",
+            )
+            self.assert_run_error(fixture, plugin, "plugin_validation_binding")
+
+    def test_plugin_receipt_rejects_validator_result_tamper(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            result_path = (
+                fixture.package
+                / "payload/validation/plugin-validator-result.json"
+            )
+            result = read_json(result_path)
+            result["candidate_only"] = False
+            write_json(result_path, result)
+            receipt_path = fixture.package / "payload/receipts/plugin-validation.json"
+            receipt = read_json(receipt_path)
+            receipt["validator_result"]["sha256"] = sha(result_path)
+            write_json(receipt_path, receipt)
+            self.assert_run_error(fixture, plugin, "plugin_validation_binding")
+
+    def test_plugin_receipt_rejects_combined_static_git_pass_label(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            receipt_path = fixture.package / "payload/receipts/plugin-validation.json"
+            receipt = read_json(receipt_path)
+            receipt["git_status"] = "Git-untracked 30/30 PASS"
+            write_json(receipt_path, receipt)
+            self.assert_run_error(fixture, plugin, "plugin_validation_binding")
+
+    def test_consumer_link_without_discovery_receipt_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            run_init = read_json(
+                fixture.package / "payload/receipts/run-init.json"
+            )
+            discovery = (
+                fixture.package
+                / run_init["acquisition_executor"]["discovery_receipt_path"]
+            )
+            discovery.unlink()
+            self.assert_run_error(
+                fixture,
+                plugin,
+                "acquisition_executor_discovery_unverified",
+            )
+
+    def test_downloaded_fixture_without_operation_receipt_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            rows = read_jsonl(
+                fixture.package / "payload/sources/inventory.jsonl"
+            )
+            acquisition = read_json(
+                fixture.package / rows[0]["acquisition_receipt_path"]
+            )
+            operation = (
+                fixture.package / acquisition["executor_operation_receipt_path"]
+            )
+            operation.unlink()
+            self.assert_run_error(
+                fixture,
+                plugin,
+                "acquisition_operation_missing",
+            )
+
+    def test_self_reported_context_without_operation_receipt_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            contribution_path = (
+                fixture.package / "payload/topic/contributions/persona-01.json"
+            )
+            contribution = read_json(contribution_path)
+            contribution["executor"].pop("operation_receipt_path")
+            write_json(contribution_path, contribution)
+            self.assert_run_error(fixture, plugin, "execution_receipt_missing")
+
+    def test_hidden_subagent_receipt_cannot_impersonate_visible_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            contribution = read_json(
+                fixture.package / "payload/topic/contributions/persona-01.json"
+            )
+            operation_path = (
+                fixture.package
+                / contribution["executor"]["operation_receipt_path"]
+            )
+            operation = read_json(operation_path)
+            operation["agentPath"] = "/root/hidden-agent"
+            write_json(operation_path, operation)
+            self.assert_run_error(fixture, plugin, "hidden_subagent_evidence")
+
+    def test_package_local_operation_cannot_claim_runtime_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            contribution = read_json(
+                fixture.package / "payload/topic/contributions/persona-01.json"
+            )
+            operation_path = (
+                fixture.package
+                / contribution["executor"]["operation_receipt_path"]
+            )
+            operation = read_json(operation_path)
+            operation["runtime_execution_verified"] = True
+            operation["host_attestation"] = {"status": "self_reported"}
+            write_json(operation_path, operation)
+            self.assert_run_error(
+                fixture,
+                plugin,
+                "runtime_attestation_boundary",
+            )
+
+    def test_unconfirmed_create_thread_is_not_execution_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            contribution = read_json(
+                fixture.package / "payload/topic/contributions/persona-01.json"
+            )
+            operation_path = (
+                fixture.package
+                / contribution["executor"]["operation_receipt_path"]
+            )
+            operation = read_json(operation_path)
+            operation["create_thread"]["status"] = "created_unconfirmed"
+            operation["create_thread"]["prompt_verified"] = False
+            write_json(operation_path, operation)
+            self.assert_run_error(
+                fixture,
+                plugin,
+                "invalid_visible_task_evidence",
             )
 
     def test_copied_paper_downloader_consumer_is_rejected(self) -> None:
@@ -1058,6 +1844,8 @@ class ValidatorTests(unittest.TestCase):
                 validator.validate_acquisition_executor(
                     receipt["acquisition_executor"],
                     plugin,
+                    fixture.package,
+                    fixture.runtime,
                 )
             self.assertEqual(raised.exception.code, "acquisition_executor_unavailable")
 
@@ -1089,6 +1877,8 @@ class ValidatorTests(unittest.TestCase):
                 validator.validate_acquisition_executor(
                     receipt["acquisition_executor"],
                     plugin,
+                    fixture.package,
+                    fixture.runtime,
                 )
             self.assertEqual(raised.exception.code, "acquisition_executor_unavailable")
 
@@ -1159,6 +1949,12 @@ class ValidatorTests(unittest.TestCase):
             receipt = read_json(receipt_path)
             receipt["status"] = "failed"
             write_json(receipt_path, receipt)
+            operation_path = (
+                fixture.package / receipt["executor_operation_receipt_path"]
+            )
+            operation = read_json(operation_path)
+            operation["result"]["access_status"] = "failed"
+            write_json(operation_path, operation)
             self.assert_run_error(fixture, plugin, "invalid_reviewable_source")
 
     def test_non_scholarly_document_cannot_be_reviewable(self) -> None:
@@ -1190,6 +1986,59 @@ class ValidatorTests(unittest.TestCase):
             receipt["payload_sha256"] = rows[0]["payload_sha256"]
             receipt["payload_bytes"] = rows[0]["payload_bytes"]
             write_json(receipt_path, receipt)
+            operation_path = (
+                fixture.package / receipt["executor_operation_receipt_path"]
+            )
+            operation = read_json(operation_path)
+            operation["result"]["payload_sha256"] = rows[0]["payload_sha256"]
+            operation["result"]["payload_bytes"] = rows[0]["payload_bytes"]
+            write_json(operation_path, operation)
+            self.assert_run_error(fixture, plugin, "invalid_downloaded_pdf")
+
+    def test_pdf_magic_plus_padding_is_not_a_pdf(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            self.rewrite_download_payload(
+                fixture,
+                0,
+                b"%PDF-1.7\n" + b"self-reported fixture padding\n" * 300,
+            )
+            self.assert_run_error(fixture, plugin, "invalid_downloaded_pdf")
+
+    def test_pdf_xref_stream_structure_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "xref-stream.pdf"
+            path.write_bytes(minimal_xref_stream_pdf_bytes())
+            validator.validate_pdf_structure(path, "src-xref-stream")
+
+    def test_pdf_startxref_must_point_to_the_real_xref(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            data = minimal_valid_pdf_bytes("bad-startxref")
+            terminal = validator.PDF_TERMINAL_PATTERN.search(data)
+            assert terminal is not None
+            replacement = b"1".rjust(len(terminal.group(1)), b"0")
+            corrupted = (
+                data[: terminal.start(1)]
+                + replacement
+                + data[terminal.end(1) :]
+            )
+            self.rewrite_download_payload(fixture, 0, corrupted)
+            self.assert_run_error(fixture, plugin, "invalid_downloaded_pdf")
+
+    def test_pdf_trailer_root_must_resolve_through_xref(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plugin, components = build_plugin(root)
+            fixture = RunFixture(root, plugin, components)
+            data = minimal_valid_pdf_bytes("bad-root")
+            corrupted = data.replace(b"/Root 1 0 R", b"/Root 9 0 R", 1)
+            self.assertNotEqual(data, corrupted)
+            self.rewrite_download_payload(fixture, 0, corrupted)
             self.assert_run_error(fixture, plugin, "invalid_downloaded_pdf")
 
     def test_akashic_reuse_passes_without_download_attempt(self) -> None:

@@ -7,7 +7,7 @@ description: "Run an audited five-stage research QA workflow: lock a user topic,
 
 Background:
 
-Treat this directory as the orchestrator inside an Agent Plugins v1 package. Source presence, local Skill registration, discovery, execution, and formal adoption are separate states.
+Treat this directory as the orchestrator inside an Agent Plugins v1 package. Source presence, current Git observation, consumer link/junction state, runtime discovery, runtime operation execution, validated run output, and formal adoption are separate states. A filesystem link proves only `linked`; it never proves discovery or execution.
 
 Produce only a new candidate package under:
 
@@ -33,7 +33,7 @@ Success criteria:
 - Require at least 30 unique, on-scope, auditor-confirmed `reviewable` publications before entering the expert phase. Fewer than 30 means `collection_not_ready`; a scarcity explanation cannot waive the gate.
 - Before search, run all eight experts in distinct contexts to add research angles and freeze a hash-bound research brief in a separate integrator context.
 - Query Akashic by canonical publication identity before any download. Reuse exact matches with `download_attempted: false`; never download them again.
-- Call a source `downloaded` only after disk readback proves a PDF larger than 5 KiB with `%PDF`, byte count, and SHA-256.
+- Call a source `downloaded` only after disk readback proves a PDF larger than 5 KiB with a valid `%PDF` header, terminal `%%EOF`, consistent `startxref` plus classic xref/trailer or xref-stream structure, byte count, and SHA-256.
 - Run exactly the eight expert lanes declared in the validated bundled manifest. Each lane independently reviews the same frozen source package.
 - Require eight distinct clean Stage 4 author contexts and an exact per-expert coverage roster for the complete frozen reviewable corpus.
 - Treat every expert output as a candidate. Require a separate auditor decision of `pass` before the output can enter synthesis.
@@ -41,6 +41,9 @@ Success criteria:
 - Require 8/8 audited expert passes. Agent launches, task returns, file existence, or 7/8 passes are not success.
 - Treat the synthesis as a candidate. Have an independent auditor review it; allow one initial synthesis attempt plus at most three reworks. Publish no successful final report unless an attempt passes.
 - Require a complete, internally linked event/receipt/rejection/retry chain before setting `success`.
+- Require `plugin-validation.json` receipt v2 to bind the complete runtime tree, critical contracts, validator path/hash/command/result, bundled manifest/tree, and separately observed Git HEAD/tracked/dirty fields.
+- Require runtime discovery evidence for the linked `$paper-downloader` consumer and one hash-bound Paper Downloader operation receipt for every attempted acquisition. PDF bytes without that receipt are not even structurally complete execution evidence.
+- Require every topic expert, integrator, collector, material auditor, expert author/auditor, and synthesis author/auditor to bind a normalized runtime operation receipt. For Codex, it must contain a confirmed visible `create_thread` receipt plus successful result readback; a string `context_id`, hidden subagent ID, or task creation without completion is insufficient. The offline validator can validate only the retained receipt shape and byte bindings; package-local JSON never independently proves that the host operation occurred.
 
 ## Live Akashic rule
 
@@ -59,7 +62,7 @@ Never make a local ABCX summary the permanent authority. Fields and allowed valu
 Require an explicit runtime identity; do not infer it from prose or model style.
 
 - For `MiniMaxCode`, use its built-in default Verifier. Do not create or redefine a MiniMax Verifier agent.
-- For `Codex`, use an available independent Codex audit executor in a separate clean context from the authoring lane.
+- For `Codex`, use an available independent Codex audit executor in a separate clean visible task from the authoring lane. Preserve the normalized `create_thread` result and result readback in the package.
 - For another agent runtime, use that runtime's available independent audit executor.
 - If no independent auditor is available, stop with `auditor_unavailable`. Do not self-approve in the authoring context and do not silently fall back to MiniMax.
 
@@ -69,13 +72,13 @@ Task:
 
 1. Lock the user question, exclusions, language, runtime, and a new calendar package ID. Preflight the path, reserve it through Akashic v2, and validate the plugin/manifest.
 2. Dispatch exactly eight manifest-bound topic experts in eight distinct contexts. Freeze all non-empty contributions into `research-brief.json` using a separate integrator context.
-3. Read/hash the live rule. Resolve the registered `$paper-downloader` consumer and verify its real path and `SKILL.md` hash against `external-executors.md`. Derive canonical publication identities and query Akashic before retrieval. Reuse exact matches without downloading; use the verified lawful acquisition executor only for misses. Preserve every outcome and real disk receipt.
+3. Read/hash the live rule. Resolve the registered `$paper-downloader` consumer and verify its link/junction target, real path, `SKILL.md` hash, and separate runtime-discovery receipt against `external-executors.md`. Derive canonical publication identities and query Akashic before retrieval. Reuse exact matches without downloading; use the verified lawful acquisition executor only for misses. Preserve every outcome, runtime operation receipt, and real disk receipt.
 4. Have a separate material auditor verify lookup/reuse, download truth, unique identities, eligibility, access depth, and at least 30 reviewable publications. Freeze the source set only after pass.
 5. Dispatch the eight manifest-bound experts in eight new clean contexts. Deliver the same full frozen corpus and require exact source-coverage artifacts. Do not expose another expert's draft or audit comments in an initial prompt.
 6. Independently audit every candidate attempt. Preserve rejections; allow at most three hash-bound reworks. Stop unless all eight lanes pass.
 7. Draft synthesis from the eight accepted outputs and frozen citation-eligible sources only. Preserve disagreement, counterexamples, uncertainty, and rule boundaries.
 8. Independently audit synthesis with the same retry ceiling. Make `submission.md` byte-identical to the accepted attempt only after pass.
-9. Run `scripts/validate_research_qa.py run --package <absolute-package-path>`. Set internal `candidate_success` only when it returns `ok: true`; keep the Akashic root manifest pending and unabsorbed.
+9. Run `scripts/validate_research_qa.py run --package <absolute-package-path>`. A structurally complete package without independently verifiable host attestation must return `ok: false`, `structural_validation_ok: true`, `runtime_execution_verified: false`, `status: runtime_not_verified`, and exit 3. Keep the Akashic root manifest pending and unabsorbed; do not set `candidate_success` from package-local evidence.
 
 ## Fuxi boundary
 
@@ -85,13 +88,14 @@ Validate and inventory the Fuxi entry from `bundled/source-manifest.json`, then 
 
 Use `scripts/validate_research_qa.py` only for offline structural validation.
 
-- Purpose: validate Agent Plugins layout, manifest bindings, package containment, hashes, run receipts, counts, attempt chains, and terminal gates.
+- Purpose: validate Agent Plugins layout, manifest bindings, complete plugin receipt v2, package containment, hashes, normalized runtime/discovery/acquisition receipts, counts, attempt chains, and terminal gates.
 - Use when: before a run (`plugin`), before exclusively creating a package (`destination`), and after a candidate run package exists (`run`).
 - Do not use when: judging source relevance, evidence quality, expert reasoning, medical safety, or synthesis quality.
 - Parameters: `plugin [--plugin-root PATH]`; `destination --package ABSOLUTE_PATH`; `run --package ABSOLUTE_PATH [--plugin-root PATH]`.
-- Return: one JSON object on stdout and exit 0 for structural pass; one JSON error object on stderr and nonzero exit for failure.
+- Return: plugin/destination modes emit one JSON object on stdout and exit 0 for structural pass. Run mode emits a non-success JSON object on stdout and exit 3 when the package is structurally complete but independent runtime attestation is unavailable. Structural defects emit one JSON error object on stderr and exit 2.
+- Plugin-mode `discoverable_skills` is package-layout evidence only and reports `runtime_discovery_state: not_evaluated`; it is not a live consumer discovery receipt.
 - Failure handling: do not retry unchanged input. Fix the named structural cause or stop.
-- Stop rule: any invalid/unreserved calendar package, path escape, symlink, missing manifest binding, Stage 2 roster/context failure, Akashic redownload, false download, duplicate identity count, count below 30, incomplete corpus coverage, thin output, context reuse, incomplete audit chain, non-pass expert, or non-pass synthesis prevents success.
+- Stop rule: any invalid/unreserved calendar package, path escape, symlink, missing manifest binding, stale plugin receipt, link-only executor claim, missing/hidden/self-reported runtime evidence, absent independent host attestation, Stage 2 roster/context failure, Akashic redownload, false download, duplicate identity count, count below 30, incomplete corpus coverage, thin output, context reuse, incomplete audit chain, non-pass expert, or non-pass synthesis prevents success.
 
 Constraints:
 
@@ -103,7 +107,8 @@ Constraints:
 - Do not download a publication after an exact Akashic registry/source match.
 - Do not call HTML, a landing page, an intended filename, or a failed task return a downloaded paper.
 - Do not call a run successful because multiple agents started or eight tasks returned.
+- Do not turn a synthetic corpus, fixture label, self-reported context ID, hidden subagent metadata, symlink, or junction into a discovery or execution claim. The deterministic validator checks normalized receipt structure and byte bindings; platform-side receipt provenance still requires the originating runtime readback.
 
 Output format:
 
-Report the candidate package path and pending Akashic state; plugin validation; Stage 2 eight-context completion; live-rule path/SHA; Akashic reused count; real downloaded count; verified-abstract and failure counts; unique reviewable source count; material-audit decision; all eight Stage 4 context/coverage/attempt/pass states; synthesis attempts and audit decision; validator result; unresolved blockers; and explicit installation/formal-absorption states.
+Report the candidate package path and pending Akashic state; plugin runtime-tree receipt and separate Git observations; consumer link state; runtime discovery/execution as `runtime_not_verified`; structurally validated acquisition/runtime receipt counts; Stage 2 receipt completion; live-rule path/SHA; Akashic reused count; structurally valid downloaded-PDF count; verified-abstract and failure counts; unique reviewable source count; package-declared audit/pass receipts as structural facts only; validator result; unresolved host-attestation blocker; and explicit installation/formal-absorption states.

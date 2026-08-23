@@ -20,7 +20,7 @@ Require `runtime.kind` as an explicit run input. Do not derive it from an enviro
 | `codex` | Eight visible Codex tasks routed through `project-handoff` when available | An independent visible Codex audit task with clean context |
 | other named runtime | That runtime's available task contexts | That runtime's available independent audit executor |
 
-The coordinator may adapt dispatch syntax to the runtime, but it must preserve artifact paths, input hashes, isolation, attempt limits, and audit decision shape. For Codex, validate real visible-task receipts; hidden subagent IDs are not equivalent evidence. Never claim an executor exists merely because a Skill file was copied. If the runtime cannot supply eight author contexts and an independent audit context, stop with `executor_unavailable` or `auditor_unavailable`.
+The coordinator may adapt dispatch syntax to the runtime, but it must preserve artifact paths, input hashes, isolation, attempt limits, audit decision shape, and normalized runtime-operation receipts. For Codex, validate real visible-task receipts and result readback; hidden subagent IDs are not equivalent evidence. Never claim an executor exists merely because a Skill file was copied or linked. If the runtime cannot supply eight author contexts and an independent audit context, stop with `executor_unavailable` or `auditor_unavailable`.
 
 ## Runtime boundary examples
 
@@ -40,8 +40,19 @@ Apply these rules to material, expert, and synthesis audits:
 - Give experts the frozen source package and live-rule path, but not other expert outputs or auditor editorial judgments before their first attempts.
 - Use eight distinct contexts for Stage 2 topic contributions and eight new distinct contexts for Stage 4 review. Do not reuse the topic, integrator, collector, or material-auditor contexts as expert review contexts.
 - Give a retrying expert only its own previous artifact, the audit rejection, unchanged frozen inputs, and the live-rule path.
-- Record executor identity, context identifier when available, runtime kind, start/end times, and exit/result state.
+- Record executor identity, runtime-backed context identifier, operation receipt path, runtime kind, start/end times, and exit/result state.
 - A deterministic validator process is not a semantic auditor.
+
+## Runtime operation evidence
+
+Every author, auditor, topic integrator, and source collector must write one package-confined `runtime-operation-receipt/v1` file described by `artifact-contract.md`. The receipt binds one completed artifact path/hash, role, context, operation ID, start/end time, and successful result state.
+
+For Codex, the package-local receipt must preserve both:
+
+- the normalized actual `create_thread` result with `status: created_confirmed`, `surface: visible_thread`, ready `thread_id` plus `host_id`, and `prompt_verified: receipt|readback`; and
+- a later successful result readback binding that same thread/host and the completed artifact SHA-256.
+
+`created_unconfirmed`, `queued`, a missing result readback, `spawn_agent`, collaboration/subagent tool names, `agentPath`/`agentThreadId`, `/root/...` identifiers, or a bare self-reported `context_id` cannot enter a structurally complete chain. Even a normalized package-local `create_thread` plus readback record is not independent host attestation. The deterministic validator verifies shape and byte bindings only, reports `runtime_execution_verified: false`, and cannot produce overall run success.
 
 ## Tool contracts
 
@@ -59,8 +70,8 @@ Apply these rules to material, expert, and synthesis audits:
 - Purpose: derive stable publication identities, query Akashic first, gather candidate records, and save lawfully accessible material with truthful receipts.
 - Use when: before material audit.
 - Do not use when: expert analysis has begun for the current frozen source version.
-- Parameters: frozen research brief, Akashic registry root, registered `$paper-downloader` real path and `SKILL.md` SHA-256 from `external-executors.md`, local read roots, network authority, and candidate output directory.
-- Returns: inventory rows, per-source Akashic lookup/acquisition receipts, retained payloads, search/access logs, failures, and hashes.
+- Parameters: frozen research brief, Akashic registry root, registered `$paper-downloader` link target, separate runtime discovery receipt, canonical real path and `SKILL.md` SHA-256 from `external-executors.md`, local read roots, network authority, and candidate output directory.
+- Returns: inventory rows, per-source Akashic lookup/acquisition receipts, one Paper Downloader operation receipt per attempted acquisition, retained payloads, search/access logs, failures, and hashes.
 - Failure handling: preserve per-source failures; never download an exact Akashic match; never label HTML, a landing page, or an intended filename as downloaded.
 - Stop rule: access-control bypass, unsafe request, or inability to produce an auditable inventory.
 
@@ -70,17 +81,18 @@ Apply these rules to material, expert, and synthesis audits:
 - Use when: after source acquisition, after every expert attempt, and after every synthesis attempt.
 - Do not use when: it would audit its own authored artifact or when runtime independence is unproven.
 - Parameters: the exact artifact, frozen input bindings, pinned rule path/hash, relevant receipt, and audit rubric.
-- Returns: one JSON decision object with `pass|reject`, findings, evidence references, required changes, auditor identity, and input/output hashes.
+- Returns: one JSON decision object with `pass|reject`, findings, evidence references, required changes, auditor identity, input/output hashes, and a separate runtime operation receipt binding the completed decision artifact.
 - Failure handling: tool failure is not rejection and not pass; record `audit_execution_failed` and stop or re-dispatch to an equivalent independent auditor within the same runtime.
 - Stop rule: do not retry an unavailable audit route more than once without a material runtime change; never fall back across runtimes implicitly.
 
 ### Deterministic validator
 
-- Purpose: check paths, hashes, counts, schemas, and chain continuity offline.
+- Purpose: check paths, hashes, counts, schemas, plugin-validation receipt v2, normalized receipt structure, and chain continuity offline while keeping runtime execution unverified.
 - Use when: validating the plugin or a completed candidate run tree.
 - Do not use when: deciding scientific validity or writing conclusions.
 - Parameters: `plugin [--plugin-root PATH]` or `run --package ABSOLUTE_PATH [--plugin-root PATH]`; return shape is defined in the core Skill.
-- Failure handling: fix the named file/receipt mismatch; do not waive it with prose.
+- Return boundary: a structurally complete run returns a non-success `runtime_not_verified` result with exit 3 because no independent host trust anchor is available.
+- Failure handling: fix the named file/receipt mismatch; do not waive it with prose or package-local attestation claims.
 - Stop rule: unchanged validator input gets no retry.
 
 ## Expert task brief
@@ -119,6 +131,7 @@ Output format:
 - Candidate Markdown with fixed sections for claims, cited evidence, conflicts/limits, counterexamples, non-evidence opinion, and unresolved questions.
 - Coverage JSON listing the exact sorted reviewable source IDs.
 - JSON receipt conforming to artifact-contract.md.
+- Runtime operation receipt for the completed candidate artifact; Codex uses confirmed `create_thread` plus result readback.
 - Output language: {{output_language}}.
 
 Success criteria:
@@ -153,7 +166,7 @@ Constraints:
 - Do not emit partial_pass.
 
 Output format:
-JSON with schema_version, artifact_type, artifact_id, attempt, decision, findings, required_changes, non-empty evidence_refs, quality_checks, auditor, input_sha256, artifact_sha256, Akashic rule binding, and decided_at. Every required quality check must be true for `pass`. Set `auditor.kind` to the explicit runtime route (`minimax-default-verifier`, `codex-independent`, or another named independent auditor), not a generic or cross-runtime fallback.
+JSON with schema_version, artifact_type, artifact_id, attempt, decision, findings, required_changes, non-empty evidence_refs, quality_checks, auditor, input_sha256, artifact_sha256, Akashic rule binding, and decided_at. `auditor` must include the package-relative runtime operation receipt path. Every required quality check must be true for `pass`. Set `auditor.kind` to the explicit runtime route (`minimax-default-verifier`, `codex-independent`, or another named independent auditor), not a generic or cross-runtime fallback.
 
 Success criteria:
 - Decision is evidence-backed and structurally complete.
