@@ -942,6 +942,7 @@ class InspectorCollectionTests(unittest.TestCase):
                 False,
                 git_roots,
                 [],
+                traversal_truncated=False,
             )
             duplicates = [
                 finding["path"]
@@ -953,6 +954,124 @@ class InspectorCollectionTests(unittest.TestCase):
             self.assertIn("one/repo-a", duplicates[0])
             self.assertIn("one/repo-b", duplicates[0])
             self.assertNotIn("two/repo-a", duplicates[0])
+
+    def test_truncated_walk_does_not_report_unseen_declared_git_as_none(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            indexes = root / "_project-catalog" / "docs" / "indexes"
+            indexes.mkdir(parents=True)
+            (root / "aaa-filler").mkdir()
+            self.init_git(root / "zzz-project")
+            (indexes / "03-local-only.md").write_text(
+                "| key | name | path | vcs | remote | purpose | tags | update |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| zzz | ZZZ | zzz-project | local_git | - | Test | test | manual |\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_command(
+                root, "--max-entries", "1", "--format", "json"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(result.stdout)
+            self.assertTrue(report["truncated"])
+            self.assertNotIn(
+                (
+                    "vcs_state_mismatch",
+                    "zzz-project: declared=local_git, observed=none",
+                ),
+                {
+                    (finding["type"], finding["path"])
+                    for finding in report["findings"]
+                },
+            )
+
+    def test_truncated_walk_suppresses_cardinality_dependent_git_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "member" / "expected").mkdir(parents=True)
+            entry = INSPECTOR.IndexEntry(
+                key="member",
+                path="member",
+                category_file="fixture.md",
+                vcs="git",
+                remote="example/expected",
+                kind="collection-member",
+                parent_collection="collection",
+                source="src",
+                repository_root="member/expected",
+                status="active",
+            )
+            findings = INSPECTOR.findings_for(
+                root,
+                [],
+                [entry],
+                [],
+                False,
+                [
+                    {
+                        "path": "member/alternative",
+                        "verified": True,
+                        "remote_identity": "example/actual",
+                    }
+                ],
+                [],
+                traversal_truncated=True,
+            )
+            types = {finding["type"] for finding in findings}
+            self.assertNotIn("remote_missing", types)
+            self.assertNotIn("remote_mismatch", types)
+            self.assertNotIn("repository_root_mismatch", types)
+
+    def test_truncated_walk_keeps_positive_and_direct_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "observed-git").mkdir()
+            entries = [
+                INSPECTOR.IndexEntry(
+                    key="observed",
+                    path="observed-git",
+                    category_file="fixture.md",
+                    vcs="none",
+                    remote="-",
+                ),
+                INSPECTOR.IndexEntry(
+                    key="missing",
+                    path="missing-direct",
+                    category_file="fixture.md",
+                    vcs="local_git",
+                    remote="-",
+                ),
+            ]
+            findings = INSPECTOR.findings_for(
+                root,
+                [],
+                entries,
+                [],
+                False,
+                [{"path": "observed-git", "verified": True}],
+                [],
+                traversal_truncated=True,
+            )
+            observed = {
+                (finding["type"], finding["path"])
+                for finding in findings
+            }
+            self.assertIn(
+                (
+                    "vcs_state_mismatch",
+                    "observed-git: declared=none, observed=git",
+                ),
+                observed,
+            )
+            self.assertIn(("indexed_path_missing", "missing-direct"), observed)
+            self.assertNotIn(
+                (
+                    "vcs_state_mismatch",
+                    "missing-direct: declared=local_git, observed=none",
+                ),
+                observed,
+            )
 
     def test_invalid_reserved_and_missing_paths_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

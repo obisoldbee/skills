@@ -761,6 +761,8 @@ def findings_for(
     indexes_available: bool,
     git_roots: list[dict[str, object]],
     walked_links: list[tuple[Path, bool]],
+    *,
+    traversal_truncated: bool,
 ) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = list(index_errors)
     verified_git_roots = [item for item in git_roots if item.get("verified")]
@@ -867,7 +869,11 @@ def findings_for(
                     collection_remote_roots.setdefault(
                         (entry.parent_collection, observed_remote), set()
                     ).add(str(item["path"]))
-        if len(contained) == 1 and entry.remote not in {"", "-"}:
+        if (
+            not traversal_truncated
+            and len(contained) == 1
+            and entry.remote not in {"", "-"}
+        ):
             observed = str(contained[0].get("remote_identity") or "")
             if not observed:
                 findings.append(
@@ -884,7 +890,11 @@ def findings_for(
                     "path": f"{entry.path}: declared=none, observed=git",
                 }
             )
-        elif entry.vcs in {"git", "local_git"} and not contained:
+        elif (
+            entry.vcs in {"git", "local_git"}
+            and not contained
+            and not traversal_truncated
+        ):
             findings.append(
                 {
                     "type": "vcs_state_mismatch",
@@ -897,6 +907,7 @@ def findings_for(
             and entry.source
             and contained
             and is_safe_relative_path(entry.source)
+            and not traversal_truncated
         ):
             expected = (
                 repository_prefix
@@ -1148,6 +1159,7 @@ def main() -> int:
                 indexes_available,
                 git_roots,
                 walked_links,
+                traversal_truncated=truncated,
             ),
         }
     except Exception as exc:

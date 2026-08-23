@@ -223,7 +223,7 @@ inspect current workspace
 | `collection_root_git` | A collection routing root is itself a Git worktree | Report a layer-boundary conflict |
 | `vcs_state_mismatch` | Declared `vcs` state disagrees with observed Git roots | Report; do not initialize, remove, or reconfigure Git |
 
-The inspector must remain offline and read-only. Do not follow unknown links outside the workspace root. Bound traversal by depth, entry count, and timeout. A collection root covers its top-level directory only; expanded member paths—not the collection directory itself—cover nested Git roots.
+The inspector must remain offline and read-only. Do not follow unknown links outside the workspace root. Bound traversal by depth, entry count, and timeout. When `truncated=true`, walk-derived Git findings include positive observations only; the inspector must not infer absence, uniqueness, remote mismatch, or repository-root mismatch from the incomplete set. A collection root covers its top-level directory only; expanded member paths—not the collection directory itself—cover nested Git roots.
 
 Use Git commands to confirm likely repository roots; `.git` may be either a directory or a gitfile:
 
