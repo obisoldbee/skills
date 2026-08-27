@@ -41,4 +41,4 @@ python3 -B scripts/agnes_media.py video \
 
 轮询中断时保留 ID，不创建重复任务。下载失败只重试同一 `metadata.url`。
 
-`--output` 使用与图片相同的[输出保护与恢复合同](agnes-image.md#输出保护与恢复)：提交前拒绝已有目录项，最终发布也不覆盖竞争者。下载或保存失败时，私有同目录回执保留创建响应的 ID 及完成 URL（即使查询响应省略 ID）；只恢复同一任务，不重新提交。回执无法写入时明确报告 `recovery.status=unavailable`，不要把它当作已保存的结果。
+`--output` 使用与图片相同的[输出保护与恢复合同](agnes-image.md#输出保护与恢复)：提交前拒绝已有目录项并核实目录句柄/发布原语，最终发布也不覆盖竞争者。下载或保存失败时，私有绑定目录回执保留创建响应的 ID 及完成 URL（即使查询响应省略 ID）；只恢复同一任务，不重新提交。HTTP/网络错误和 failed 状态不回显供应商原文。父目录移动后不向替换位置保存媒体或回执；`recovery.status=unavailable` 不是已保存的结果，`artifact.path_verified=false` 也不能当作旧路径仍有效。

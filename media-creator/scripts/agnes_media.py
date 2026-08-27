@@ -13,11 +13,12 @@ import http.client
 import json
 import mimetypes
 import os
-import tempfile
+import stat
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,6 +28,12 @@ IMAGE_MODEL = "agnes-image-2.1-flash"
 VIDEO_MODEL = "agnes-video-v2.0"
 TERMINAL_VIDEO_STATES = {"completed", "failed"}
 RATIOS = ("1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9")
+DIR_FD_OUTPUT_SUPPORTED = (
+    all(function in os.supports_dir_fd for function in (os.open, os.mkdir, os.stat, os.link, os.unlink))
+    and all(function in os.supports_follow_symlinks for function in (os.stat, os.link))
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+)
 
 
 class AgnesError(RuntimeError):
@@ -37,6 +44,105 @@ class AgnesError(RuntimeError):
         self.provider_calls = False
         self.secrets_read = False
         self.recovery: dict[str, Any] | None = None
+        self.artifact: dict[str, Any] | None = None
+
+
+def error_category(exc: BaseException) -> str:
+    """Public errors never include transport bodies, URLs, reasons or reprs."""
+    if isinstance(exc, urllib.error.HTTPError):
+        code = exc.code if isinstance(exc.code, int) else "unknown"
+        try:
+            exc.close()
+        except (OSError, ValueError):
+            return f"HTTP {code} (response_close_failed)"
+        return f"HTTP {code}"
+    if isinstance(exc, urllib.error.URLError):
+        return "network_error"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, http.client.HTTPException):
+        return "http_protocol_error"
+    if isinstance(exc, OSError):
+        return f"io_error (errno={exc.errno})" if isinstance(exc.errno, int) else "io_error"
+    if isinstance(exc, ValueError):
+        return "invalid_value"
+    return "operation_failed"
+
+
+class OutputTarget:
+    """One output's pinned parent; every filesystem mutation is dir_fd-relative."""
+
+    def __init__(self, path: Path, parent_fd: int) -> None:
+        self.path = path
+        self.parent_fd = parent_fd
+        info = os.fstat(parent_fd)
+        self.identity = (info.st_dev, info.st_ino)
+        self.published = False
+
+    def __str__(self) -> str:
+        return str(self.path)
+
+    def __enter__(self) -> OutputTarget:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
+
+    def close(self) -> None:
+        os.close(self.parent_fd)
+
+    def parent_is_current(self) -> bool:
+        try:
+            info = self.path.parent.lstat()
+        except OSError:
+            return False
+        return stat.S_ISDIR(info.st_mode) and (info.st_dev, info.st_ino) == self.identity
+
+    def check_parent(self) -> None:
+        if not self.parent_is_current():
+            raise AgnesError("output parent identity changed; refusing redirected writes")
+
+    def location(self, name: str) -> dict[str, Any]:
+        return {
+            "name": name,
+            "original_parent": str(self.path.parent),
+            "parent_identity": {"device": self.identity[0], "inode": self.identity[1]},
+            "path_verified": self.parent_is_current(),
+        }
+
+    def create_private(self, prefix: str, suffix: str) -> tuple[str, int]:
+        self.check_parent()
+        name = prefix + uuid.uuid4().hex + suffix
+        fd = os.open(
+            name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600, dir_fd=self.parent_fd,
+        )
+        return name, fd
+
+    def unlink(self, name: str) -> None:
+        os.unlink(name, dir_fd=self.parent_fd)
+
+    def link(self, source: str, destination: str) -> None:
+        os.link(
+            source, destination, src_dir_fd=self.parent_fd,
+            dst_dir_fd=self.parent_fd, follow_symlinks=False,
+        )
+
+    def probe(self) -> None:
+        """Fail before credentials if this volume cannot perform safe publication."""
+        name, fd = self.create_private(".agnes-probe-", ".tmp")
+        os.close(fd)
+        linked = False
+        try:
+            self.link(name, name + ".link")
+            linked = True
+            self.check_parent()
+        finally:
+            try:
+                if linked:
+                    self.unlink(name + ".link")
+            finally:
+                self.unlink(name)
 
 
 def execution_parent() -> argparse.ArgumentParser:
@@ -134,7 +240,7 @@ def image_input(value: str, *, execute: bool) -> str:
     try:
         data = path.read_bytes()
     except OSError as exc:
-        raise AgnesError(f"cannot read input image {path}: {exc}") from exc
+        raise AgnesError(f"cannot read input image {path}: {error_category(exc)}") from exc
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
 
@@ -184,7 +290,7 @@ def parse_env_file(path: Path) -> dict[str, str]:
     except FileNotFoundError:
         return {}
     except OSError as exc:
-        raise AgnesError(f"cannot read credential file {path}: {exc}") from exc
+        raise AgnesError(f"cannot read credential file {path}: {error_category(exc)}") from exc
     values: dict[str, str] = {}
     for line in lines:
         stripped = line.strip()
@@ -215,77 +321,128 @@ def request_json(
     timeout: float,
 ) -> dict[str, Any]:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
     try:
+        request = urllib.request.Request(
+            url,
+            data=data,
+            method=method,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        )
         with urllib.request.urlopen(request, timeout=timeout) as response:
             result = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise AgnesError(f"Agnes HTTP {exc.code}: {detail}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise AgnesError(f"Agnes request failed: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise AgnesError("Agnes returned invalid JSON") from exc
+    except (OSError, ValueError, http.client.HTTPException) as exc:
+        raise AgnesError(f"Agnes request failed: {error_category(exc)}") from exc
     if not isinstance(result, dict):
         raise AgnesError("Agnes returned a non-object JSON response")
     return result
 
 
-def prepare_output(output: Path) -> Path:
-    """Freeze the parent, but never follow the final entry (even a broken link)."""
+def prepare_output(output: Path) -> OutputTarget:
+    """Reject collisions and pin/verify the physical parent before submission."""
+    parent_fd: int | None = None
     try:
         output = output.expanduser()
         output = output.parent.resolve() / output.name
         try:
             output.lstat()
         except FileNotFoundError:
-            return output
+            pass
+        else:
+            raise AgnesError(f"output already exists; refusing to overwrite {output}")
+        if not DIR_FD_OUTPUT_SUPPORTED:
+            raise AgnesError("safe output requires directory-relative no-follow primitives; not supported")
+
+        anchor = output.parent
+        missing = []
+        while True:
+            try:
+                expected = anchor.lstat()
+                break
+            except FileNotFoundError:
+                missing.append(anchor.name)
+                anchor = anchor.parent
+        if not stat.S_ISDIR(expected.st_mode):
+            raise AgnesError("output parent is not a verified directory")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(anchor, flags)
+        opened = os.fstat(parent_fd)
+        if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+            raise AgnesError("output parent identity changed during preflight")
+        for name in reversed(missing):
+            # Missing descendants are created only through the verified ancestor.
+            # A concurrently appearing entry is a conflict, never an adopted link.
+            os.mkdir(name, dir_fd=parent_fd)
+            child_fd = os.open(name, flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = child_fd
+        target = OutputTarget(output, parent_fd)
+        target.check_parent()
+        try:
+            os.stat(output.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise AgnesError(f"output already exists; refusing to overwrite {output}")
+        target.probe()
+        parent_fd = None  # Ownership passes to the returned target.
+        return target
+    except AgnesError:
+        raise
     except (OSError, RuntimeError, ValueError) as exc:
-        raise AgnesError(f"cannot inspect output {output}: {type(exc).__name__}") from exc
-    raise AgnesError(f"output already exists; refusing to overwrite {output}")
+        raise AgnesError(f"cannot prepare output {output}: {error_category(exc)}") from exc
+    finally:
+        if parent_fd is not None:
+            os.close(parent_fd)
 
 
-def save_bytes(data: bytes, output: Path) -> None:
+def save_bytes(data: bytes, output: OutputTarget | Path) -> None:
     """Publish complete bytes without replacing any entry at the frozen output."""
-    temporary: Path | None = None
+    if isinstance(output, Path):
+        with prepare_output(output) as target:
+            save_bytes(data, target)
+        return
+    temporary: str | None = None
     try:
         try:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(
-                dir=output.parent, prefix=".agnes-media-", suffix=".tmp", delete=False
-            ) as stream:
-                temporary = Path(stream.name)
+            temporary, fd = output.create_private(".agnes-media-", ".tmp")
+            with os.fdopen(fd, "wb") as stream:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-            # link() atomically creates a new name or fails if it already exists.
-            # Never fall back to rename/replace or opening the destination for write.
-            os.link(temporary, output)
+            output.check_parent()
+            output.link(temporary, output.path.name)
+            output.published = True
+            output.check_parent()
         finally:
             if temporary is not None:
-                temporary.unlink()
+                output.unlink(temporary)
     except FileExistsError as exc:
         raise AgnesError(f"output already exists; refusing to overwrite {output}") from exc
     except OSError as exc:
-        raise AgnesError(f"cannot save result to {output}: {type(exc).__name__}") from exc
+        raise AgnesError(f"cannot save result to {output}: {error_category(exc)}") from exc
 
 
-def download(url: str, output: Path, *, timeout: float) -> None:
+def download(url: str, output: OutputTarget | Path, *, timeout: float) -> None:
+    if isinstance(output, Path):
+        with prepare_output(output) as target:
+            download(url, target, timeout=timeout)
+        return
+    output.check_parent()
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             data = response.read()
     except (OSError, ValueError, http.client.HTTPException) as exc:
-        # Download exceptions can contain signed URLs; do not echo their text.
-        raise AgnesError(f"cannot download result to {output}: {type(exc).__name__}") from exc
+        raise AgnesError(f"cannot download result to {output}: {error_category(exc)}") from exc
     save_bytes(data, output)
 
 
-def save_image_result(result: dict[str, Any], output: Path, *, timeout: float) -> None:
+def save_image_result(result: dict[str, Any], output: OutputTarget | Path, *, timeout: float) -> None:
+    if isinstance(output, Path):
+        with prepare_output(output) as target:
+            save_image_result(result, target, timeout=timeout)
+        return
     items = result.get("data")
     if not isinstance(items, list) or not items or not isinstance(items[0], dict):
         raise AgnesError("Agnes image response has no data[0] result")
@@ -297,7 +454,7 @@ def save_image_result(result: dict[str, Any], output: Path, *, timeout: float) -
         try:
             data = base64.b64decode(first["b64_json"], validate=True)
         except ValueError as exc:
-            raise AgnesError(f"cannot decode Base64 image: {type(exc).__name__}") from exc
+            raise AgnesError(f"cannot decode Base64 image: {error_category(exc)}") from exc
         save_bytes(data, output)
         return
     raise AgnesError("Agnes image response contains neither data[0].url nor data[0].b64_json")
@@ -339,7 +496,7 @@ def poll_video(
         time.sleep(poll_interval)
         result = request("GET", result_url, key, timeout=timeout)
     if result.get("status") == "failed":
-        raise AgnesError(f"Agnes video generation failed: {result.get('error') or 'unknown error'}")
+        raise AgnesError("Agnes video generation failed (status=failed)")
     if not video_result_url(result):
         raise AgnesError("completed Agnes video response has no metadata.url")
     return result
@@ -356,7 +513,7 @@ def dry_run(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]
 
 
 def preserve_result(
-    media: str, initial: dict[str, Any], result: dict[str, Any], output: Path
+    media: str, initial: dict[str, Any], result: dict[str, Any], output: OutputTarget
 ) -> dict[str, Any]:
     """Keep only recovery fields in a private, exclusive, same-parent receipt."""
     retained: dict[str, Any] = {}
@@ -375,27 +532,24 @@ def preserve_result(
         if url:
             retained["metadata"] = {"url": url}
 
-    receipt: Path | None = None
+    receipt: str | None = None
     recovery: dict[str, Any] = {"automatic_regeneration": False, "retry": "same_result_only"}
     try:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=output.parent,
-            prefix=".agnes-recovery-", suffix=".json", delete=False,
-        ) as stream:
-            receipt = Path(stream.name)
+        receipt, fd = output.create_private(".agnes-recovery-", ".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump({"media": media, "result": retained}, stream)
             stream.flush()
             os.fsync(stream.fileno())
-    except OSError as exc:
-        recovery.update(status="unavailable", error=type(exc).__name__)
+        output.check_parent()
+    except (OSError, AgnesError) as exc:
+        recovery.update(status="unavailable", error=str(exc) if isinstance(exc, AgnesError) else error_category(exc))
         if receipt is not None:
             try:
-                receipt.unlink()
+                output.unlink(receipt)
             except OSError:
-                recovery["partial_path"] = str(receipt)
+                recovery["partial_location"] = output.location(receipt)
         return recovery
-    recovery.update(status="saved", path=str(receipt))
+    recovery.update(status="saved", path=str(output.path.parent / receipt))
     return recovery
 
 
@@ -404,6 +558,8 @@ def execute(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]
     provider_calls = False
     try:
         base_url, key = execution_config(args)
+        if output is not None:
+            output.check_parent()
         endpoint = "/v1/images/generations" if args.media == "image" else "/v1/videos"
         provider_calls = True
         result = request_json("POST", base_url + endpoint, key, payload=payload, timeout=args.timeout)
@@ -431,7 +587,12 @@ def execute(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]
     except AgnesError as exc:
         exc.provider_calls = provider_calls
         exc.secrets_read = True  # Configuration was attempted, unlike preflight.
+        if output is not None and output.published:
+            exc.artifact = {"status": "published_to_bound_parent", **output.location(output.path.name)}
         raise
+    finally:
+        if output is not None:
+            output.close()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -457,6 +618,8 @@ def main(argv: list[str] | None = None) -> int:
         report = {"error": str(exc), "provider_calls": exc.provider_calls, "secrets_read": exc.secrets_read}
         if exc.recovery is not None:
             report["recovery"] = exc.recovery
+        if exc.artifact is not None:
+            report["artifact"] = exc.artifact
         print(json.dumps(report, ensure_ascii=False))
         return 1
 

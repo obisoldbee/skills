@@ -31,6 +31,11 @@ RESULT_URL = "https://media.invalid/result?signature=private-result-signature"
 
 class AgnesOutputTests(unittest.TestCase):
     def setUp(self) -> None:
+        if not agnes.DIR_FD_OUTPUT_SUPPORTED and self._testMethodName not in (
+            "test_existing_entries_stop_before_credentials_and_submission",
+            "test_dry_run_does_not_preflight_write_read_credentials_or_call_provider",
+        ):
+            self.skipTest("platform lacks safe directory-relative publication")
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
@@ -231,10 +236,11 @@ class AgnesOutputTests(unittest.TestCase):
         barrier = threading.Barrier(2)
         real_link = os.link
 
-        def publish(source, target):
-            self.assertFalse(output.exists())
-            barrier.wait(timeout=5)
-            real_link(source, target)
+        def publish(source, target, **kwargs):
+            if target == output.name:
+                self.assertFalse(output.exists())
+                barrier.wait(timeout=5)
+            real_link(source, target, **kwargs)
 
         def save(content):
             try:
@@ -288,12 +294,13 @@ class AgnesOutputTests(unittest.TestCase):
         self.assert_recovery(report, output)
 
     def test_write_and_publish_failures_clean_staging_without_overwrite_fallback(self) -> None:
-        real_temporary = agnes.tempfile.NamedTemporaryFile
+        real_fdopen = os.fdopen
+        real_link = os.link
 
         @contextlib.contextmanager
-        def broken_writer(*args, **kwargs):
-            with real_temporary(*args, **kwargs) as stream:
-                if kwargs.get("prefix") == ".agnes-media-":
+        def broken_writer(fd, mode, **kwargs):
+            with real_fdopen(fd, mode, **kwargs) as stream:
+                if mode == "wb":
                     write = stream.write
 
                     def partial_write(data):
@@ -305,16 +312,21 @@ class AgnesOutputTests(unittest.TestCase):
                 else:
                     yield stream
 
+        def fail_publication(source, target, **kwargs):
+            if target == "result":
+                raise OSError(errno.ENOTSUP, RESULT_URL)
+            real_link(source, target, **kwargs)
+
         for failure in ("write", "fsync", "link"):
             for route in ("url", "b64", "video"):
                 with self.subTest(failure=failure, route=route):
                     output = self.root / f"{failure}-{route}" / "result"
                     if failure == "write":
-                        patcher = mock.patch.object(agnes.tempfile, "NamedTemporaryFile", side_effect=broken_writer)
+                        patcher = mock.patch.object(agnes.os, "fdopen", side_effect=broken_writer)
                     elif failure == "fsync":
                         patcher = mock.patch.object(agnes.os, "fsync", side_effect=[OSError(errno.EIO, RESULT_URL), None])
                     else:
-                        patcher = mock.patch.object(agnes.os, "link", side_effect=OSError(errno.ENOTSUP, RESULT_URL))
+                        patcher = mock.patch.object(agnes.os, "link", side_effect=fail_publication)
                     with patcher:
                         code, report = self.run_cli(route, output)
                     self.assertEqual(code, 1, report)
@@ -337,7 +349,14 @@ class AgnesOutputTests(unittest.TestCase):
     def test_recovery_write_failure_is_explicit_without_leaking_or_resubmitting(self) -> None:
         output = self.root / "result"
         self.urlopen.side_effect = urllib.error.URLError(RESULT_URL)
-        with mock.patch.object(agnes.tempfile, "NamedTemporaryFile", side_effect=PermissionError(RESULT_URL)):
+        create_private = agnes.OutputTarget.create_private
+
+        def fail_receipt(target, prefix, suffix):
+            if prefix == ".agnes-recovery-":
+                raise PermissionError(RESULT_URL)
+            return create_private(target, prefix, suffix)
+
+        with mock.patch.object(agnes.OutputTarget, "create_private", fail_receipt):
             code, report = self.run_cli("url", output)
         self.assertEqual(code, 1, report)
         self.assertEqual(report["recovery"]["status"], "unavailable")
