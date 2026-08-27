@@ -143,6 +143,12 @@ jobs:
           test "$observed" = "$expected"
           test "$(git -C "$checkout" rev-parse HEAD)" = "$(git -C "$seed" rev-parse HEAD)"
 
+      - name: Verify candidate isolation and consumer collection boundaries
+        shell: bash
+        run: |
+          python -B scripts/test_repository_refresh.py
+          python -B scripts/test_consumer_boundaries.py
+
       - name: Verify project-conventions package behavior
         shell: bash
         run: |

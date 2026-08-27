@@ -12,7 +12,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 
@@ -38,6 +38,8 @@ REQUIRED_ROOT_FILES = {
     "scripts/link-macos.sh",
     "scripts/link-windows.ps1",
     "scripts/verify_release.py",
+    "scripts/test_repository_refresh.py",
+    "scripts/test_consumer_boundaries.py",
 }
 MANIFEST_ROW = re.compile(r"^([0-9a-f]{64})  ([^\\]+)$")
 FORBIDDEN_NAMES = {".DS_Store", "__pycache__"}
@@ -262,7 +264,8 @@ def run_command(
 
 
 def git(root: Path, *arguments: str) -> str:
-    return run_command(root, "git", *arguments).stdout.strip()
+    # A read-only status must not refresh the active index on a failed candidate.
+    return run_command(root, "git", "--no-optional-locks", *arguments).stdout.strip()
 
 
 def safe_component(value: str, label: str) -> str:
@@ -302,9 +305,6 @@ def display_remote(url: str) -> str:
 
 
 def operation_markers(root: Path) -> list[str]:
-    git_dir = Path(git(root, "rev-parse", "--git-dir"))
-    if not git_dir.is_absolute():
-        git_dir = root / git_dir
     names = (
         "MERGE_HEAD",
         "CHERRY_PICK_HEAD",
@@ -314,21 +314,27 @@ def operation_markers(root: Path) -> list[str]:
         "rebase-merge",
         "index.lock",
         "shallow.lock",
+        "HEAD.lock",
+        "packed-refs.lock",
+        "sequencer",
     )
-    return [name for name in names if (git_dir / name).exists()]
+    found = []
+    for name in names:
+        path = Path(git(root, "rev-parse", "--git-path", name))
+        if not path.is_absolute():
+            path = root / path
+        if os.path.lexists(path):
+            found.append(name)
+    return found
 
 
-def refresh_repository(
+def repository_state(
     root: Path,
     *,
-    update: bool,
     remote_name: str,
     remote_identity: str,
     expected_ref: str,
 ) -> dict[str, object]:
-    root = resolve_real_root(root)
-    remote_name = safe_component(remote_name, "remote name")
-    expected_ref = safe_component(expected_ref, "ref")
     observed_root = Path(git(root, "rev-parse", "--show-toplevel")).resolve()
     if observed_root != root:
         raise ValueError(f"Git root differs: expected {root}, observed {observed_root}")
@@ -360,7 +366,7 @@ def refresh_repository(
             f"checkout upstream differs: expected {expected_upstream}, observed {upstream}"
         )
     if git(root, "status", "--porcelain=v1", "--untracked-files=all"):
-        raise ValueError("checkout is dirty; repository refresh stopped before network access")
+        raise ValueError("checkout is dirty; repository refresh stopped")
     markers = operation_markers(root)
     if markers:
         raise ValueError("Git operation or lock is present: " + ", ".join(markers))
@@ -371,8 +377,90 @@ def refresh_repository(
             f"expected {display_remote(remote_identity)}, observed {display_remote(origin)}"
         )
 
+    return {
+        "head": git(root, "rev-parse", "--verify", "HEAD^{commit}"),
+        "branch": branch,
+        "upstream": upstream,
+        "origin": origin,
+        "transport": git(root, "remote", "get-url", remote_name),
+    }
+
+
+def extract_candidate_root(root: Path, candidate: str, destination: Path) -> None:
+    """Read Git objects directly: no archive attributes, checkout, links or hooks."""
+    listing = git(
+        root, "ls-tree", "-r", "-t", "-z", candidate, "--",
+        *sorted(ROOT_MANAGED_ENTRIES | {ROOT_MANIFEST}),
+    )
+    entries = []
+    seen = set()
+    for record in listing.split("\0"):
+        if not record:
+            continue
+        metadata, name = record.split("\t", 1)
+        mode, kind, oid = metadata.split()
+        relative = PurePosixPath(name)
+        # Reject paths which could acquire a different meaning on Windows too.
+        if (
+            not relative.parts or relative.is_absolute() or relative.as_posix() != name
+            or relative.parts[0] not in ROOT_MANAGED_ENTRIES | {ROOT_MANIFEST}
+            or any(
+                part in {".", ".."} or part.endswith((".", " "))
+                or re.search(r'[\\\\:<>"|?*\x00-\x1f]', part)
+                or re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", part)
+                for part in relative.parts
+            )
+            or name.casefold() in seen
+        ):
+            raise ValueError(f"unsafe or duplicate candidate path: {name!r}")
+        if (mode, kind) not in {("040000", "tree"), ("100644", "blob"), ("100755", "blob")}:
+            raise ValueError(f"linked or unsupported candidate path type: {name} ({mode} {kind})")
+        seen.add(name.casefold())
+        entries.append((name, mode, kind, oid))
+
+    destination.mkdir()
+    for name, mode, kind, oid in entries:
+        path = destination / name
+        if kind == "tree":
+            path.mkdir(parents=True, exist_ok=True)
+            continue
+        content = subprocess.run(
+            ["git", "--no-optional-locks", "cat-file", "blob", oid],
+            cwd=root, capture_output=True, check=False,
+        )
+        if content.returncode:
+            raise ValueError(f"candidate blob cannot be read: {name}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("xb") as handle:
+            handle.write(content.stdout)
+        path.chmod(0o755 if mode == "100755" else 0o644)
+
+
+def validate_candidate(root: Path, candidate: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="skills-root-candidate-") as raw:
+        candidate_root = Path(raw) / "tree"
+        extract_candidate_root(root, candidate, candidate_root)
+        # Treat candidate programs as data, not an authority that can attest to
+        # itself. A temporary cwd is not a sandbox: execute no candidate code.
+        verify(candidate_root)
+
+
+def refresh_repository(
+    root: Path,
+    *,
+    update: bool,
+    remote_name: str,
+    remote_identity: str,
+    expected_ref: str,
+) -> dict[str, object]:
+    root = resolve_real_root(root)
+    remote_name = safe_component(remote_name, "remote name")
+    expected_ref = safe_component(expected_ref, "ref")
+    gate = dict(remote_name=remote_name, remote_identity=remote_identity, expected_ref=expected_ref)
+    initial = repository_state(root, **gate)
     verify(root)
-    before = git(root, "rev-parse", "HEAD")
+    before = initial["head"]
+    upstream = initial["upstream"]
     if update:
         fetched = run_command(
             root,
@@ -385,12 +473,15 @@ def refresh_repository(
         if fetched.returncode != 0:
             raise ValueError(f"git fetch failed for configured remote {remote_name}")
 
+    candidate = git(root, "rev-parse", "--verify", f"{upstream}^{{commit}}")
+    if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", candidate):
+        raise ValueError("upstream did not resolve to a full commit id")
     counts = git(
         root,
         "rev-list",
         "--left-right",
         "--count",
-        f"HEAD...{upstream}",
+        f"{before}...{candidate}",
     ).split()
     if len(counts) != 2:
         raise ValueError(f"unexpected ahead/behind output: {' '.join(counts)}")
@@ -405,45 +496,45 @@ def refresh_repository(
         "git",
         "merge-base",
         "--is-ancestor",
-        "HEAD",
-        upstream,
+        before,
+        candidate,
         allow_failure=True,
     )
     if ancestor.returncode != 0:
         raise ValueError("checkout cannot fast-forward to its upstream")
-    if update and behind:
-        git(root, "merge", "--ff-only", upstream)
+    if update:
+        try:
+            validate_candidate(root, candidate)
+        except (ValueError, OSError, UnicodeError) as exc:
+            raise ValueError(f"candidate {candidate} validation failed before fast-forward: {exc}") from exc
+        if repository_state(root, **gate) != initial:
+            raise ValueError("checkout state changed during candidate validation")
+        if git(root, "rev-parse", "--verify", f"{upstream}^{{commit}}") != candidate:
+            raise ValueError("upstream changed during candidate validation")
+        if behind:
+            git(root, "merge", "--ff-only", candidate)
 
     after = git(root, "rev-parse", "HEAD")
     if update:
-        upstream_head = git(root, "rev-parse", upstream)
-        if after != upstream_head:
+        final = repository_state(root, **gate)
+        if final != dict(initial, head=candidate) or after != candidate:
             raise ValueError(
-                f"post-update HEAD differs from upstream: {after} != {upstream_head}"
+                "checkout state differs from validated candidate during final readback"
             )
-        if git(root, "status", "--porcelain=v1", "--untracked-files=all"):
-            raise ValueError("checkout became dirty during repository refresh")
-        current_validator = root / "scripts" / "verify_release.py"
-        verified = run_command(
-            root,
-            sys.executable,
-            "-B",
-            str(current_validator),
-            str(root),
-        )
-        if '"status": "verified"' not in verified.stdout:
-            raise ValueError("updated repository returned no verified root receipt")
+        if git(root, "rev-parse", "--verify", f"{upstream}^{{commit}}") != candidate:
+            raise ValueError("upstream changed during final update readback")
 
     return {
         "status": "ready" if not update else ("updated" if before != after else "already_current"),
         "operation": "repository-device-refresh",
         "mode": "check-only" if not update else "apply",
         "repository_root": str(root),
-        "remote": display_remote(origin),
-        "branch": branch,
+        "remote": display_remote(initial["origin"]),
+        "branch": initial["branch"],
         "upstream": upstream,
         "before": before,
         "after": after,
+        "candidate": candidate,
         "ahead": ahead,
         "behind": behind if not update else 0,
         "validation": "scripts/verify_release.py",
@@ -467,7 +558,7 @@ def main() -> int:
     operation.add_argument(
         "--update-repository",
         action="store_true",
-        help="fetch and fast-forward a clean main checkout, then validate root files",
+        help="fetch, validate isolated candidate root files, then fast-forward that exact commit",
     )
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--remote-identity", default="obisoldbee/skills")
@@ -486,7 +577,7 @@ def main() -> int:
             )
         else:
             result = verify(arguments.root)
-    except ValueError as exc:
+    except (ValueError, OSError, UnicodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
