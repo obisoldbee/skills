@@ -78,53 +78,26 @@ repo_root="$(cd "$script_dir/.." && pwd -P)"
 exports_file="$repo_root/config/skill-exports.tsv"
 targets_file="$repo_root/config/agent-paths.tsv"
 verifier="$repo_root/scripts/verify_release.py"
+consumer_paths="$repo_root/scripts/consumer_paths.py"
 
-if [ ! -f "$exports_file" ] || [ ! -f "$targets_file" ] || [ ! -f "$verifier" ]; then
+if [ ! -f "$exports_file" ] || [ ! -f "$targets_file" ] || [ ! -f "$verifier" ] || [ ! -f "$consumer_paths" ]; then
   echo "error repository-root-input-missing: $repo_root" >&2
   exit 2
 fi
 
-# Only an explicitly declared shared Skills collection expands the boundary.
-# A standalone checkout (even one named GitHub) does not own its parent.
-consumer_boundary() {
-  local parent
-  parent="$(cd "$repo_root/.." && pwd -P)"
-  if [ "${repo_root##*/}" = "GitHub" ] &&
-     [ -f "$parent/AGENTS.md" ] && [ -f "$parent/skills/AGENTS.md" ] &&
-     grep -Fq 'Project Collection' "$parent/AGENTS.md" &&
-     grep -Fq 'obisoldbee/skills' "$parent/AGENTS.md" &&
-     grep -Fq 'collection-control' "$parent/skills/AGENTS.md"; then
-    printf '%s\n' "$parent"
-  else
-    printf '%s\n' "$repo_root"
-  fi
-}
-
-boundary="$(consumer_boundary)"
-check_consumer_target() {
-  local path
-  for path in "$@"; do
-    case "$path" in
-      "$boundary"|"$boundary"/*)
-        if [ "$boundary" = "$repo_root" ]; then
-          echo "error target-inside-repository: $path" >&2
-        else
-          echo "error target-inside-collection: $path" >&2
-        fi
-        return 2
-        ;;
-    esac
-  done
-}
+python_command="${PYTHON:-python3}"
+if ! command -v "$python_command" >/dev/null 2>&1; then
+  echo "error python-not-found: $python_command" >&2
+  exit 2
+fi
+if [ "$apply" -eq 1 ]; then
+  # Stop before even a device repository refresh on unsupported platforms.
+  "$python_command" -B "$consumer_paths" check-create-support
+fi
 
 if [ "$sync_device" -eq 1 ]; then
   if [ -n "$target_override" ] || [ -n "$skill_filter" ] || [ "$all_agents" -eq 1 ] || [ "$all_skills" -eq 1 ]; then
     echo "error sync-device-allows-only-optional-agent" >&2
-    exit 2
-  fi
-  python_command="${PYTHON:-python3}"
-  if ! command -v "$python_command" >/dev/null 2>&1; then
-    echo "error python-not-found: $python_command" >&2
     exit 2
   fi
   mode="plan"
@@ -311,8 +284,8 @@ for target_index in "${!target_paths[@]}"; do
     continue
   fi
   target_requested="$target"
+  target_identity="$("$python_command" -B "$consumer_paths" check --repository "$repo_root" --target "$target_requested")"
   target_resolved="$(cd "$target" && pwd -P)"
-  check_consumer_target "$target_requested" "$target_resolved"
   target="$target_resolved"
 
   while IFS="$(printf '\t')" read -r skill_name source_rel consumers; do
@@ -378,29 +351,10 @@ for target_index in "${!target_paths[@]}"; do
     echo "would-link $destination -> $source"
     would_link=$((would_link + 1))
     if [ "$apply" -eq 1 ]; then
-      if [ "$(consumer_boundary)" != "$boundary" ]; then
-        echo "error consumer-boundary-changed" >&2
-        exit 2
-      fi
-      current_target="$(cd "$target_requested" && pwd -P)"
-      check_consumer_target "$target_requested" "$current_target"
-      if [ "$current_target" != "$target_resolved" ] ||
-         [ "$(cd "$target" && pwd -P)" != "$target_resolved" ]; then
-        echo "error consumer-target-changed: $target_requested" >&2
-        exit 2
-      fi
-      if [ -e "$destination" ] || [ -L "$destination" ]; then
-        echo "error consumer-destination-changed: $destination" >&2
-        exit 2
-      fi
-      ln -s "$source" "$destination"
-      if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source" ]; then
-        echo "linked $destination -> $source"
-        linked=$((linked + 1))
-      else
-        echo "apply-verification-failed $destination" >&2
-        exit 3
-      fi
+      "$python_command" -B "$consumer_paths" create --repository "$repo_root" \
+        --target "$target_requested" --name "$skill_name" --source "$source" --expected "$target_identity"
+      echo "linked $destination -> $source"
+      linked=$((linked + 1))
     fi
   done < "$exports_file"
 done
