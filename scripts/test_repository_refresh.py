@@ -123,7 +123,7 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.assertEqual(result["after"], candidate)
         self.assertEqual(result["candidate"], candidate)
         merges = [call.args for call in calls.call_args_list if "merge" in call.args]
-        self.assertEqual(merges, [(self.checkout, "merge", "--ff-only", candidate)])
+        self.assertEqual(merges, [(self.checkout, "merge", "--ff-only", "--no-overwrite-ignore", candidate)])
         self.assertEqual((self.checkout / "example-member/SKILL.md").read_bytes(), self.member.read_bytes())
         release.verify(self.checkout)
         before = self.snapshot()
@@ -156,6 +156,99 @@ class RepositoryRefreshTests(unittest.TestCase):
         (self.seed / "README.md").write_text("bad digest\n", encoding="utf-8")
         self.publish(rebuild=False)
         self.assert_candidate_rejected("digest mismatch")
+
+    def test_existing_ignored_file_cannot_be_overwritten(self):
+        # Use the shipped *.tmp rule, not a synthetic ignore-policy change.
+        name = "user-draft.tmp"
+        (self.checkout / name).write_bytes(b"local user draft\n")
+        (self.seed / name).write_bytes(b"candidate tracked bytes\n")
+        self.git(self.seed, "add", "-f", name)
+        self.publish()
+        self.assertEqual(self.git(self.checkout, "status", "--porcelain"), "")
+        self.assert_candidate_rejected("untracked landing conflict")
+
+    def test_index_only_concurrent_flag_is_preserved(self):
+        self.member.write_text("candidate\n", encoding="utf-8")
+        self.publish()
+        original_validate = release.validate_candidate
+        observed = []
+        index_states = []
+
+        def validate_then_flag(root, candidate):
+            original_validate(root, candidate)
+            self.git(root, "update-index", "--assume-unchanged", "README.md")
+            observed.append(self.snapshot())
+            index_states.append(release.index_state(root))
+
+        with patch.object(release, "validate_candidate", side_effect=validate_then_flag):
+            with self.assertRaisesRegex(ValueError, "state changed"):
+                self.refresh()
+        self.assertEqual(self.snapshot(), observed[0])
+        self.assertEqual(release.index_state(self.checkout), index_states[0])
+        self.assertTrue(self.git(self.checkout, "ls-files", "-v", "README.md").startswith("h "))
+
+    def test_ignored_file_parent_is_preserved(self):
+        name = "file-parent.tmp"
+        (self.seed / name).mkdir()
+        (self.seed / name / "tracked").write_text("candidate", encoding="utf-8")
+        (self.checkout / name).write_text("user", encoding="utf-8")
+        self.git(self.seed, "add", "-f", name)
+        self.publish()
+        self.assert_candidate_rejected("untracked landing conflict")
+
+    @unittest.skipIf(os.name == "nt", "Unix symlink ancestor; Windows aliases use the consumer suite")
+    def test_ignored_symlink_parent_is_preserved(self):
+        name = "symlink-parent.tmp"
+        (self.seed / name).mkdir()
+        (self.seed / name / "tracked").write_text("candidate", encoding="utf-8")
+        (self.checkout / name).symlink_to(self.root, target_is_directory=True)
+        self.git(self.seed, "add", "-f", name)
+        self.publish()
+        self.assert_candidate_rejected("untracked landing conflict")
+
+    def test_ignored_extra_in_tracked_directory_is_preserved(self):
+        name = "directory-extra.tmp"
+        tracked = self.seed / name / "tracked"
+        tracked.parent.mkdir()
+        tracked.write_text("old tracked bytes", encoding="utf-8")
+        self.git(self.seed, "add", "-f", name)
+        self.publish()
+        self.refresh()
+        tracked.unlink()
+        tracked.parent.rmdir()
+        (self.seed / name).write_text("new file", encoding="utf-8")
+        (self.checkout / name / "extra.tmp").write_text("user", encoding="utf-8")
+        self.git(self.seed, "add", "-f", name)
+        self.publish()
+        self.assert_candidate_rejected("untracked landing conflict")
+
+    def test_noncolliding_ignored_file_survives_success(self):
+        keep = self.checkout / "user-draft.tmp"
+        keep.write_bytes(b"untouched\n")
+        self.member.write_text("candidate\n", encoding="utf-8")
+        candidate = self.publish()
+        self.assertEqual(self.refresh()["after"], candidate)
+        self.assertEqual(keep.read_bytes(), b"untouched\n")
+
+    def test_ignored_file_appearing_at_merge_is_not_overwritten(self):
+        name = "late-draft.tmp"
+        (self.seed / name).write_bytes(b"candidate\n")
+        self.git(self.seed, "add", "-f", name)
+        self.publish()
+        original_git = release.git
+        observed = []
+
+        def git_with_late_file(root, *arguments):
+            if arguments[0] == "merge":
+                (root / name).write_bytes(b"concurrent user bytes\n")
+                observed.append(self.snapshot())
+            return original_git(root, *arguments)
+
+        with patch.object(release, "git", side_effect=git_with_late_file):
+            with self.assertRaisesRegex(ValueError, "would be overwritten"):
+                self.refresh()
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(self.snapshot(), observed[0])
 
     def test_file_replaced_by_directory_rejected_before_move(self):
         path = self.seed / "scripts/link-macos.sh"
@@ -225,7 +318,7 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.member.write_text("candidate\n", encoding="utf-8")
         candidate = self.publish()
         original_validate = release.validate_candidate
-        changes = ("head", "branch", "upstream", "remote", "rewrite", "tracked", "untracked", "staged", "marker", "candidate")
+        changes = ("head", "branch", "upstream", "remote", "rewrite", "tracked", "untracked", "staged", "marker", "candidate", "skip-worktree", "index-replaced")
         # Each scenario gets its own checkout; no reset or rollback can hide a write.
         original_checkout = self.checkout
         for change in changes:
@@ -259,6 +352,13 @@ class RepositoryRefreshTests(unittest.TestCase):
                         (root / ".git/index.lock").touch()
                     elif change == "candidate":
                         self.git(root, "update-ref", "refs/remotes/origin/main", self.before)
+                    elif change == "skip-worktree":
+                        self.git(root, "update-index", "--skip-worktree", "README.md")
+                    elif change == "index-replaced":
+                        index = root / ".git/index"
+                        replacement = root / ".git/replacement-index"
+                        replacement.write_bytes(index.read_bytes())
+                        replacement.replace(index)
                     observed.append(self.snapshot())
 
                 with patch.object(release, "validate_candidate", side_effect=validate_then_change):

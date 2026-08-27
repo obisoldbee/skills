@@ -40,6 +40,7 @@ REQUIRED_ROOT_FILES = {
     "scripts/verify_release.py",
     "scripts/test_repository_refresh.py",
     "scripts/test_consumer_boundaries.py",
+    "scripts/consumer_paths.py",
 }
 MANIFEST_ROW = re.compile(r"^([0-9a-f]{64})  ([^\\]+)$")
 FORBIDDEN_NAMES = {".DS_Store", "__pycache__"}
@@ -328,6 +329,31 @@ def operation_markers(root: Path) -> list[str]:
     return found
 
 
+def index_state(root: Path) -> dict[str, object]:
+    """Freeze the real index, including flags that porcelain status omits."""
+    path = Path(git(root, "rev-parse", "--git-path", "index"))
+    if not path.is_absolute():
+        path = root / path
+
+    def identity(observed):
+        return (observed.st_dev, observed.st_ino, observed.st_mode,
+                observed.st_size, observed.st_mtime_ns, observed.st_ctime_ns)
+
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode) or is_link_or_junction(path):
+        raise ValueError("checkout index is not a regular file")
+    with path.open("rb") as handle:
+        opened = os.fstat(handle.fileno())
+        digest = hashlib.sha256(handle.read()).hexdigest()
+        after = os.fstat(handle.fileno())
+    # Logical entries also cover shared-index entries in split-index checkouts.
+    entries = git(root, "ls-files", "-v", "--stage", "-z")
+    if not identity(before) == identity(opened) == identity(after) == identity(path.lstat()):
+        raise ValueError("checkout index changed while reading state")
+    return {"path": str(path), "identity": identity(after), "sha256": digest,
+            "entries_sha256": hashlib.sha256(entries.encode("utf-8")).hexdigest()}
+
+
 def repository_state(
     root: Path,
     *,
@@ -365,6 +391,7 @@ def repository_state(
         raise ValueError(
             f"checkout upstream differs: expected {expected_upstream}, observed {upstream}"
         )
+    index = index_state(root)
     if git(root, "status", "--porcelain=v1", "--untracked-files=all"):
         raise ValueError("checkout is dirty; repository refresh stopped")
     markers = operation_markers(root)
@@ -383,6 +410,7 @@ def repository_state(
         "upstream": upstream,
         "origin": origin,
         "transport": git(root, "remote", "get-url", remote_name),
+        "index": index,
     }
 
 
@@ -443,6 +471,36 @@ def validate_candidate(root: Path, candidate: str) -> None:
         # Treat candidate programs as data, not an authority that can attest to
         # itself. A temporary cwd is not a sandbox: execute no candidate code.
         verify(candidate_root)
+
+
+def check_candidate_landing(root: Path, before: str, candidate: str) -> None:
+    """Reject local untracked/ignored entries in the whole update's write set."""
+    tracked = set(git(root, "ls-tree", "-r", "--name-only", "-z", before).split("\0"))
+    tracked_directories = {
+        parent.as_posix() for name in tracked if name
+        for parent in PurePosixPath(name).parents if parent != PurePosixPath(".")
+    }
+    arriving = git(root, "diff-tree", "--no-commit-id", "--name-only", "-z",
+                   "--no-renames", "--diff-filter=ACMT", "-r", before, candidate)
+    for name in filter(None, arriving.split("\0")):
+        path = root / name
+        for ancestor in path.parents:
+            if ancestor == root:
+                break
+            relative = ancestor.relative_to(root).as_posix()
+            if os.path.lexists(ancestor) and relative not in tracked:
+                if is_link_or_junction(ancestor) or not ancestor.is_dir():
+                    raise ValueError(f"untracked landing conflict: {relative}")
+        if not os.path.lexists(path) or name in tracked:
+            continue
+        if name in tracked_directories and path.is_dir() and not is_link_or_junction(path):
+            # A tracked directory-to-file change is safe only without local extras.
+            for descendant in iter_tree_without_following_links(path):
+                relative = descendant.relative_to(root).as_posix()
+                if relative not in tracked and relative not in tracked_directories:
+                    raise ValueError(f"untracked landing conflict: {relative}")
+        else:
+            raise ValueError(f"untracked landing conflict: {name}")
 
 
 def refresh_repository(
@@ -507,17 +565,23 @@ def refresh_repository(
             validate_candidate(root, candidate)
         except (ValueError, OSError, UnicodeError) as exc:
             raise ValueError(f"candidate {candidate} validation failed before fast-forward: {exc}") from exc
+        check_candidate_landing(root, before, candidate)
         if repository_state(root, **gate) != initial:
             raise ValueError("checkout state changed during candidate validation")
         if git(root, "rev-parse", "--verify", f"{upstream}^{{commit}}") != candidate:
             raise ValueError("upstream changed during candidate validation")
         if behind:
-            git(root, "merge", "--ff-only", candidate)
+            git(root, "merge", "--ff-only", "--no-overwrite-ignore", candidate)
 
     after = git(root, "rev-parse", "HEAD")
     if update:
         final = repository_state(root, **gate)
-        if final != dict(initial, head=candidate) or after != candidate:
+        expected_final = dict(initial, head=candidate)
+        if behind:
+            # A successful checkout necessarily replaces its index. No-op updates
+            # must still retain the original index identity and bytes.
+            expected_final["index"] = final["index"]
+        if final != expected_final or after != candidate:
             raise ValueError(
                 "checkout state differs from validated candidate during final readback"
             )
