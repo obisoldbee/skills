@@ -40,3 +40,5 @@ python3 -B scripts/agnes_media.py video \
 完成 URL 位于 `metadata.url`。旧 Skill 中的 `remixed_from_video_id` 不是当前结果字段，不得迁入。
 
 轮询中断时保留 ID，不创建重复任务。下载失败只重试同一 `metadata.url`。
+
+`--output` 使用与图片相同的[输出保护与恢复合同](agnes-image.md#输出保护与恢复)：提交前拒绝已有目录项，最终发布也不覆盖竞争者。下载或保存失败时，私有同目录回执保留创建响应的 ID 及完成 URL（即使查询响应省略 ID）；只恢复同一任务，不重新提交。回执无法写入时明确报告 `recovery.status=unavailable`，不要把它当作已保存的结果。

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 import base64
+import http.client
 import json
 import mimetypes
 import os
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -29,6 +31,12 @@ RATIOS = ("1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9")
 
 class AgnesError(RuntimeError):
     """A clear, user-facing Agnes request error."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.provider_calls = False
+        self.secrets_read = False
+        self.recovery: dict[str, Any] | None = None
 
 
 def execution_parent() -> argparse.ArgumentParser:
@@ -228,14 +236,53 @@ def request_json(
     return result
 
 
+def prepare_output(output: Path) -> Path:
+    """Freeze the parent, but never follow the final entry (even a broken link)."""
+    try:
+        output = output.expanduser()
+        output = output.parent.resolve() / output.name
+        try:
+            output.lstat()
+        except FileNotFoundError:
+            return output
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise AgnesError(f"cannot inspect output {output}: {type(exc).__name__}") from exc
+    raise AgnesError(f"output already exists; refusing to overwrite {output}")
+
+
+def save_bytes(data: bytes, output: Path) -> None:
+    """Publish complete bytes without replacing any entry at the frozen output."""
+    temporary: Path | None = None
+    try:
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                dir=output.parent, prefix=".agnes-media-", suffix=".tmp", delete=False
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # link() atomically creates a new name or fails if it already exists.
+            # Never fall back to rename/replace or opening the destination for write.
+            os.link(temporary, output)
+        finally:
+            if temporary is not None:
+                temporary.unlink()
+    except FileExistsError as exc:
+        raise AgnesError(f"output already exists; refusing to overwrite {output}") from exc
+    except OSError as exc:
+        raise AgnesError(f"cannot save result to {output}: {type(exc).__name__}") from exc
+
+
 def download(url: str, output: Path, *, timeout: float) -> None:
-    output = output.expanduser()
-    output.parent.mkdir(parents=True, exist_ok=True)
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
-            output.write_bytes(response.read())
-    except (OSError, urllib.error.URLError, TimeoutError) as exc:
-        raise AgnesError(f"cannot download result to {output}: {exc}") from exc
+            data = response.read()
+    except (OSError, ValueError, http.client.HTTPException) as exc:
+        # Download exceptions can contain signed URLs; do not echo their text.
+        raise AgnesError(f"cannot download result to {output}: {type(exc).__name__}") from exc
+    save_bytes(data, output)
 
 
 def save_image_result(result: dict[str, Any], output: Path, *, timeout: float) -> None:
@@ -247,12 +294,11 @@ def save_image_result(result: dict[str, Any], output: Path, *, timeout: float) -
         download(first["url"], output, timeout=timeout)
         return
     if isinstance(first.get("b64_json"), str):
-        output = output.expanduser()
-        output.parent.mkdir(parents=True, exist_ok=True)
         try:
-            output.write_bytes(base64.b64decode(first["b64_json"], validate=True))
-        except (OSError, ValueError) as exc:
-            raise AgnesError(f"cannot save Base64 image to {output}: {exc}") from exc
+            data = base64.b64decode(first["b64_json"], validate=True)
+        except ValueError as exc:
+            raise AgnesError(f"cannot decode Base64 image: {type(exc).__name__}") from exc
+        save_bytes(data, output)
         return
     raise AgnesError("Agnes image response contains neither data[0].url nor data[0].b64_json")
 
@@ -309,26 +355,83 @@ def dry_run(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]
     }
 
 
+def preserve_result(
+    media: str, initial: dict[str, Any], result: dict[str, Any], output: Path
+) -> dict[str, Any]:
+    """Keep only recovery fields in a private, exclusive, same-parent receipt."""
+    retained: dict[str, Any] = {}
+    if media == "image":
+        items = result.get("data")
+        if isinstance(items, list) and items and isinstance(items[0], dict):
+            retained["data"] = [
+                {name: items[0][name] for name in ("url", "b64_json") if isinstance(items[0].get(name), str)}
+            ]
+    else:
+        for response in (initial, result):
+            for name in ("video_id", "task_id", "id", "status"):
+                if isinstance(response.get(name), (str, int)):
+                    retained[name] = response[name]
+        url = video_result_url(result)
+        if url:
+            retained["metadata"] = {"url": url}
+
+    receipt: Path | None = None
+    recovery: dict[str, Any] = {"automatic_regeneration": False, "retry": "same_result_only"}
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=output.parent,
+            prefix=".agnes-recovery-", suffix=".json", delete=False,
+        ) as stream:
+            receipt = Path(stream.name)
+            json.dump({"media": media, "result": retained}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except OSError as exc:
+        recovery.update(status="unavailable", error=type(exc).__name__)
+        if receipt is not None:
+            try:
+                receipt.unlink()
+            except OSError:
+                recovery["partial_path"] = str(receipt)
+        return recovery
+    recovery.update(status="saved", path=str(receipt))
+    return recovery
+
+
 def execute(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]:
-    base_url, key = execution_config(args)
-    endpoint = "/v1/images/generations" if args.media == "image" else "/v1/videos"
-    result = request_json("POST", base_url + endpoint, key, payload=payload, timeout=args.timeout)
-    if args.media == "image":
-        if args.output:
-            save_image_result(result, args.output, timeout=args.timeout)
+    output = prepare_output(args.output) if args.output is not None else None
+    provider_calls = False
+    try:
+        base_url, key = execution_config(args)
+        endpoint = "/v1/images/generations" if args.media == "image" else "/v1/videos"
+        provider_calls = True
+        result = request_json("POST", base_url + endpoint, key, payload=payload, timeout=args.timeout)
+        initial = result
+        try:
+            if args.media == "image":
+                if output is not None:
+                    save_image_result(result, output, timeout=args.timeout)
+            elif args.wait:
+                result = poll_video(
+                    result,
+                    base_url=base_url,
+                    key=key,
+                    timeout=args.timeout,
+                    poll_interval=args.poll_interval,
+                    max_wait=args.max_wait,
+                )
+                if output is not None:
+                    download(video_result_url(result) or "", output, timeout=args.timeout)
+        except AgnesError as exc:
+            if output is not None:
+                exc.recovery = preserve_result(args.media, initial, result, output)
+            raise
         return result
-    if args.wait:
-        result = poll_video(
-            result,
-            base_url=base_url,
-            key=key,
-            timeout=args.timeout,
-            poll_interval=args.poll_interval,
-            max_wait=args.max_wait,
-        )
-        if args.output:
-            download(video_result_url(result) or "", args.output, timeout=args.timeout)
-    return result
+    except AgnesError as exc:
+        exc.provider_calls = provider_calls
+        exc.secrets_read = True  # Configuration was attempted, unlike preflight.
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -351,12 +454,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
     except AgnesError as exc:
-        print(
-            json.dumps(
-                {"error": str(exc), "provider_calls": bool(locals().get("args") and args.execute)},
-                ensure_ascii=False,
-            )
-        )
+        report = {"error": str(exc), "provider_calls": exc.provider_calls, "secrets_read": exc.secrets_read}
+        if exc.recovery is not None:
+            report["recovery"] = exc.recovery
+        print(json.dumps(report, ensure_ascii=False))
         return 1
 
 
