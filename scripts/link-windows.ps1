@@ -17,34 +17,44 @@ if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw "invalid-agent: $Agent"
 }
 
-# The collection-control wrapper may invoke this script through src\scripts.
-# Resolve that directory junction before deriving the physical Git root.
-function Resolve-ProjectedScriptDirectory([string]$Path) {
-    $Item = Get-Item -LiteralPath $Path -Force
-    if (-not [bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-        return $Item.FullName
+# Resolve every ancestor junction too; Resolve-Path alone is a provider path,
+# not a physical-path guarantee on Windows PowerShell 5.1.
+function Resolve-PhysicalPath([string]$Path, [int]$Depth = 0) {
+    if ($Depth -gt 40) { throw "link-resolution-limit: $Path" }
+    $FullPath = [IO.Path]::GetFullPath($Path)
+    $Root = [IO.Path]::GetPathRoot($FullPath)
+    $Current = $Root
+    foreach ($Part in $FullPath.Substring($Root.Length).Split([char[]]'\/', [StringSplitOptions]::RemoveEmptyEntries)) {
+        $Item = Get-Item -LiteralPath (Join-Path $Current $Part) -Force
+        $Current = $Item.FullName
+        if (-not [bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+        $RawTarget = $null
+        if ($null -ne $Item.PSObject.Properties['Target']) {
+            $RawTarget = @($Item.Target)[0]
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$RawTarget) -and
+            $null -ne $Item.PSObject.Properties['LinkTarget']) {
+            $RawTarget = @($Item.LinkTarget)[0]
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$RawTarget)) {
+            throw "physical-path-target-unavailable: $Current"
+        }
+        if ($RawTarget.StartsWith('\??\UNC\') -or $RawTarget.StartsWith('\\?\UNC\')) {
+            $RawTarget = '\\' + $RawTarget.Substring(8)
+        } elseif ($RawTarget.StartsWith('\??\') -or $RawTarget.StartsWith('\\?\')) {
+            $RawTarget = $RawTarget.Substring(4)
+        }
+        if (-not [IO.Path]::IsPathRooted([string]$RawTarget)) {
+            $RawTarget = Join-Path (Split-Path -Parent $Current) $RawTarget
+        }
+        $Current = Resolve-PhysicalPath $RawTarget ($Depth + 1)
     }
-
-    $RawTarget = $null
-    if ($null -ne $Item.PSObject.Properties['Target']) {
-        $RawTarget = @($Item.Target)[0]
-    }
-    if ([string]::IsNullOrWhiteSpace([string]$RawTarget) -and
-        $null -ne $Item.PSObject.Properties['LinkTarget']) {
-        $RawTarget = @($Item.LinkTarget)[0]
-    }
-    if ([string]::IsNullOrWhiteSpace([string]$RawTarget)) {
-        throw "script-directory-target-unavailable: $Path"
-    }
-    if (-not [IO.Path]::IsPathRooted([string]$RawTarget)) {
-        $RawTarget = Join-Path $Item.Parent.FullName $RawTarget
-    }
-    return (Resolve-Path -LiteralPath $RawTarget).Path
+    return $Current
 }
 
-$ScriptDir = Resolve-ProjectedScriptDirectory $PSScriptRoot
+$ScriptDir = Resolve-PhysicalPath $PSScriptRoot
 $ScriptPath = Join-Path $ScriptDir 'link-windows.ps1'
-$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $ScriptDir '..')).Path
+$RepoRoot = Resolve-PhysicalPath (Join-Path $ScriptDir '..')
 $ExportsFile = Join-Path $RepoRoot 'config\skill-exports.tsv'
 $TargetsFile = Join-Path $RepoRoot 'config\agent-paths.tsv'
 $Verifier = Join-Path $RepoRoot 'scripts\verify_release.py'
@@ -53,6 +63,34 @@ if (-not (Test-Path -LiteralPath $ExportsFile -PathType Leaf) -or
     -not (Test-Path -LiteralPath $TargetsFile -PathType Leaf) -or
     -not (Test-Path -LiteralPath $Verifier -PathType Leaf)) {
     throw "repository-root-input-missing: $RepoRoot"
+}
+
+function Get-ConsumerBoundary {
+    $Parent = Split-Path -Parent $RepoRoot
+    $CollectionRules = Join-Path $Parent 'AGENTS.md'
+    $ControlRules = Join-Path $Parent 'skills\AGENTS.md'
+    if ((Split-Path -Leaf $RepoRoot) -ieq 'GitHub' -and
+        (Test-Path -LiteralPath $CollectionRules -PathType Leaf) -and
+        (Test-Path -LiteralPath $ControlRules -PathType Leaf)) {
+        $Rules = Get-Content -LiteralPath $CollectionRules -Raw
+        $Control = Get-Content -LiteralPath $ControlRules -Raw
+        if ($Rules.Contains('Project Collection') -and $Rules.Contains('obisoldbee/skills') -and
+            $Control.Contains('collection-control')) {
+            return $Parent
+        }
+    }
+    return $RepoRoot
+}
+
+$Boundary = Get-ConsumerBoundary
+function Assert-ConsumerTarget([string[]]$Paths) {
+    foreach ($Path in $Paths) {
+        if ($Path.Equals($Boundary, [StringComparison]::OrdinalIgnoreCase) -or
+            $Path.StartsWith($Boundary + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            $Kind = if ($Boundary -eq $RepoRoot) { 'repository' } else { 'collection' }
+            throw "target-inside-${Kind}: $Path"
+        }
+    }
 }
 
 if ($SyncDevice) {
@@ -242,12 +280,9 @@ foreach ($TargetEntry in $Targets) {
         $MissingParents++
         continue
     }
-    $TargetPath = (Resolve-Path -LiteralPath $TargetPath).Path
-    if ($Apply -and
-        ($TargetPath.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or
-         $TargetPath.StartsWith($RepoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) {
-        throw "target-inside-repository: $TargetPath"
-    }
+    $TargetRequested = [IO.Path]::GetFullPath($TargetPath)
+    $TargetPath = Resolve-PhysicalPath $TargetRequested
+    Assert-ConsumerTarget -Paths @($TargetRequested, $TargetPath)
 
     foreach ($Export in $Exports) {
         $SkillName = $Export.skill_name
@@ -323,6 +358,15 @@ foreach ($TargetEntry in $Targets) {
         Write-Host "would-link $Destination -> $Source"
         $WouldLink++
         if ($Apply) {
+            if ((Get-ConsumerBoundary) -ne $Boundary) { throw 'consumer-boundary-changed' }
+            $CurrentTarget = Resolve-PhysicalPath $TargetRequested
+            Assert-ConsumerTarget -Paths @($TargetRequested, $CurrentTarget)
+            if ($CurrentTarget -ne $TargetPath -or (Resolve-PhysicalPath $TargetPath) -ne $TargetPath) {
+                throw "consumer-target-changed: $TargetRequested"
+            }
+            if ($null -ne (Get-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue)) {
+                throw "consumer-destination-changed: $Destination"
+            }
             New-Item -ItemType Junction -Path $Destination -Target $Source | Out-Null
             $Created = Get-Item -LiteralPath $Destination -Force
             $CreatedRawTarget = @($Created.Target)[0]
