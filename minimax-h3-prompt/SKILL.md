@@ -60,7 +60,7 @@ description: "当用户明确提到 MiniMax H3、海螺 H3、Hailuo H3、T2VA、
 只选择一种：
 
 - `Web / App 人工复制`：用户准备粘贴到海螺网页或 App，或没有要求 API、H3-Base、Context-IR、固定字段。使用本包的网页三段式。
-- `H3 结构化`：用户明确要求 API、本地 H3-Base、H3-Context-IR、结构化字段，或点名官方 `h3-prompt-writing`。使用官方字段顺序。
+- `H3 结构化`：用户明确要求 API、本地 H3-Base、H3-Context-IR、结构化字段，点名官方 `h3-prompt-writing`，或直接使用 `T2VA`、`I2VA`、`FL2VA`、`L2VA`、`Ref2VA` 这些标准模式代码且没有另行指定网页/App。使用官方字段顺序。
 
 用户没有说明时，根据明确的使用场景选择；场景也未知且两种结果会明显不同，先问一个最小问题。不要为了显得完整而同时输出两套长提示词。
 

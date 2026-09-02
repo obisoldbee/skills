@@ -97,6 +97,53 @@ class ResolveOfficialSkillsTests(unittest.TestCase):
         self.assertEqual(result["status"], "unavailable")
         self.assertIn("origin fetch URL", result["reason"])
 
+    def test_rejects_route_outside_allowlist(self) -> None:
+        result = MODULE.resolve(self.repo, "../../outside", expected_head=self.head)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertIn("unsupported official Skill route", result["reason"])
+
+    def test_rejects_ignored_extra_reference(self) -> None:
+        relative = "skills/3d-animation-short-generator/references/ignored.md"
+        exclude = self.repo / ".git" / "info" / "exclude"
+        exclude.write_text(relative + "\n", encoding="utf-8")
+        (self.repo / relative).write_text("local only\n", encoding="utf-8")
+        self.assertEqual(run("status", "--porcelain=v1", cwd=self.repo), "")
+
+        result = MODULE.resolve(
+            self.repo,
+            "3d-animation-short-generator",
+            expected_head=self.head,
+        )
+        self.assertEqual(result["status"], "unavailable")
+        self.assertIn("absent from reviewed HEAD", result["reason"])
+
+    def test_rejects_assume_unchanged_modification(self) -> None:
+        relative = "skills/h3-prompt-writing/references/base-en.txt"
+        run("update-index", "--assume-unchanged", relative, cwd=self.repo)
+        (self.repo / relative).write_text("hidden change\n", encoding="utf-8")
+        self.assertEqual(run("status", "--porcelain=v1", cwd=self.repo), "")
+
+        result = MODULE.resolve(self.repo, "h3-base", expected_head=self.head)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertIn("differs from reviewed HEAD", result["reason"])
+
+    def test_rejects_replacement_object_materialized_on_disk(self) -> None:
+        relative = "skills/h3-prompt-writing/SKILL.md"
+        (self.repo / relative).write_text("malicious replacement\n", encoding="utf-8")
+        run("add", relative, cwd=self.repo)
+        run("commit", "-q", "-m", "replacement", cwd=self.repo)
+        replacement = run("rev-parse", "HEAD", cwd=self.repo)
+        run("reset", "--hard", self.head, cwd=self.repo)
+        run("replace", self.head, replacement, cwd=self.repo)
+        run("reset", "--hard", self.head, cwd=self.repo)
+        self.assertEqual(run("rev-parse", "HEAD", cwd=self.repo), self.head)
+        self.assertEqual((self.repo / relative).read_text(encoding="utf-8"), "malicious replacement\n")
+        self.assertEqual(run("status", "--porcelain=v1", cwd=self.repo), "")
+
+        result = MODULE.resolve(self.repo, "h3-base", expected_head=self.head)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertIn("dirty", result["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

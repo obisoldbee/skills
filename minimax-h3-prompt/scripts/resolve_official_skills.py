@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import subprocess
 from pathlib import Path
 
@@ -26,28 +27,74 @@ STYLE_ROUTES = {
 
 ROUTES = {"h3-base", "h3-ref", *STYLE_ROUTES}
 
+GIT_ENV_KEYS = {
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_DIR",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_INDEX_FILE",
+    "GIT_NAMESPACE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_SHALLOW_FILE",
+    "GIT_WORK_TREE",
+}
+GIT_CONFIG_ENV_PREFIXES = ("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")
+GIT_TIMEOUT_SECONDS = 10
 
-def _git(repo: Path, *args: str) -> str:
+
+def _git_bytes(repo: Path, *args: str) -> bytes:
     env = os.environ.copy()
+    for key in tuple(env):
+        if key in GIT_ENV_KEYS or key.startswith(GIT_CONFIG_ENV_PREFIXES):
+            env.pop(key, None)
     env.update(
         {
+            "GIT_ATTR_NOSYSTEM": "1",
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_NO_LAZY_FETCH": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
             "LC_ALL": "C",
         }
     )
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=False,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.untrackedCache=false",
+                "-c",
+                f"core.hooksPath={os.devnull}",
+                "-C",
+                str(repo),
+                *args,
+            ],
+            check=False,
+            capture_output=True,
+            env=env,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("git command timed out") from exc
     if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "git command failed"
+        detail_bytes = result.stderr.strip() or result.stdout.strip()
+        detail = detail_bytes.decode("utf-8", errors="replace") or "git command failed"
         raise RuntimeError(detail)
-    return result.stdout.strip()
+    return result.stdout
+
+
+def _git(repo: Path, *args: str) -> str:
+    return _git_bytes(repo, *args).decode("utf-8", errors="surrogateescape").strip()
 
 
 def _remote_identity(remote: str) -> str:
@@ -68,25 +115,116 @@ def _default_repo() -> Path:
     return package_root.parent.parent / "GitHub-others" / "MiniMax-H3"
 
 
-def _route_files(repo: Path, route: str) -> list[Path]:
-    skills = repo / "skills"
-    if route == "h3-base":
-        return [
-            skills / "h3-prompt-writing" / "SKILL.md",
-            skills / "h3-prompt-writing" / "references" / "base-en.txt",
-        ]
-    if route == "h3-ref":
-        return [
-            skills / "h3-prompt-writing" / "SKILL.md",
-            skills / "h3-prompt-writing" / "references" / "ref-en.txt",
-        ]
+def _route_root(route: str) -> str:
+    if route in {"h3-base", "h3-ref"}:
+        return "skills/h3-prompt-writing"
+    return f"skills/{route}"
 
-    skill_root = skills / route
-    files = [skill_root / "SKILL.cn.md"]
-    references = skill_root / "references"
-    if references.is_dir():
-        files.extend(sorted(path for path in references.rglob("*") if path.is_file()))
-    return files
+
+def _reviewed_tree(repo: Path, route_root: str) -> dict[str, str]:
+    output = _git_bytes(
+        repo,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        "HEAD",
+        "--",
+        route_root,
+    )
+    entries: dict[str, str] = {}
+    prefix = route_root.rstrip("/") + "/"
+    for record in output.split(b"\0"):
+        if not record:
+            continue
+        try:
+            header, raw_path = record.split(b"\t", 1)
+            mode, object_type, object_id = header.decode("ascii").split()
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise RuntimeError("invalid entry in reviewed Git tree") from exc
+        path = os.fsdecode(raw_path)
+        if not path.startswith(prefix) or "/../" in f"/{path}/":
+            raise RuntimeError("reviewed Git tree contains an invalid route path")
+        if object_type != "blob" or mode not in {"100644", "100755"}:
+            raise RuntimeError(f"reviewed route contains a non-file entry: {path}")
+        entries[path] = object_id
+    if not entries:
+        raise RuntimeError("reviewed route is absent from upstream HEAD")
+    return entries
+
+
+def _disk_tree(repo: Path, route_root: str) -> tuple[set[str], set[str]]:
+    root = repo / route_root
+    current = repo
+    for part in Path(route_root).parts:
+        current /= part
+        info = current.lstat()
+        if not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError(f"official route directory is not a plain directory: {current}")
+
+    files: set[str] = set()
+    special: set[str] = set()
+
+    def walk(directory: Path) -> None:
+        with os.scandir(directory) as children:
+            for child in children:
+                path = Path(child.path)
+                relative = path.relative_to(repo).as_posix()
+                if child.is_symlink():
+                    special.add(relative)
+                elif child.is_dir(follow_symlinks=False):
+                    walk(path)
+                elif child.is_file(follow_symlinks=False):
+                    files.add(relative)
+                else:
+                    special.add(relative)
+
+    walk(root)
+    return files, special
+
+
+def _verify_route_tree(repo: Path, route_root: str) -> dict[str, str]:
+    reviewed = _reviewed_tree(repo, route_root)
+    disk_files, special = _disk_tree(repo, route_root)
+    reviewed_files = set(reviewed)
+
+    if special:
+        raise RuntimeError(f"official route contains a symlink or special path: {min(special)}")
+    extra = disk_files - reviewed_files
+    if extra:
+        raise RuntimeError(f"official route contains a file absent from reviewed HEAD: {min(extra)}")
+    missing = reviewed_files - disk_files
+    if missing:
+        raise RuntimeError(f"official route is missing a reviewed file: {min(missing)}")
+
+    for relative, object_id in sorted(reviewed.items()):
+        disk_bytes = (repo / relative).read_bytes()
+        reviewed_bytes = _git_bytes(repo, "cat-file", "blob", object_id)
+        if disk_bytes != reviewed_bytes:
+            raise RuntimeError(f"official route file differs from reviewed HEAD: {relative}")
+    return reviewed
+
+
+def _route_files(repo: Path, route: str, reviewed: dict[str, str]) -> list[Path]:
+    root = _route_root(route)
+    if route == "h3-base":
+        selected = [
+            f"{root}/SKILL.md",
+            f"{root}/references/base-en.txt",
+        ]
+    elif route == "h3-ref":
+        selected = [
+            f"{root}/SKILL.md",
+            f"{root}/references/ref-en.txt",
+        ]
+    else:
+        selected = [f"{root}/SKILL.cn.md"]
+        selected.extend(sorted(path for path in reviewed if path.startswith(f"{root}/references/")))
+
+    missing = [path for path in selected if path not in reviewed]
+    if missing:
+        raise RuntimeError(f"official route is missing a required reviewed file: {missing[0]}")
+    return [repo / path for path in selected]
 
 
 def resolve(
@@ -101,6 +239,8 @@ def resolve(
         "license_status": "NEEDS_LICENSE_CLARIFICATION",
     }
     try:
+        if route not in ROUTES:
+            raise RuntimeError("unsupported official Skill route")
         repo = repo.expanduser().resolve(strict=True)
         if not repo.is_dir():
             raise RuntimeError("official checkout is not a directory")
@@ -123,14 +263,16 @@ def resolve(
             raise RuntimeError("checkout must be main tracking origin/main")
         if head != expected_head:
             raise RuntimeError("upstream HEAD differs from the reviewed snapshot")
-        if _git(repo, "status", "--porcelain=v1"):
+        if _git(repo, "status", "--porcelain=v1", "--untracked-files=all"):
             raise RuntimeError("upstream checkout is dirty")
 
         sparse_paths = [line for line in _git(repo, "sparse-checkout", "list").splitlines() if line]
         if sparse_paths != ["skills"]:
             raise RuntimeError("sparse checkout must select exactly skills")
 
-        files = _route_files(repo, route)
+        route_root = _route_root(route)
+        reviewed = _verify_route_tree(repo, route_root)
+        files = _route_files(repo, route, reviewed)
         skills_root = (repo / "skills").resolve(strict=True)
         resolved_files: list[str] = []
         for path in files:
@@ -150,6 +292,8 @@ def resolve(
             "upstream": upstream,
             "head": head,
             "sparse_paths": sparse_paths,
+            "reviewed_tree": route_root,
+            "tree_verified_files": len(reviewed),
             "files": resolved_files,
         }
     except (OSError, RuntimeError) as exc:
