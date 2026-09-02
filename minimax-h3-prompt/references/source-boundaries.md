@@ -3,10 +3,30 @@
 ## 来源
 
 - 官方手册：<https://vrfi1sk8a0.feishu.cn/wiki/FIWjwgL33ipnkekzk30crmKUnIh>
-- 本包依据的快照日期：2026-09-02。
+- MiniMax H3 官方开源仓库：<https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills>
+- 本包依据的手册快照日期：2026-09-02；开源仓库固定提交：`d21241f0a4b3acbb34c97dae47fa417b7065e438`。
 - 项目 wrapper 单独保存飞书“Markdown → 所有内容”导出的手册和媒体；这些大文件不属于本可发布 Skill 包。
+- 项目还保留官方 Git 稀疏检出用于核对 `skills/`；它是上游证据，不是本包运行时依赖或 Agent 消费源。
 
 手册写有“持续更新中”和无年份的“9/1 新增”，没有可审计的版本号。因此，输入数量、分辨率、语言覆盖和传输限制都应表述为“快照所述”。
+
+## 两种提示词表面
+
+飞书手册面向海螺网页创作，使用“参考素材说明 + 核心创意 + 画面过程说明”。开源仓库的 `h3-prompt-writing` 面向 H3-Base / H3-Context-IR，使用固定英文字段。两者服务不同使用面，不应互相覆盖：
+
+- 网页或 App 人工复制：使用三段式。
+- API、本地 H3-Base、Context-IR 或明确点名官方 prompt-writing：使用 Base 三字段或 Ref2VA 六字段。
+- 用户没有指定时按明确使用场景选择，不同时输出两套。
+
+网页所称“全能参考”与官方结构化模式 `Ref2VA` 在本包中映射到同一类多来源参考任务；“文生、首帧、首尾帧、尾帧”分别映射到 `T2VA`、`I2VA`、`FL2VA`、`L2VA`。
+
+## 开源 Skill 许可与兼容性
+
+- 官方仓库根 README 声明 MiniMax H3 使用 MiniMax H3 Community License。
+- `skills/` 没有独立许可证，且部分风格内容标为 community 来源；当前按 `NEEDS_LICENSE_CLARIFICATION` 处理。
+- 本包不复制上游 Skill 全文、模板、Hub 工具合同或元数据，只保存原创路由摘要和兼容性判断。
+- `h3-prompt-writing` 明确是可移植的 Markdown 工作流；另外八个风格 Skill 依赖 MiniMax Hub，非 Hub 环境只采用创意和验收思路，不声称完整执行。
+- 本包的只读解析器只在官方 checkout 与已审查提交完全一致时返回上游文件；它不联网、不更新、不运行上游代码。检出不可用或 HEAD 变化时，冻结摘要仍可用于兼容草案，但不得声称加载了最新或精确上游合同。
 
 ## 发现的内部冲突
 
