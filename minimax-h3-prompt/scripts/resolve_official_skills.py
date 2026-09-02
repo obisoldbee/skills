@@ -27,31 +27,13 @@ STYLE_ROUTES = {
 
 ROUTES = {"h3-base", "h3-ref", *STYLE_ROUTES}
 
-GIT_ENV_KEYS = {
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_COMMON_DIR",
-    "GIT_CONFIG",
-    "GIT_CONFIG_COUNT",
-    "GIT_CONFIG_PARAMETERS",
-    "GIT_CONFIG_SYSTEM",
-    "GIT_DIR",
-    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
-    "GIT_INDEX_FILE",
-    "GIT_NAMESPACE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_PREFIX",
-    "GIT_REPLACE_REF_BASE",
-    "GIT_SHALLOW_FILE",
-    "GIT_WORK_TREE",
-}
-GIT_CONFIG_ENV_PREFIXES = ("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")
 GIT_TIMEOUT_SECONDS = 10
 
 
 def _git_bytes(repo: Path, *args: str) -> bytes:
     env = os.environ.copy()
     for key in tuple(env):
-        if key in GIT_ENV_KEYS or key.startswith(GIT_CONFIG_ENV_PREFIXES):
+        if key.startswith("GIT_"):
             env.pop(key, None)
     env.update(
         {

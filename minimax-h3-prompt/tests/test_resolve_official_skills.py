@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "resolve_official_skills.py"
@@ -143,6 +145,43 @@ class ResolveOfficialSkillsTests(unittest.TestCase):
         result = MODULE.resolve(self.repo, "h3-base", expected_head=self.head)
         self.assertEqual(result["status"], "unavailable")
         self.assertIn("dirty", result["reason"])
+
+    def test_ignores_inherited_git_trace_outputs(self) -> None:
+        trace = Path(self.temp.name) / "git-trace.log"
+        trace2 = Path(self.temp.name) / "git-trace2.json"
+        with patch.dict(
+            os.environ,
+            {
+                "GIT_TRACE": str(trace),
+                "GIT_TRACE2_EVENT": str(trace2),
+            },
+            clear=False,
+        ):
+            result = MODULE.resolve(self.repo, "h3-base", expected_head=self.head)
+
+        self.assertEqual(result["status"], "available")
+        self.assertFalse(trace.exists())
+        self.assertFalse(trace2.exists())
+
+    def test_ignores_all_inherited_git_repository_and_config_state(self) -> None:
+        alternate_index = Path(self.temp.name) / "injected-index"
+        with patch.dict(
+            os.environ,
+            {
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "core.bare",
+                "GIT_CONFIG_VALUE_0": "true",
+                "GIT_DIR": str(Path(self.temp.name) / "not-the-repo"),
+                "GIT_ICASE_PATHSPECS": "1",
+                "GIT_INDEX_FILE": str(alternate_index),
+                "GIT_WORK_TREE": str(Path(self.temp.name) / "not-the-worktree"),
+            },
+            clear=False,
+        ):
+            result = MODULE.resolve(self.repo, "h3-ref", expected_head=self.head)
+
+        self.assertEqual(result["status"], "available")
+        self.assertFalse(alternate_index.exists())
 
 
 if __name__ == "__main__":
