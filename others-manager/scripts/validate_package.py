@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the portable others-manager Skill package."""
+"""Validate the others-manager Skill package."""
 
 from __future__ import annotations
 

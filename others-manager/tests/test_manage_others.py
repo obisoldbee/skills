@@ -19,6 +19,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import manage_others as manager  # noqa: E402
 
 
+requires_supported_runtime = unittest.skipUnless(
+    manager.runtime_supported(),
+    "others-manager runtime operations require macOS or Linux",
+)
+
+
 class OthersManagerTests(unittest.TestCase):
     def test_normalize_supported_github_urls(self) -> None:
         expected = "Owner/Repo"
@@ -60,17 +66,18 @@ class OthersManagerTests(unittest.TestCase):
                 manager.validate_pool(str(alias))
 
     def test_plan_digest_detects_tampering(self) -> None:
+        fixture_pool = str(manager.operation_lock_root() / "example")
         plan = manager.seal_plan(
             {
                 "schema_version": manager.SCHEMA_VERSION,
                 "kind": "others-manager-update-plan",
-                "pool": "/private/tmp/example",
+                "pool": fixture_pool,
                 "pool_fingerprint": {"device": 1, "inode": 2, "mode": 16384},
                 "repository_names": ["repo"],
                 "repositories": [
                     {
                         "name": "repo",
-                        "path": "/private/tmp/example/repo",
+                        "path": str(Path(fixture_pool) / "repo"),
                         "fingerprint": {"device": 1, "inode": 3, "mode": 16384},
                         "git_fingerprint": {"device": 1, "inode": 4, "mode": 16384},
                         "blockers": ["fixture_blocker"],
@@ -81,16 +88,17 @@ class OthersManagerTests(unittest.TestCase):
             }
         )
         manager.verify_plan(plan, "others-manager-update-plan")
-        plan["pool"] = "/private/tmp/changed"
+        plan["pool"] = str(manager.operation_lock_root() / "changed")
         with self.assertRaises(manager.ManagerError):
             manager.verify_plan(plan, "others-manager-update-plan")
 
     def test_opened_plan_must_match_controller_reviewed_id(self) -> None:
+        fixture_pool = str(manager.operation_lock_root() / "example")
         plan = manager.seal_plan(
             {
                 "schema_version": manager.SCHEMA_VERSION,
                 "kind": "others-manager-update-plan",
-                "pool": "/private/tmp/example",
+                "pool": fixture_pool,
                 "pool_fingerprint": {"device": 1, "inode": 2, "mode": 16384},
                 "repository_names": [],
                 "repositories": [],
@@ -120,6 +128,7 @@ class OthersManagerTests(unittest.TestCase):
         with self.assertRaises(manager.ManagerError):
             manager.ensure_output_available(str(outside))
 
+    @requires_supported_runtime
     def test_git_environment_does_not_inherit_injection(self) -> None:
         injected = {
             "GIT_CONFIG_COUNT": "99",
@@ -139,6 +148,7 @@ class OthersManagerTests(unittest.TestCase):
         self.assertEqual("1", environment["GIT_CONFIG_NOSYSTEM"])
         self.assertEqual("/usr/bin:/bin", environment["PATH"])
 
+    @requires_supported_runtime
     def test_git_https_client_certificate_paths_remain_unset(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             for key in ("http.sslCert", "http.sslKey"):
@@ -149,6 +159,7 @@ class OthersManagerTests(unittest.TestCase):
                     self.assertEqual(1, result.returncode)
                     self.assertEqual("", result.stdout)
 
+    @requires_supported_runtime
     def test_git_https_verification_remains_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             result = manager.run_git(
@@ -159,6 +170,7 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual(0, result.returncode)
             self.assertEqual("true", result.stdout.strip())
 
+    @requires_supported_runtime
     def test_repository_independent_git_ignores_caller_config(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary).resolve()
@@ -185,6 +197,7 @@ class OthersManagerTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    @requires_supported_runtime
     def test_repository_independent_git_rejects_git_in_neutral_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             neutral = Path(temporary).resolve()
@@ -197,6 +210,7 @@ class OthersManagerTests(unittest.TestCase):
             ):
                 manager.run_git(["config", "--get", "http.sslCert"], check=False)
 
+    @requires_supported_runtime
     def test_local_certificate_and_tls_overrides_are_rejected(self) -> None:
         for key, value in (
             ("http.sslCert", "client.pem"),
@@ -219,6 +233,12 @@ class OthersManagerTests(unittest.TestCase):
             checkout.mkdir(parents=True)
             (checkout / "value").write_text("new", encoding="utf-8")
             destination = pool / "repository"
+            if not manager.runtime_supported():
+                with self.assertRaisesRegex(manager.ManagerError, "require macOS or Linux"):
+                    manager.atomic_rename_noreplace(checkout, destination)
+                self.assertTrue(checkout.is_dir())
+                self.assertFalse(destination.exists())
+                return
             manager.atomic_rename_noreplace(checkout, destination)
             self.assertEqual("new", (destination / "value").read_text(encoding="utf-8"))
 
@@ -233,10 +253,13 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual("old", (existing / "value").read_text(encoding="utf-8"))
             self.assertTrue(second_checkout.is_dir())
 
+    @requires_supported_runtime
     def test_operation_receipt_is_reserved_before_completion(self) -> None:
         output = manager.operation_lock_root() / f"others-manager-test-{uuid.uuid4().hex}.json"
         try:
-            receipt = manager.reserve_operation_receipt(output.as_posix(), "fixture", Path("/private/tmp/pool"), "plan")
+            receipt = manager.reserve_operation_receipt(
+                str(output), "fixture", manager.operation_lock_root() / "pool", "plan"
+            )
             current = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual("in_progress", current["status"])
             manager.finalize_operation_receipt(receipt, {"kind": "fixture-report", "status": "ok"})
@@ -257,6 +280,7 @@ class OthersManagerTests(unittest.TestCase):
             finally:
                 self.assertTrue(manager.release_operation_lock(lock))
 
+    @requires_supported_runtime
     def test_controller_apply_persists_independent_lock_cleanup_receipt(self) -> None:
         output = manager.operation_lock_root() / f"others-manager-op-{uuid.uuid4().hex}.json"
         cleanup = manager.operation_lock_root() / f"others-manager-cleanup-{uuid.uuid4().hex}.json"
@@ -298,7 +322,7 @@ class OthersManagerTests(unittest.TestCase):
                         "--pool",
                         str(pool),
                         "--plan",
-                        "/private/tmp/nonexistent-plan.json",
+                        str(manager.operation_lock_root() / "nonexistent-plan.json"),
                         "--output",
                         str(output),
                         "--cleanup-output",
@@ -312,10 +336,16 @@ class OthersManagerTests(unittest.TestCase):
                     ]
                 )
             self.assertEqual(1, code)
-            self.assertIn("reviewed-plan confirmation", errors.getvalue())
+            expected = (
+                "reviewed-plan confirmation"
+                if manager.runtime_supported()
+                else "require macOS or Linux"
+            )
+            self.assertIn(expected, errors.getvalue())
             self.assertFalse(output.exists())
             self.assertFalse(cleanup.exists())
 
+    @requires_supported_runtime
     def test_controller_capability_requires_exact_active_writer(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             collection = Path(temporary).resolve()
@@ -372,6 +402,7 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual([repo], repositories)
             self.assertEqual([{"name": "alias", "reason": "symlink_not_followed"}], ignored)
 
+    @requires_supported_runtime
     def test_inventory_accepts_clean_independent_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             pool = Path(temporary).resolve()
@@ -395,6 +426,7 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual(0, report["counts"]["blocked"])
             self.assertEqual([], report["repositories"][0]["blockers"])
 
+    @requires_supported_runtime
     def test_missing_license_is_an_advisory_not_a_repository_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             pool = Path(temporary).resolve()
@@ -435,6 +467,11 @@ class OthersManagerTests(unittest.TestCase):
 
         with (
             mock.patch.object(manager, "github_json", side_effect=github_json),
+            mock.patch.object(
+                manager,
+                "run_git",
+                return_value=subprocess.CompletedProcess([], 0, stdout="", stderr=""),
+            ),
             mock.patch.object(manager, "remote_default_head", return_value="a" * 40),
         ):
             snapshot = manager.github_repository_snapshot("https://github.com/example/fixture")
@@ -452,6 +489,7 @@ class OthersManagerTests(unittest.TestCase):
         )
         manager.validate_github_snapshot_shape(snapshot)
 
+    @requires_supported_runtime
     def test_unknown_or_credential_local_config_blocks_before_inspection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary).resolve()
@@ -465,6 +503,7 @@ class OthersManagerTests(unittest.TestCase):
             self.assertIn("unsupported_or_unsafe_local_git_config", state["blockers"])
             self.assertIsNone(state["head"])
 
+    @requires_supported_runtime
     def test_no_tags_clone_policy_is_the_only_allowed_tag_override(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary).resolve()
@@ -474,6 +513,7 @@ class OthersManagerTests(unittest.TestCase):
             self.run_git(repo, "config", "remote.origin.tagOpt", "--tags")
             self.assertIn("unsafe-origin-tag-policy", manager.executable_local_config(repo))
 
+    @requires_supported_runtime
     def test_remote_tracking_ref_must_move_fast_forward(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary).resolve()
@@ -491,6 +531,7 @@ class OthersManagerTests(unittest.TestCase):
             with self.assertRaises(manager.ManagerError):
                 manager.require_remote_tracking_fast_forward(repo, descendant, base)
 
+    @requires_supported_runtime
     def test_update_plan_binds_github_snapshot_and_fingerprints(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             pool = Path(temporary).resolve()
@@ -527,6 +568,22 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual(manager.path_fingerprint(pool), plan["pool_fingerprint"])
             self.assertEqual("already_current", plan["repositories"][0]["action"])
             self.assertEqual(github_snapshot, plan["repositories"][0]["github_snapshot"])
+
+    def test_unsupported_runtime_stops_before_creating_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            pool = Path(temporary).resolve()
+            output = manager.operation_lock_root() / f"others-manager-unused-{uuid.uuid4().hex}.json"
+            errors = io.StringIO()
+            with (
+                mock.patch.object(manager, "runtime_supported", return_value=False),
+                redirect_stderr(errors),
+            ):
+                code = manager.main(
+                    ["inventory", "--pool", str(pool), "--output", str(output)]
+                )
+            self.assertEqual(1, code)
+            self.assertIn("require macOS or Linux", errors.getvalue())
+            self.assertFalse(output.exists())
 
     def test_update_report_preserves_unverified_github_license_advisory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

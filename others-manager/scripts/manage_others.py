@@ -68,6 +68,16 @@ class ManagerError(RuntimeError):
     """A contract failure that should be shown without a traceback."""
 
 
+def runtime_supported() -> bool:
+    """Return whether the host supplies the POSIX safety primitives used here."""
+    return sys.platform == "darwin" or sys.platform.startswith("linux")
+
+
+def require_supported_runtime() -> None:
+    if not runtime_supported():
+        raise ManagerError("others-manager runtime operations require macOS or Linux")
+
+
 def now_utc() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
 
@@ -605,6 +615,7 @@ def run_git(
     timeout: int = 120,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
+    require_supported_runtime()
     environment = git_environment()
     if cwd is None:
         # Remote probes and clones must not inherit the caller's repository config.
@@ -682,6 +693,7 @@ def validate_controller_capability(
     controller_session: str,
     pool: Path,
 ) -> dict[str, str]:
+    require_supported_runtime()
     token = os.environ.get(CONTROLLER_TOKEN_ENV, "")
     if not CONTROLLER_SESSION.fullmatch(controller_session):
         raise ManagerError("controller session has an invalid format")
@@ -1536,6 +1548,7 @@ def same_repository_snapshot(current: dict[str, Any], planned: dict[str, Any]) -
 
 
 def atomic_rename_noreplace(source: Path, destination: Path) -> None:
+    require_supported_runtime()
     if source.parent.parent != destination.parent:
         raise ManagerError("clone staging and destination must share the pool filesystem")
     if destination.exists() or destination.is_symlink():
@@ -1761,6 +1774,7 @@ def execute_controller_apply(
     apply_function: Any,
     capability_check: Any,
 ) -> dict[str, Any]:
+    require_supported_runtime()
     capability_check()
     receipt = reserve_operation_receipt(output, operation, pool, plan["plan_id"])
     try:
@@ -1856,6 +1870,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        require_supported_runtime()
         pool = validate_pool(args.pool)
         if args.command == "inventory":
             report = inventory(pool)

@@ -1,5 +1,15 @@
 # Operations Contract
 
+## Supported hosts
+
+The runtime supports macOS and Linux. On Windows, every CLI operation fails before pool validation, Git execution, plan or receipt creation, lock acquisition, or repository mutation. `--help` and the static package validator remain available. Do not substitute PATH-discovered Git or weaker filesystem operations to bypass this boundary.
+
+Resolve the host's exact real temporary root once before using the examples below:
+
+```bash
+SYSTEM_TEMP_ROOT="$(python3 -c 'import tempfile; from pathlib import Path; print(Path(tempfile.gettempdir()).resolve(strict=True))')"
+```
+
 ## Ownership model
 
 The pool is a non-Git directory. Every real first-level repository child owns its own `.git`, upstream, branch, worktree, and license. Pool governance and public Skill publication are controller responsibilities, not worker responsibilities.
@@ -29,7 +39,7 @@ Create a frozen plan with remote-head evidence:
 ```bash
 python3 -B scripts/manage_others.py plan-update \
   --pool /absolute/path/to/GitHub-others \
-  --output /private/tmp/others-manager-update-plan.json
+  --output "$SYSTEM_TEMP_ROOT/others-manager-update-plan.json"
 ```
 
 Review the plan, especially `repositories[*].blockers`, `head`, `remote_head`, and the exact repository set. Then apply it:
@@ -39,9 +49,9 @@ First enter the exact wrapper as an exclusive writer, keep its token private in 
 ```bash
 python3 -B scripts/manage_others.py apply-update \
   --pool /absolute/path/to/GitHub-others \
-  --plan /private/tmp/others-manager-update-plan.json \
-  --output /private/tmp/others-manager-update-report.json \
-  --cleanup-output /private/tmp/others-manager-update-cleanup.json \
+  --plan "$SYSTEM_TEMP_ROOT/others-manager-update-plan.json" \
+  --output "$SYSTEM_TEMP_ROOT/others-manager-update-report.json" \
+  --cleanup-output "$SYSTEM_TEMP_ROOT/others-manager-update-cleanup.json" \
   --expected-plan-id REVIEWED_64_HEX_PLAN_ID \
   --controller-project /absolute/path/to/others-manager \
   --controller-session ACTIVE_WRITER_SESSION_ID \
@@ -58,7 +68,7 @@ Create a plan:
 python3 -B scripts/manage_others.py plan-clone \
   --pool /absolute/path/to/GitHub-others \
   --url https://github.com/OWNER/REPOSITORY \
-  --output /private/tmp/others-manager-clone-plan.json
+  --output "$SYSTEM_TEMP_ROOT/others-manager-clone-plan.json"
 ```
 
 An optional `--name` may select a different safe first-level destination name. The planner uses the public GitHub API and `git ls-remote` to require a public, enabled, non-archived repository, a default branch, and a stable remote head. It records a verified SPDX/top-level-file snapshot when GitHub exposes one; otherwise it records `license.status=unverified` with a reason and continues. It also rejects an existing destination or duplicate GitHub origin.
@@ -70,9 +80,9 @@ Acquire and privately supply the same wrapper writer capability described above,
 ```bash
 python3 -B scripts/manage_others.py apply-clone \
   --pool /absolute/path/to/GitHub-others \
-  --plan /private/tmp/others-manager-clone-plan.json \
-  --output /private/tmp/others-manager-clone-report.json \
-  --cleanup-output /private/tmp/others-manager-clone-cleanup.json \
+  --plan "$SYSTEM_TEMP_ROOT/others-manager-clone-plan.json" \
+  --output "$SYSTEM_TEMP_ROOT/others-manager-clone-report.json" \
+  --cleanup-output "$SYSTEM_TEMP_ROOT/others-manager-clone-cleanup.json" \
   --expected-plan-id REVIEWED_64_HEX_PLAN_ID \
   --controller-project /absolute/path/to/others-manager \
   --controller-session ACTIVE_WRITER_SESSION_ID \

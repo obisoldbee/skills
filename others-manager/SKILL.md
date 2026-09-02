@@ -14,15 +14,15 @@ Source classification and execution eligibility are separate:
 | Field | Value |
 |---|---|
 | Source class | `personal-open` |
-| Availability | `portable` |
-| Allowed devices | `any` |
+| Availability | `portable` on supported operating systems |
+| Allowed devices | macOS or Linux hosts |
 | Required network | `any` |
 | External dependencies | Python 3, Git, an exact non-Git checkout pool, the matching valid `others-manager` wrapper for apply operations, and ordinary GitHub reachability for clone or update operations |
 | Credential provider | none for supported public-GitHub operations |
 | Verification | Run the package and wrapper validators; use `inventory` for local readback. Static validation and local inventory do not prove live GitHub reachability or a successful mutation. |
-| Stop rule | Stop on a missing or invalid wrapper capability, mismatched pool topology, unavailable required tooling, unknown repository identity, or failed GitHub verification. Do not install tools, collect credentials, weaken the gates, or substitute another pool. |
+| Stop rule | Stop on Windows before any pool, plan, receipt, lock, or Git operation. Also stop on a missing or invalid wrapper capability, mismatched pool topology, unavailable required tooling, unknown repository identity, or failed GitHub verification. Do not install tools, collect credentials, weaken the gates, or substitute another pool. |
 
-`personal-open` is the public source category; `portable` means no named device or network profile is required. Ordinary internet reachability for a network operation is an external dependency, not a named network profile. Local inventory does not require network access.
+`personal-open` is the public source category; `portable` means no named device or network profile is required on a supported macOS or Linux host. Windows is currently unsupported because the controller depends on POSIX permission checks, directory durability, and no-replace directory rename primitives; the CLI fails before touching the pool. Ordinary internet reachability for a network operation is an external dependency, not a named network profile. Local inventory does not require network access.
 
 ## Route the request
 
