@@ -946,8 +946,13 @@ def create_projection(
             detail = result.stderr.strip() or result.stdout.strip()
             raise ControlInitializationError(f"junction creation failed: {detail}")
     else:
+        link_target = (
+            raw_posix_target.replace("/", os.sep)
+            if os.name == "nt"
+            else raw_posix_target
+        )
         os.symlink(
-            raw_posix_target,
+            link_target,
             link_path,
             target_is_directory=kind == "directory",
         )

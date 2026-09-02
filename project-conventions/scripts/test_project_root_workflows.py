@@ -176,16 +176,17 @@ class ProjectRootWorkflowTests(unittest.TestCase):
             original = b"# Existing Rules\r\n\r\n- Keep trailing spaces.  \r\n\r\n"
             agents.write_bytes(original)
             os.chmod(agents, 0o751)
+            expected_mode = agents.stat().st_mode & 0o777
             first = self.initialize(root, mode="adopt-existing")
             self.assertEqual(first["status"], "initialized")
             adopted = agents.read_bytes()
             self.assertTrue(adopted.startswith(original))
             self.assertIn(b"\r\n<!-- project-conventions:access:start -->\r\n", adopted)
-            self.assertEqual(agents.stat().st_mode & 0o777, 0o751)
+            self.assertEqual(agents.stat().st_mode & 0o777, expected_mode)
             second = self.initialize(root, mode="adopt-existing")
             self.assertEqual(second["status"], "already_initialized")
             self.assertEqual(agents.read_bytes(), adopted)
-            self.assertEqual(agents.stat().st_mode & 0o777, 0o751)
+            self.assertEqual(agents.stat().st_mode & 0o777, expected_mode)
             validated = self.run_command([sys.executable, "-B", str(VALIDATOR), str(root)])
             self.assertEqual(validated.returncode, 0, validated.stderr)
 
@@ -198,6 +199,7 @@ class ProjectRootWorkflowTests(unittest.TestCase):
             original = b"# Existing Rules\n\n- Preserve exact tail.  \n"
             agents.write_bytes(original)
             os.chmod(agents, 0o750)
+            expected_mode = agents.stat().st_mode & 0o777
             real_inspect = initializer.inspect_target
             calls = 0
 
@@ -222,7 +224,7 @@ class ProjectRootWorkflowTests(unittest.TestCase):
                         True,
                     )
             self.assertEqual(agents.read_bytes(), original)
-            self.assertEqual(agents.stat().st_mode & 0o777, 0o750)
+            self.assertEqual(agents.stat().st_mode & 0o777, expected_mode)
             self.assertEqual(sorted(path.name for path in root.iterdir()), ["AGENTS.md"])
 
     def test_rollback_preserves_concurrent_user_replacement(self) -> None:
