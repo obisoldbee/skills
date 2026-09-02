@@ -8,81 +8,92 @@ param(
     [switch]$SyncDevice
 )
 
-# Scan or explicitly create Skill junctions from this checkout on Windows.
-# Default is read-only. No target parent or conflicting path is changed.
+# Read-only Skill junction scan. Apply fails closed until a directory-handle-
+# bound, exclusive Windows creation primitive is implemented and verified.
 
 $ErrorActionPreference = 'Stop'
+
+if ($Apply) {
+    throw 'safe-consumer-create-unsupported: Windows apply is disabled (including SyncDevice); no repository update or junction creation was attempted'
+}
 
 if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw "invalid-agent: $Agent"
 }
 
-# The collection-control wrapper may invoke this script through src\scripts.
-# Resolve that directory junction before deriving the physical Git root.
-function Resolve-ProjectedScriptDirectory([string]$Path) {
-    $Item = Get-Item -LiteralPath $Path -Force
-    if (-not [bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-        return $Item.FullName
+# Resolve every ancestor junction too; Resolve-Path alone is a provider path,
+# not a physical-path guarantee on Windows PowerShell 5.1.
+function Resolve-PhysicalPath([string]$Path, [int]$Depth = 0) {
+    if ($Depth -gt 40) { throw "link-resolution-limit: $Path" }
+    $FullPath = [IO.Path]::GetFullPath($Path)
+    $Root = [IO.Path]::GetPathRoot($FullPath)
+    $Current = $Root
+    foreach ($Part in $FullPath.Substring($Root.Length).Split([char[]]'\/', [StringSplitOptions]::RemoveEmptyEntries)) {
+        $Item = Get-Item -LiteralPath (Join-Path $Current $Part) -Force
+        $Current = $Item.FullName
+        if (-not [bool]($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+        $RawTarget = $null
+        if ($null -ne $Item.PSObject.Properties['Target']) {
+            $RawTarget = @($Item.Target)[0]
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$RawTarget) -and
+            $null -ne $Item.PSObject.Properties['LinkTarget']) {
+            $RawTarget = @($Item.LinkTarget)[0]
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$RawTarget)) {
+            throw "physical-path-target-unavailable: $Current"
+        }
+        if ($RawTarget.StartsWith('\??\UNC\') -or $RawTarget.StartsWith('\\?\UNC\')) {
+            $RawTarget = '\\' + $RawTarget.Substring(8)
+        } elseif ($RawTarget.StartsWith('\??\') -or $RawTarget.StartsWith('\\?\')) {
+            $RawTarget = $RawTarget.Substring(4)
+        }
+        if (-not [IO.Path]::IsPathRooted([string]$RawTarget)) {
+            $RawTarget = Join-Path (Split-Path -Parent $Current) $RawTarget
+        }
+        $Current = Resolve-PhysicalPath $RawTarget ($Depth + 1)
     }
-
-    $RawTarget = $null
-    if ($null -ne $Item.PSObject.Properties['Target']) {
-        $RawTarget = @($Item.Target)[0]
-    }
-    if ([string]::IsNullOrWhiteSpace([string]$RawTarget) -and
-        $null -ne $Item.PSObject.Properties['LinkTarget']) {
-        $RawTarget = @($Item.LinkTarget)[0]
-    }
-    if ([string]::IsNullOrWhiteSpace([string]$RawTarget)) {
-        throw "script-directory-target-unavailable: $Path"
-    }
-    if (-not [IO.Path]::IsPathRooted([string]$RawTarget)) {
-        $RawTarget = Join-Path $Item.Parent.FullName $RawTarget
-    }
-    return (Resolve-Path -LiteralPath $RawTarget).Path
+    return $Current
 }
 
-$ScriptDir = Resolve-ProjectedScriptDirectory $PSScriptRoot
+$ScriptDir = Resolve-PhysicalPath $PSScriptRoot
 $ScriptPath = Join-Path $ScriptDir 'link-windows.ps1'
-$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $ScriptDir '..')).Path
+$RepoRoot = Resolve-PhysicalPath (Join-Path $ScriptDir '..')
 $ExportsFile = Join-Path $RepoRoot 'config\skill-exports.tsv'
 $TargetsFile = Join-Path $RepoRoot 'config\agent-paths.tsv'
 $Verifier = Join-Path $RepoRoot 'scripts\verify_release.py'
+$ConsumerPaths = Join-Path $RepoRoot 'scripts\consumer_paths.py'
 
 if (-not (Test-Path -LiteralPath $ExportsFile -PathType Leaf) -or
     -not (Test-Path -LiteralPath $TargetsFile -PathType Leaf) -or
-    -not (Test-Path -LiteralPath $Verifier -PathType Leaf)) {
+    -not (Test-Path -LiteralPath $Verifier -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $ConsumerPaths -PathType Leaf)) {
     throw "repository-root-input-missing: $RepoRoot"
+}
+
+$Python = if ($env:PYTHON) { $env:PYTHON } else { 'python' }
+if (-not (Get-Command $Python -ErrorAction SilentlyContinue)) {
+    throw "python-not-found: $Python"
+}
+
+function Assert-ConsumerTarget([string]$Path) {
+    $null = & $Python -B $ConsumerPaths check --repository $RepoRoot --target $Path
+    if ($LASTEXITCODE -ne 0) {
+        throw "consumer-boundary-check-failed: $Path"
+    }
 }
 
 if ($SyncDevice) {
     if ($Target -or $AllAgents -or $Skill -or $AllSkills) {
         throw 'sync-device-allows-only-optional-agent'
     }
-    if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-        throw 'python-not-found: python'
-    }
     if (-not $env:USERPROFILE) {
         throw 'USERPROFILE-is-not-set'
     }
 
-    $Mode = if ($Apply) { 'apply' } else { 'plan' }
+    $Mode = 'plan'
     Write-Host "operation=repository-device-refresh mode=$Mode repository=$RepoRoot"
-    if ($Apply -and $env:OBISOLDBEE_SKILLS_REFRESHED -ne '1') {
-        & python -B $Verifier $RepoRoot --update-repository
-        if ($LASTEXITCODE -ne 0) {
-            throw "repository-refresh-failed: $LASTEXITCODE"
-        }
-        $env:OBISOLDBEE_SKILLS_REFRESHED = '1'
-        $ReentryArguments = @(
-            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath,
-            '-SyncDevice', '-Apply'
-        )
-        if ($Agent) { $ReentryArguments += @('-Agent', $Agent) }
-        & powershell.exe @ReentryArguments
-        exit $LASTEXITCODE
-    }
-    & python -B $Verifier $RepoRoot --check-repository
+    & $Python -B $Verifier $RepoRoot --check-repository
     if ($LASTEXITCODE -ne 0) {
         throw "repository-refresh-failed: $LASTEXITCODE"
     }
@@ -141,28 +152,10 @@ if ($SyncDevice) {
                 if ($SelectedTarget.agent -notin $ConsumerSet) { continue }
             }
             $Pairs++
-            if ($Apply) {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath `
-                    -Apply -Agent $SelectedTarget.agent -Skill $Export.skill_name
-                if ($LASTEXITCODE -ne 0) {
-                    throw "consumer-apply-failed: $($SelectedTarget.agent)/$($Export.skill_name) exit=$LASTEXITCODE"
-                }
-                $ApplyOperations++
-            }
         }
     }
 
-    if ($Apply) {
-        foreach ($SelectedTarget in $SelectedTargets) {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath `
-                -Agent $SelectedTarget.agent -AllSkills
-            if ($LASTEXITCODE -ne 0) {
-                throw "consumer-readback-failed: $($SelectedTarget.agent) exit=$LASTEXITCODE"
-            }
-        }
-    } else {
-        Write-Host 'plan-ready rerun-with=-SyncDevice -Apply'
-    }
+    Write-Host 'plan-ready apply-unavailable=Windows-safe-create-unsupported'
     Write-Host "summary operation=repository-device-refresh mode=$Mode agents=$($SelectedTargets.Count) pairs=$Pairs apply_operations=$ApplyOperations skipped_missing_parents=$MissingParents"
     exit 0
 }
@@ -179,12 +172,6 @@ if ($Skill) { $SkillSelectorCount++ }
 if ($AllSkills) { $SkillSelectorCount++ }
 if ($SkillSelectorCount -ne 1) {
     throw 'choose-exactly-one-skill-or-all-skills'
-}
-if ($Apply -and $AllAgents) {
-    throw 'apply-does-not-allow-all-agents'
-}
-if ($Apply -and $AllSkills) {
-    throw 'apply-does-not-allow-all-skills'
 }
 if ($Skill -and $Skill -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
     throw "invalid-skill: $Skill"
@@ -225,7 +212,7 @@ if ($Skill -and $Skill -notin @($Exports.skill_name)) {
     throw "skill-not-exported: $Skill"
 }
 
-$Mode = if ($Apply) { 'apply' } else { 'scan' }
+$Mode = 'scan'
 Write-Host "mode=$Mode repository=$RepoRoot"
 
 $Checked = 0
@@ -242,12 +229,9 @@ foreach ($TargetEntry in $Targets) {
         $MissingParents++
         continue
     }
-    $TargetPath = (Resolve-Path -LiteralPath $TargetPath).Path
-    if ($Apply -and
-        ($TargetPath.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or
-         $TargetPath.StartsWith($RepoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) {
-        throw "target-inside-repository: $TargetPath"
-    }
+    $TargetRequested = [IO.Path]::GetFullPath($TargetPath)
+    $TargetPath = Resolve-PhysicalPath $TargetRequested
+    Assert-ConsumerTarget $TargetRequested
 
     foreach ($Export in $Exports) {
         $SkillName = $Export.skill_name
@@ -322,25 +306,6 @@ foreach ($TargetEntry in $Targets) {
 
         Write-Host "would-link $Destination -> $Source"
         $WouldLink++
-        if ($Apply) {
-            New-Item -ItemType Junction -Path $Destination -Target $Source | Out-Null
-            $Created = Get-Item -LiteralPath $Destination -Force
-            $CreatedRawTarget = @($Created.Target)[0]
-            if ($CreatedRawTarget -and [IO.Path]::IsPathRooted($CreatedRawTarget)) {
-                $CreatedResolvedTarget = [IO.Path]::GetFullPath($CreatedRawTarget)
-            } elseif ($CreatedRawTarget) {
-                $CreatedResolvedTarget = [IO.Path]::GetFullPath((Join-Path $TargetPath $CreatedRawTarget))
-            } else {
-                $CreatedResolvedTarget = ''
-            }
-            if ([bool]($Created.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
-                $CreatedResolvedTarget -eq $Source) {
-                Write-Host "linked $Destination -> $Source"
-                $Linked++
-            } else {
-                throw "apply-verification-failed: $Destination"
-            }
-        }
     }
 }
 

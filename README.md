@@ -134,20 +134,27 @@ Apply only when the request authorizes both the repository refresh and allowlist
 bash scripts/link-macos.sh --sync-device --apply
 ```
 
-Windows:
+Windows (read-only plan; apply is currently unsupported):
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 -SyncDevice
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 -SyncDevice -Apply
 ```
 
-The operation requires this exact checkout to be a clean attached `main` tracking `origin/main` with no local-ahead commits or Git operation in progress. Apply fetches and fast-forwards, verifies the repository-root manifest, rereads `config/skill-exports.tsv` and `config/agent-paths.tsv`, preflights every selected existing compatible Agent root, then creates only missing declared links. It skips missing Agent roots during an all-Agent run and fails for a specifically requested missing Agent.
+The operation requires this exact checkout to be a clean attached `main` tracking `origin/main` with no local-ahead commits or Git operation in progress. Unix apply fetches and pins a full candidate commit, extracts only its root-managed files as data, and checks them with the currently running trusted verifier. It never executes the candidate verifier. Before fast-forwarding that exact SHA it checks landing conflicts across the whole update, rechecks HEAD/branch/upstream/remote/operation state and the real index's identity, bytes and entry flags, and uses `--no-overwrite-ignore`. Ignored local files are not permission to overwrite user content.
+
+After updating, it rereads `config/skill-exports.tsv` and `config/agent-paths.tsv`, preflights every selected existing compatible Agent root, then creates only missing declared links. It skips missing Agent roots during an all-Agent run and fails for a specifically requested missing Agent. This is not a transaction across the repository and all consumers: a later consumer failure does not roll back a completed repository update.
 
 It never creates another checkout or a missing Agent root, modifies a member package, changes export policy, replaces a real path or wrong/dangling link, touches local wrappers/indexes/records, or proves runtime discovery. Packages not declared in the public export allowlist are not installed by this operation.
 
 ## Agent installation
 
 Agent installation is a separate explicit action. Exports are declared in [`config/skill-exports.tsv`](config/skill-exports.tsv), and target candidates are declared in [`config/agent-paths.tsv`](config/agent-paths.tsv).
+
+Both link entry points require Python 3.11 or newer (Unix defaults to `python3`, Windows to `python`; `PYTHON` can select the executable). They share `scripts/consumer_paths.py` for filesystem-identity checks: a confirmed Skills collection, including its root, `skills/src`, members and aliases, is never a consumer. Case aliases follow the actual filesystem, not unconditional lowercasing. A standalone repository does not implicitly own its parent.
+
+Unix apply requires exclusive directory-fd symlink creation: it binds the write to the verified parent and never follows an existing leaf as a container. A concurrent leaf causes failure; if the parent pathname changes at creation, the operation reports failure and may leave the authorized link in the original pinned directory, never following the replacement for cleanup. Inspect that directory before retrying. Platforms without this primitive fail closed; there is no fallback to `ln` or `New-Item`.
+
+Windows supports read-only scan and existing-junction inspection only. Every `-Apply`, including `-SyncDevice -Apply`, stops before repository refresh or consumer writes until a handle-bound Windows creation primitive is implemented and verified.
 
 Publication does not imply Agent exposure. `document-workspace` and `others-manager` are validated packages but are not currently declared in `config/skill-exports.tsv`; adding either consumer link requires a separate explicit decision.
 
@@ -165,13 +172,11 @@ Apply only after reviewing the source and destination:
 ./scripts/link-macos.sh --apply --agent codex --skill project-conventions
 ```
 
-Windows:
+Windows scan:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 `
   -Agent codex -Skill project-conventions
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 `
-  -Apply -Agent codex -Skill project-conventions
 ```
 
 The repository scripts derive each exported source from the current checkout, so consumers point directly to the declared path inside the matching `GitHub/<package>` scope when run from the recommended layout. They never create missing target parents or replace conflicts.

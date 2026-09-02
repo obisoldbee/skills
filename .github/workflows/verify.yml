@@ -66,6 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ALLOW_PROTOCOL=file GIT_TERMINAL_PROMPT=0 PYTHONDONTWRITEBYTECODE=1
           bash -n scripts/link-macos.sh
           fixture="$RUNNER_TEMP/obisoldbee-device-refresh"
           seed="$fixture/seed"
@@ -133,15 +134,28 @@ jobs:
           git -C "$seed" commit -q -m remote-package-byte-again
           git -C "$seed" push -q origin main
           if [ "$RUNNER_OS" = "Windows" ]; then
-            USERPROFILE="$home_native" powershell.exe -NoProfile -ExecutionPolicy Bypass \
-              -File "$projected_windows_script" -SyncDevice -Apply -Agent codex
+            before_apply="$(git -C "$checkout" rev-parse HEAD)"
+            if output="$(USERPROFILE="$home_native" powershell.exe -NoProfile -ExecutionPolicy Bypass \
+              -File "$projected_windows_script" -SyncDevice -Apply -Agent codex 2>&1)"; then
+              echo "unsupported Windows apply unexpectedly succeeded" >&2
+              exit 1
+            fi
+            case "$output" in *safe-consumer-create-unsupported*) ;; *) echo "$output" >&2; exit 1 ;; esac
+            test "$(git -C "$checkout" rev-parse HEAD)" = "$before_apply"
+            test -z "$(find "$home/.codex/skills" -mindepth 1 -print -quit)"
           else
             HOME="$home" bash "$checkout/scripts/link-macos.sh" --sync-device --apply --agent codex
+            expected="$(awk -F '\t' 'NR > 1 && ($3 == "all" || ("," $3 ",") ~ /,codex,/) { count++ } END { print count + 0 }' "$checkout/config/skill-exports.tsv")"
+            observed="$(find "$home/.codex/skills" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')"
+            test "$observed" = "$expected"
+            test "$(git -C "$checkout" rev-parse HEAD)" = "$(git -C "$seed" rev-parse HEAD)"
           fi
-          expected="$(awk -F '\t' 'NR > 1 && ($3 == "all" || ("," $3 ",") ~ /,codex,/) { count++ } END { print count + 0 }' "$checkout/config/skill-exports.tsv")"
-          observed="$(find "$home/.codex/skills" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')"
-          test "$observed" = "$expected"
-          test "$(git -C "$checkout" rev-parse HEAD)" = "$(git -C "$seed" rev-parse HEAD)"
+
+      - name: Verify candidate isolation, ignored/index preservation and race-safe consumer boundaries
+        shell: bash
+        run: |
+          python -B scripts/test_repository_refresh.py
+          python -B scripts/test_consumer_boundaries.py
 
       - name: Verify project-conventions package behavior
         shell: bash
@@ -275,7 +289,7 @@ jobs:
           test "$conflict_status" -eq 4
           test "$(cat "$conflict/project-conventions/keep.txt")" = keep
 
-      - name: Exercise scoped Windows junction workflow
+      - name: Exercise Windows junction scans and unsupported apply gate
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -296,7 +310,12 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
           if ($LASTEXITCODE -ne 0) { throw "projected scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions -Apply
-          if ($LASTEXITCODE -ne 0) { throw "apply failed: $LASTEXITCODE" }
+          if ($LASTEXITCODE -eq 0) { throw 'unsupported Windows apply unexpectedly succeeded' }
+          if (Test-Path -LiteralPath (Join-Path $healthy 'project-conventions')) {
+            throw 'unsupported apply wrote a junction'
+          }
+          # Test fixture only: inspect an existing junction, not a product fallback.
+          New-Item -ItemType Junction -Path (Join-Path $healthy 'project-conventions') -Target (Join-Path $PWD 'project-conventions') | Out-Null
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
           if ($LASTEXITCODE -ne 0) { throw "readback scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill web-bookmark-intelligence
@@ -340,8 +359,10 @@ jobs:
           $conflictSkill = Join-Path $conflict 'project-conventions'
           New-Item -ItemType Directory -Force $conflictSkill | Out-Null
           Set-Content -LiteralPath (Join-Path $conflictSkill 'keep.txt') -Value keep
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $conflict -Skill project-conventions -Apply
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $conflict -Skill project-conventions
           if ($LASTEXITCODE -ne 4) { throw "conflict status differs: $LASTEXITCODE" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $conflict -Skill project-conventions -Apply
+          if ($LASTEXITCODE -eq 0) { throw 'unsupported conflict apply unexpectedly succeeded' }
           if ((Get-Content -LiteralPath (Join-Path $conflictSkill 'keep.txt') -Raw).Trim() -ne 'keep') {
             throw 'conflict content was modified'
           }

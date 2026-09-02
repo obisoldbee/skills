@@ -78,20 +78,26 @@ repo_root="$(cd "$script_dir/.." && pwd -P)"
 exports_file="$repo_root/config/skill-exports.tsv"
 targets_file="$repo_root/config/agent-paths.tsv"
 verifier="$repo_root/scripts/verify_release.py"
+consumer_paths="$repo_root/scripts/consumer_paths.py"
 
-if [ ! -f "$exports_file" ] || [ ! -f "$targets_file" ] || [ ! -f "$verifier" ]; then
+if [ ! -f "$exports_file" ] || [ ! -f "$targets_file" ] || [ ! -f "$verifier" ] || [ ! -f "$consumer_paths" ]; then
   echo "error repository-root-input-missing: $repo_root" >&2
   exit 2
+fi
+
+python_command="${PYTHON:-python3}"
+if ! command -v "$python_command" >/dev/null 2>&1; then
+  echo "error python-not-found: $python_command" >&2
+  exit 2
+fi
+if [ "$apply" -eq 1 ]; then
+  # Stop before even a device repository refresh on unsupported platforms.
+  "$python_command" -B "$consumer_paths" check-create-support
 fi
 
 if [ "$sync_device" -eq 1 ]; then
   if [ -n "$target_override" ] || [ -n "$skill_filter" ] || [ "$all_agents" -eq 1 ] || [ "$all_skills" -eq 1 ]; then
     echo "error sync-device-allows-only-optional-agent" >&2
-    exit 2
-  fi
-  python_command="${PYTHON:-python3}"
-  if ! command -v "$python_command" >/dev/null 2>&1; then
-    echo "error python-not-found: $python_command" >&2
     exit 2
   fi
   mode="plan"
@@ -277,15 +283,9 @@ for target_index in "${!target_paths[@]}"; do
     missing_parents=$((missing_parents + 1))
     continue
   fi
+  target_requested="$target"
+  target_identity="$("$python_command" -B "$consumer_paths" check --repository "$repo_root" --target "$target_requested")"
   target_resolved="$(cd "$target" && pwd -P)"
-  if [ "$apply" -eq 1 ]; then
-    case "$target_resolved" in
-      "$repo_root"|"$repo_root"/*)
-        echo "error target-inside-repository: $target_resolved" >&2
-        exit 2
-        ;;
-    esac
-  fi
   target="$target_resolved"
 
   while IFS="$(printf '\t')" read -r skill_name source_rel consumers; do
@@ -351,14 +351,10 @@ for target_index in "${!target_paths[@]}"; do
     echo "would-link $destination -> $source"
     would_link=$((would_link + 1))
     if [ "$apply" -eq 1 ]; then
-      ln -s "$source" "$destination"
-      if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source" ]; then
-        echo "linked $destination -> $source"
-        linked=$((linked + 1))
-      else
-        echo "apply-verification-failed $destination" >&2
-        exit 3
-      fi
+      "$python_command" -B "$consumer_paths" create --repository "$repo_root" \
+        --target "$target_requested" --name "$skill_name" --source "$source" --expected "$target_identity"
+      echo "linked $destination -> $source"
+      linked=$((linked + 1))
     fi
   done < "$exports_file"
 done
