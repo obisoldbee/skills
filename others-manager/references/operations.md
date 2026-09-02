@@ -20,7 +20,7 @@ The CLI does not write pool governance records. Common protected paths include p
 python3 -B scripts/manage_others.py inventory --pool /absolute/path/to/GitHub-others
 ```
 
-This is local and read-only. It reports each real first-level Git repository and blockers such as dirty state, detached HEAD, a non-GitHub origin, missing origin tracking, operation markers, or a missing top-level license.
+This is local and read-only. It reports each real first-level Git repository and operational blockers such as dirty state, detached HEAD, a non-GitHub origin, missing origin tracking, or operation markers. A missing recognizable top-level license is reported separately as `license_unverified`; it does not block cloning, inventory, or ordinary fast-forward maintenance.
 
 ## Full update
 
@@ -48,7 +48,7 @@ python3 -B scripts/manage_others.py apply-update \
   --controller-confirm-reviewed-plan
 ```
 
-Apply revalidates the plan checksum, reviewed ID, controller capability, pool/repository fingerprints, exact set, local state, GitHub public/archive/default-branch/SPDX snapshot, and remote head. Git uses a trusted absolute binary, a minimal environment, and a strict local-config allowlist. Apply fetches to `FETCH_HEAD`, requires both local `HEAD` and the old origin tracking ref to be ancestors of the candidate, validates the candidate tree's top-level license, updates origin tracking with compare-old semantics, then merges with `--ff-only`. An upstream force-push is blocked rather than adopted. Apply compares the complete final identity snapshot. The terminal operation receipt is committed while the lock is held; the separate cleanup receipt then persists `released`, `not_acquired`, or `retained_requires_review`. Reconciliation is incomplete until both receipts are read. A stale or unsafe repository is skipped while other independently safe planned repositories may continue. Exit code `2` means blockers, cleanup blockers, or partial completion; exit code `1` means a fatal contract failure.
+Apply revalidates the plan checksum, reviewed ID, controller capability, pool/repository fingerprints, exact set, local state, GitHub public/archive/default-branch snapshot, license-status snapshot, and remote head. Git uses a trusted absolute binary, a minimal environment, and a strict local-config allowlist. Apply fetches to `FETCH_HEAD`, requires both local `HEAD` and the old origin tracking ref to be ancestors of the candidate, records candidate top-level license evidence when present, updates origin tracking with compare-old semantics, then merges with `--ff-only`. An upstream force-push is blocked rather than adopted. Apply compares the complete final identity snapshot. The terminal operation receipt is committed while the lock is held; the separate cleanup receipt then persists `released`, `not_acquired`, or `retained_requires_review`. Reconciliation is incomplete until both receipts are read. A stale or unsafe repository is skipped while other independently safe planned repositories may continue. Exit code `2` means operational blockers, cleanup blockers, or partial completion; a license advisory alone does not make the operation partial. Exit code `1` means a fatal contract failure.
 
 ## Add one repository
 
@@ -61,7 +61,7 @@ python3 -B scripts/manage_others.py plan-clone \
   --output /private/tmp/others-manager-clone-plan.json
 ```
 
-An optional `--name` may select a different safe first-level destination name. The planner uses the public GitHub API and `git ls-remote` to require a public, enabled, non-archived repository, an explicit SPDX license, a default branch, and a stable remote head. It also rejects an existing destination or duplicate GitHub origin.
+An optional `--name` may select a different safe first-level destination name. The planner uses the public GitHub API and `git ls-remote` to require a public, enabled, non-archived repository, a default branch, and a stable remote head. It records a verified SPDX/top-level-file snapshot when GitHub exposes one; otherwise it records `license.status=unverified` with a reason and continues. It also rejects an existing destination or duplicate GitHub origin.
 
 Apply the reviewed plan:
 
@@ -79,7 +79,9 @@ python3 -B scripts/manage_others.py apply-clone \
   --controller-confirm-reviewed-plan
 ```
 
-Apply repeats the external checks and requires the same pool fingerprint, complete entry set, repository set, and remote head. It clones with no checkout and no submodule initialization in a minimal Git environment, validates origin, branch, upstream, head, config, and license blob, performs the initial checkout inside owned staging, rechecks GitHub, then commits with a platform no-replace atomic rename. Unsupported platforms fail closed. Cleanup after the commit point can only add a warning; it cannot deny that the clone already exists.
+Apply repeats the external checks and requires the same pool fingerprint, complete entry set, repository set, license-status snapshot, and remote head. It clones with no checkout and no submodule initialization in a minimal Git environment, validates origin, branch, upstream, head, and config, and validates the license blob when the plan contains verified evidence. An unverified license produces an advisory and does not weaken the Git or filesystem gates. Apply performs the initial checkout inside owned staging, rechecks GitHub, then commits with a platform no-replace atomic rename. Unsupported platforms fail closed. Cleanup after the commit point can only add an operational warning; it cannot deny that the clone already exists.
+
+Clone/update permission and use permission are separate. Before installing, executing, adapting, adopting, redistributing, publishing, or using a repository commercially, present the recorded license status and applicable terms. If the intended use is not clearly permitted, pause that use decision for review. Do not describe a public checkout as unrestricted merely because it was cloneable.
 
 ## Controller reconciliation
 
@@ -89,7 +91,7 @@ After a successful or partial operation, the controller compares both JSON recei
 
 - Do not repair dirty or divergent children automatically.
 - Do not delete or replace an existing destination.
-- Do not retry with a weaker command or bypass a license, identity, or stale-plan check.
+- Do not retry with a weaker command or bypass identity, state, destination, or stale-plan checks. Preserve license evidence and advisories without converting them back into clone/update blockers.
 - A worker that prepared a plan must stop before apply and hand the exact plan path to the controller.
 - The worker's handoff authority contains only the plan path and ID. Its descriptive evidence report may include the bounded fields required by the brief, but never an executable apply command or writer session token.
 - Do not expose credential-bearing remote URLs in reports.

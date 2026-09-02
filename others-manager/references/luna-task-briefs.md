@@ -65,6 +65,7 @@ Return exactly:
 - fast_forward_candidates: names and old/planned commits
 - already_current: names and commits from the plan
 - blocked: name and exact planned reason
+- advisories: name and exact planned advisory, including `license_unverified`
 - inventory: clean/dirty/other counts
 - files_written: PLAN_PATH only
 - commands_run: exact commands
@@ -110,13 +111,13 @@ Forbidden:
 - any other pool child or management-file edit
 - raw git clone or other mutating git commands
 - `apply-clone`, `apply-update`, `git clone`, or any pool-child mutation; apply is controller-only
-- replacement of an existing path, duplicate origin, license bypass, dependency installation, submodule initialization, execution of cloned code, commit, push, worktree, or publication
+- replacement of an existing path, duplicate origin, suppression or fabrication of license evidence, dependency installation, submodule initialization, execution of cloned code, commit, push, worktree, or publication
 - worker selection, repair, plan editing, or retry; only the deterministic planner may decide admission evidence
 
 Procedure:
 1. Verify POOL is the exact real non-Git pool. Verify PLAN_PATH is the exact nonexistent direct file under a real system temporary root named in the dispatch preconditions, and verify the destination does not exist; otherwise stop.
 2. Run the exact command `python3 -B SKILL_ROOT/scripts/manage_others.py plan-clone --pool POOL --url REPOSITORY_URL --output PLAN_PATH`; append `--name DESTINATION_NAME` only when the input is not NONE.
-3. Read the complete plan and confirm identity, destination, explicit SPDX license, default branch, remote head, exact resolved pool, and the sorted names of real, non-symlink, first-level child Git roots.
+3. Read the complete plan and confirm identity, destination, license status/evidence (`verified` or `unverified`), default branch, remote head, exact resolved pool, and the sorted names of real, non-symlink, first-level child Git roots. An unverified license is an advisory, not a planning blocker.
 4. If any field is unexpected, stop without editing the plan.
 5. Return the exact plan path and plan ID. State that the controller must independently review it and use its private active-writer capability; do not compose, return, or run an apply command.
 
@@ -132,7 +133,7 @@ Return exactly:
 - plan_id
 - repository: canonical GitHub identity and URL
 - destination
-- license: SPDX id and top-level path
+- license: status, SPDX id/top-level path when verified, or the unverified reason
 - branch and commit
 - result: planned or blocked
 - blockers

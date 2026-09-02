@@ -1,6 +1,6 @@
 ---
 name: others-manager
-description: Safely inventory, clone, and fast-forward third-party GitHub repositories kept as independent first-level checkouts inside a non-Git pool such as GitHub-others. Use when adding an upstream repository, checking every managed checkout, or updating clean repositories to verified remote heads without allowing delegated workers to edit pool governance or public-repository integration files.
+description: Safely inventory, clone, and fast-forward third-party GitHub repositories kept as independent first-level checkouts inside a non-Git pool such as GitHub-others. Use when adding an upstream repository, checking every managed checkout, or updating clean repositories to verified remote heads while preserving provenance, reporting license advisories, and preventing delegated workers from editing governance files.
 ---
 
 # Others Manager
@@ -33,8 +33,8 @@ Source classification and execution eligibility are separate:
    - all-repository refresh: delegate `inventory` and `plan-update`, then let the controller review and run `apply-update`
    - one new upstream: delegate `plan-clone`, then let the controller review and run `apply-clone`
 4. Treat `plan_id` as an integrity checksum, not authorization. A delegated worker's controller handoff authority consists only of the plan path and ID; it may also return the required descriptive evidence, but never a writer token or apply command.
-5. The controller independently reviews the plan, acquires an exclusive writer claim in the matching `others-manager` wrapper, and applies with the expected plan ID plus that private capability.
-6. Return the JSON report and blockers. A partial update is not an all-clean success.
+5. The controller independently reviews the plan, including `license.status`, acquires an exclusive writer claim in the matching `others-manager` wrapper, and applies with the expected plan ID plus that private capability.
+6. Return the JSON report, blockers, and advisories. A license advisory does not block clone or update; an operational blocker still does.
 
 Read [operations.md](references/operations.md) before any mutating run. When delegating execution to a low-context or Luna worker, use the exact bounded contracts in [luna-task-briefs.md](references/luna-task-briefs.md).
 
@@ -42,9 +42,10 @@ Read [operations.md](references/operations.md) before any mutating run. When del
 
 - Require the pool itself to be a real, non-symlink directory with no `.git` entry.
 - Treat only real first-level child Git roots as managed repositories. Never follow child symlinks.
-- Preserve each child's upstream identity, branch, history, license, and local changes.
+- Preserve each child's upstream identity, branch, history, observed license evidence, and local changes.
 - Update only by verified `fetch` plus `merge --ff-only`. Never use pull, reset, rebase, stash, clean, force, or push.
-- Clone only public, non-archived GitHub repositories with an explicit SPDX license. Stage inside an owned hidden directory, validate, then rename atomically.
+- Clone public, enabled, non-archived GitHub repositories even when GitHub cannot verify a license. Record `license.status=unverified` and an advisory instead of treating that uncertainty as a clone or update blocker. Stage inside an owned hidden directory, validate, then rename atomically.
+- Before installing, executing, adapting, adopting, redistributing, publishing, or using a repository commercially, surface its license status and terms. If the license is unverified or the intended use is not clearly permitted, stop that use decision for review; do not retroactively block local cloning or ordinary fast-forward maintenance.
 - Never install dependencies, initialize submodules, execute cloned code, create worktrees, publish, or alter credentials.
 - Never let a delegated worker edit pool-level `AGENTS.md`, `README.md`, reports, scripts, controller files, collection indexes, wrappers, or the public Skill repository.
 - Delegated Luna workers may create one plan in the system temporary root, but they have no child-repository write authority. Apply is always a controller action.
@@ -60,4 +61,4 @@ Use `scripts/validate_package.py` after modifying this Skill. Use `scripts/valid
 
 ## Stop conditions
 
-Stop the affected repository and report its exact blocker when state is dirty, detached, ahead, diverged, unlicensed, archived, duplicated, misrouted, operation-in-progress, stale relative to the plan, or otherwise outside the declared write set. Continue only with independently safe repositories in an approved all-update plan.
+Stop the affected repository and report its exact blocker when state is dirty, detached, ahead, diverged, archived, duplicated, misrouted, operation-in-progress, stale relative to the plan, or otherwise outside the declared write set. Report an unverified license as an advisory, not a repository-management blocker. Continue only with independently safe repositories in an approved all-update plan.

@@ -149,6 +149,9 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
         blockers = item.get("blockers")
         if not isinstance(blockers, list) or not all(isinstance(reason, str) for reason in blockers):
             raise ManagerError("plan blockers must be a list of strings")
+        advisories = item.get("advisories")
+        if not isinstance(advisories, list) or not all(isinstance(reason, str) for reason in advisories):
+            raise ManagerError("plan advisories must be a list of strings")
         if item.get("action") not in {"blocked", "already_current", "fast_forward_candidate"}:
             raise ManagerError("plan action is invalid")
         if blockers:
@@ -167,8 +170,8 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
             raise ManagerError("safe plan repository identity is not canonical")
         if item.get("upstream") != f"origin/{branch}" or item.get("clean") is not True:
             raise ManagerError("safe plan repository branch state is invalid")
-        if not isinstance(item.get("licenses"), list) or not item["licenses"]:
-            raise ManagerError("safe plan repository lacks license evidence")
+        if not isinstance(item.get("licenses"), list):
+            raise ManagerError("safe plan repository license files must be a list")
         if not HEX40.fullmatch(str(item.get("head", ""))) or not HEX40.fullmatch(str(item.get("remote_head", ""))):
             raise ManagerError("safe plan repository commit evidence is invalid")
         github_snapshot = item.get("github_snapshot")
@@ -213,18 +216,7 @@ def validate_clone_plan_shape(plan: dict[str, Any]) -> None:
     validate_branch(repository.get("default_branch"))
     if not HEX40.fullmatch(str(repository.get("remote_head", ""))):
         raise ManagerError("clone plan remote head is invalid")
-    license_data = repository.get("license")
-    if not isinstance(license_data, dict):
-        raise ManagerError("clone plan license evidence is invalid")
-    spdx = license_data.get("spdx_id")
-    license_path = license_data.get("path")
-    blob_sha = license_data.get("blob_sha")
-    if not isinstance(spdx, str) or spdx.upper() in {"", "NOASSERTION", "OTHER"}:
-        raise ManagerError("clone plan SPDX evidence is invalid")
-    if not isinstance(license_path, str) or "/" in license_path or not LICENSE_NAME.fullmatch(license_path):
-        raise ManagerError("clone plan license path is invalid")
-    if not HEX40.fullmatch(str(blob_sha)):
-        raise ManagerError("clone plan license blob is invalid")
+    validate_license_snapshot_shape(repository.get("license"), "clone plan license")
 
 
 def validate_fingerprint_shape(value: Any, field: str) -> None:
@@ -252,18 +244,7 @@ def validate_github_snapshot_shape(repository: Any) -> None:
     validate_branch(repository.get("default_branch"))
     if not HEX40.fullmatch(str(repository.get("remote_head", ""))):
         raise ManagerError("GitHub snapshot remote head is invalid")
-    license_data = repository.get("license")
-    if not isinstance(license_data, dict):
-        raise ManagerError("GitHub snapshot license evidence is invalid")
-    spdx = license_data.get("spdx_id")
-    license_path = license_data.get("path")
-    blob_sha = license_data.get("blob_sha")
-    if not isinstance(spdx, str) or spdx.upper() in {"", "NOASSERTION", "OTHER"}:
-        raise ManagerError("GitHub snapshot SPDX evidence is invalid")
-    if not isinstance(license_path, str) or "/" in license_path or not LICENSE_NAME.fullmatch(license_path):
-        raise ManagerError("GitHub snapshot license path is invalid")
-    if not HEX40.fullmatch(str(blob_sha)):
-        raise ManagerError("GitHub snapshot license blob is invalid")
+    validate_license_snapshot_shape(repository.get("license"), "GitHub snapshot license")
 
 
 def validate_update_github_snapshot_shape(repository: Any) -> None:
@@ -284,10 +265,32 @@ def validate_update_github_snapshot_shape(repository: Any) -> None:
     validate_branch(repository.get("default_branch"))
     if not HEX40.fullmatch(str(repository.get("remote_head", ""))):
         raise ManagerError("GitHub update snapshot remote head is invalid")
-    license_data = repository.get("license")
-    spdx = license_data.get("spdx_id") if isinstance(license_data, dict) else None
-    if not isinstance(spdx, str) or spdx.upper() in {"", "NOASSERTION", "OTHER"}:
-        raise ManagerError("GitHub update snapshot SPDX evidence is invalid")
+    validate_license_snapshot_shape(repository.get("license"), "GitHub update snapshot license")
+
+
+def validate_license_snapshot_shape(value: Any, field: str) -> None:
+    if not isinstance(value, dict):
+        raise ManagerError(f"{field} evidence is invalid")
+    status = value.get("status")
+    spdx = value.get("spdx_id")
+    license_path = value.get("path")
+    blob_sha = value.get("blob_sha")
+    reason = value.get("reason")
+    if status == "verified":
+        if not isinstance(spdx, str) or spdx.upper() in {"", "NOASSERTION", "OTHER"}:
+            raise ManagerError(f"{field} SPDX evidence is invalid")
+        if not isinstance(license_path, str) or "/" in license_path or not LICENSE_NAME.fullmatch(license_path):
+            raise ManagerError(f"{field} path is invalid")
+        if not HEX40.fullmatch(str(blob_sha)) or reason is not None:
+            raise ManagerError(f"{field} blob evidence is invalid")
+        return
+    if status == "unverified":
+        if any(value is not None for value in (spdx, license_path, blob_sha)):
+            raise ManagerError(f"{field} unverified evidence is contradictory")
+        if not isinstance(reason, str) or not reason:
+            raise ManagerError(f"{field} unverified reason is missing")
+        return
+    raise ManagerError(f"{field} status is invalid")
 
 
 def normalized_system_temp_path(path_value: str) -> Path:
@@ -602,6 +605,13 @@ def run_git(
     timeout: int = 120,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
+    environment = git_environment()
+    if cwd is None:
+        # Remote probes and clones must not inherit the caller's repository config.
+        cwd = Path(environment["HOME"]).resolve(strict=True)
+        if (cwd / ".git").exists() or (cwd / ".git").is_symlink():
+            raise ManagerError("repository-independent Git directory contains .git")
+        environment["GIT_CEILING_DIRECTORIES"] = str(cwd.parent)
     command = [
         trusted_git(),
         "-c",
@@ -623,9 +633,8 @@ def run_git(
         "-c",
         "http.proxy=",
         "-c",
-        "http.sslCert=",
-        "-c",
-        "http.sslKey=",
+        # Leave client cert/key paths unset; empty values are not a disable switch.
+        "http.sslVerify=true",
         "-c",
         "protocol.ext.allow=never",
         "-c",
@@ -636,7 +645,7 @@ def run_git(
         result = subprocess.run(
             command,
             cwd=cwd,
-            env=git_environment(),
+            env=environment,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -918,6 +927,7 @@ def inspect_repository(repo: Path) -> dict[str, Any]:
         "ahead": None,
         "behind": None,
         "licenses": top_level_licenses(repo),
+        "advisories": [],
         "operation_markers": [],
         "executable_local_config": [],
         "blockers": [],
@@ -1001,7 +1011,7 @@ def inspect_repository(repo: Path) -> dict[str, Any]:
                 blockers.append("dirty_worktree")
 
     if not result["licenses"]:
-        blockers.append("missing_top_level_license")
+        result["advisories"].append("license_unverified")
 
     if result["upstream"]:
         counts = run_git(
@@ -1112,6 +1122,7 @@ def same_local_snapshot(current: dict[str, Any], planned: dict[str, Any]) -> boo
         "git_fingerprint",
         "clean",
         "licenses",
+        "advisories",
         "operation_markers",
         "executable_local_config",
         "blockers",
@@ -1168,6 +1179,14 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     for planned in plan["repositories"]:
         name = planned["name"]
+        planned_advisories = list(planned.get("advisories", []))
+        planned_github_snapshot = planned.get("github_snapshot")
+        if (
+            isinstance(planned_github_snapshot, dict)
+            and isinstance(planned_github_snapshot.get("license"), dict)
+            and planned_github_snapshot["license"].get("status") == "unverified"
+        ):
+            planned_advisories.append("license_unverified")
         result: dict[str, Any] = {
             "name": name,
             "identity": planned.get("identity"),
@@ -1178,6 +1197,7 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
             "remote_tracking_updated": False,
             "branch_moved": False,
             "candidate_licenses": [],
+            "advisories": sorted(set(planned_advisories)),
         }
         if planned.get("blockers"):
             result["result"] = "blocked"
@@ -1237,8 +1257,6 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
             if ancestor.returncode != 0:
                 raise ManagerError("candidate is not a fast-forward descendant")
             candidate_licenses = candidate_license_evidence(repo, fetched)
-            if not candidate_licenses:
-                raise ManagerError("candidate tree lacks a recognized top-level license blob")
             result["candidate_licenses"] = candidate_licenses
             if not same_fingerprint(pool, plan["pool_fingerprint"]) or not same_local_snapshot(
                 inspect_repository(repo), planned
@@ -1262,6 +1280,7 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
                 "git_fingerprint",
                 "clean",
                 "licenses",
+                "advisories",
                 "operation_markers",
                 "executable_local_config",
             )
@@ -1298,6 +1317,9 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
                 raise ManagerError("final repository validation failed")
             result["result"] = outcome
             result["new_head"] = final["head"]
+            result["advisories"] = sorted(
+                set([*result["advisories"], *final["advisories"]])
+            )
         except ManagerError as exc:
             result["result"] = "changed_with_blocker" if branch_moved else "blocked"
             result["blockers"] = [str(exc)]
@@ -1367,6 +1389,44 @@ def remote_default_head(canonical_url: str, default_branch: str) -> str:
     return head_oid
 
 
+def github_license_snapshot(canonical: dict[str, str]) -> dict[str, Any]:
+    try:
+        license_data = github_json(f"/repos/{canonical['owner']}/{canonical['repo']}/license")
+    except ManagerError:
+        return {
+            "status": "unverified",
+            "spdx_id": None,
+            "path": None,
+            "blob_sha": None,
+            "reason": "license_metadata_unavailable",
+        }
+    license_meta = license_data.get("license")
+    spdx = license_meta.get("spdx_id") if isinstance(license_meta, dict) else None
+    license_path = license_data.get("path")
+    license_sha = license_data.get("sha")
+    if not isinstance(spdx, str) or spdx.upper() in {"", "NOASSERTION", "OTHER"}:
+        reason = "spdx_unrecognized"
+    elif not isinstance(license_path, str) or "/" in license_path or not LICENSE_NAME.fullmatch(license_path):
+        reason = "top_level_license_unrecognized"
+    elif not isinstance(license_sha, str) or not HEX40.fullmatch(license_sha):
+        reason = "license_blob_unavailable"
+    else:
+        return {
+            "status": "verified",
+            "spdx_id": spdx,
+            "path": license_path,
+            "blob_sha": license_sha,
+            "reason": None,
+        }
+    return {
+        "status": "unverified",
+        "spdx_id": None,
+        "path": None,
+        "blob_sha": None,
+        "reason": reason,
+    }
+
+
 def github_update_snapshot(url: str) -> dict[str, Any]:
     requested = normalize_github_url(url)
     metadata = github_json(f"/repos/{requested['owner']}/{requested['repo']}")
@@ -1385,10 +1445,6 @@ def github_update_snapshot(url: str) -> dict[str, Any]:
         raise ManagerError("repository lacks a default branch")
     if run_git(["check-ref-format", "--branch", default_branch], check=False).returncode != 0:
         raise ManagerError("repository default branch is unsafe")
-    license_meta = metadata.get("license")
-    spdx = license_meta.get("spdx_id") if isinstance(license_meta, dict) else None
-    if not isinstance(spdx, str) or spdx.upper() in {"", "NOASSERTION", "OTHER"}:
-        raise ManagerError("repository must declare an explicit SPDX license")
     remote_head = remote_default_head(canonical["canonical_url"], default_branch)
     return {
         "identity": canonical["identity"],
@@ -1396,7 +1452,7 @@ def github_update_snapshot(url: str) -> dict[str, Any]:
         "canonical_url": canonical["canonical_url"],
         "default_branch": default_branch,
         "remote_head": remote_head,
-        "license": {"spdx_id": spdx},
+        "license": github_license_snapshot(canonical),
     }
 
 
@@ -1420,18 +1476,6 @@ def github_repository_snapshot(url: str) -> dict[str, Any]:
     if check_ref.returncode != 0:
         raise ManagerError("repository default branch is unsafe")
 
-    license_data = github_json(f"/repos/{canonical['owner']}/{canonical['repo']}/license")
-    license_meta = license_data.get("license")
-    license_path = license_data.get("path")
-    license_sha = license_data.get("sha")
-    spdx = license_meta.get("spdx_id") if isinstance(license_meta, dict) else None
-    if not isinstance(spdx, str) or spdx.upper() in {"", "NOASSERTION", "OTHER"}:
-        raise ManagerError("repository must declare an explicit SPDX license")
-    if not isinstance(license_path, str) or "/" in license_path or not LICENSE_NAME.fullmatch(license_path):
-        raise ManagerError("license must be a recognized top-level file")
-    if not isinstance(license_sha, str) or not HEX40.fullmatch(license_sha):
-        raise ManagerError("license evidence is incomplete")
-
     remote_head = remote_default_head(canonical["canonical_url"], default_branch)
     return {
         "identity": canonical["identity"],
@@ -1439,7 +1483,7 @@ def github_repository_snapshot(url: str) -> dict[str, Any]:
         "canonical_url": canonical["canonical_url"],
         "default_branch": default_branch,
         "remote_head": remote_head,
-        "license": {"spdx_id": spdx, "path": license_path, "blob_sha": license_sha},
+        "license": github_license_snapshot(canonical),
     }
 
 
@@ -1570,8 +1614,9 @@ def validate_unchecked_clone(checkout: Path, planned_repo: dict[str, Any]) -> No
     if head != planned_repo["remote_head"]:
         raise ManagerError("staged clone head does not match plan")
     license_data = planned_repo["license"]
-    if candidate_license_blob(checkout, head, license_data["path"]) != license_data["blob_sha"]:
-        raise ManagerError("staged clone license blob does not match plan")
+    if license_data["status"] == "verified":
+        if candidate_license_blob(checkout, head, license_data["path"]) != license_data["blob_sha"]:
+            raise ManagerError("staged clone license blob does not match plan")
 
 
 def apply_clone(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
@@ -1619,6 +1664,7 @@ def apply_clone(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
     checkout = stage / "checkout"
     committed = False
     warnings: list[str] = []
+    advisories: list[str] = []
     try:
         run_git(
             [
@@ -1645,14 +1691,17 @@ def apply_clone(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
             raise ManagerError("cloned branch or upstream does not match plan")
         if state["head"] != planned_repo["remote_head"] or state["clean"] is not True:
             raise ManagerError("cloned head or worktree does not match plan")
-        if planned_repo["license"]["path"] not in state["licenses"]:
-            raise ManagerError("planned top-level license is absent after clone")
-        license_blob = git_text(checkout, ["rev-parse", f"HEAD:{planned_repo['license']['path']}"])
-        if license_blob != planned_repo["license"]["blob_sha"]:
-            raise ManagerError("cloned license blob does not match GitHub evidence")
-        disallowed = [reason for reason in state["blockers"] if reason != "missing_top_level_license"]
-        if disallowed:
-            raise ManagerError("cloned repository validation failed: " + ",".join(disallowed))
+        license_data = planned_repo["license"]
+        if license_data["status"] == "verified":
+            if license_data["path"] not in state["licenses"]:
+                raise ManagerError("planned top-level license is absent after clone")
+            license_blob = git_text(checkout, ["rev-parse", f"HEAD:{license_data['path']}"])
+            if license_blob != license_data["blob_sha"]:
+                raise ManagerError("cloned license blob does not match GitHub evidence")
+        else:
+            advisories.append("license_unverified")
+        if state["blockers"]:
+            raise ManagerError("cloned repository validation failed: " + ",".join(state["blockers"]))
         latest = github_repository_snapshot(planned_repo["canonical_url"])
         if not same_repository_snapshot(latest, planned_repo):
             raise ManagerError("repository metadata or remote head changed during clone")
@@ -1698,6 +1747,7 @@ def apply_clone(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "repository": planned_repo,
         "blockers": [],
         "warnings": warnings,
+        "advisories": advisories,
     }
 
 

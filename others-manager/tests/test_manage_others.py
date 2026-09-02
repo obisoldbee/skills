@@ -74,6 +74,7 @@ class OthersManagerTests(unittest.TestCase):
                         "fingerprint": {"device": 1, "inode": 3, "mode": 16384},
                         "git_fingerprint": {"device": 1, "inode": 4, "mode": 16384},
                         "blockers": ["fixture_blocker"],
+                        "advisories": [],
                         "action": "blocked",
                     }
                 ],
@@ -120,16 +121,95 @@ class OthersManagerTests(unittest.TestCase):
             manager.ensure_output_available(str(outside))
 
     def test_git_environment_does_not_inherit_injection(self) -> None:
-        os.environ["GIT_CONFIG_COUNT"] = "99"
-        os.environ["HTTPS_PROXY"] = "http://credential.invalid"
-        try:
+        injected = {
+            "GIT_CONFIG_COUNT": "99",
+            "HTTPS_PROXY": "http://credential.invalid",
+            "GIT_SSL_CERT": "/untrusted/client.pem",
+            "GIT_SSL_KEY": "/untrusted/client.key",
+            "GIT_SSL_NO_VERIFY": "1",
+            "GIT_CONFIG_GLOBAL": "/untrusted/gitconfig",
+            "GIT_DIR": "/untrusted/repository/.git",
+            "GIT_CEILING_DIRECTORIES": "/untrusted",
+        }
+        with mock.patch.dict(os.environ, injected):
             environment = manager.git_environment()
-        finally:
-            os.environ.pop("GIT_CONFIG_COUNT", None)
-            os.environ.pop("HTTPS_PROXY", None)
-        self.assertNotIn("GIT_CONFIG_COUNT", environment)
-        self.assertNotIn("HTTPS_PROXY", environment)
+        for key in injected.keys() - {"GIT_CONFIG_GLOBAL"}:
+            self.assertNotIn(key, environment)
+        self.assertEqual(os.devnull, environment["GIT_CONFIG_GLOBAL"])
+        self.assertEqual("1", environment["GIT_CONFIG_NOSYSTEM"])
         self.assertEqual("/usr/bin:/bin", environment["PATH"])
+
+    def test_git_https_client_certificate_paths_remain_unset(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            for key in ("http.sslCert", "http.sslKey"):
+                with self.subTest(key=key):
+                    result = manager.run_git(
+                        ["config", "--get", key], cwd=Path(temporary), check=False
+                    )
+                    self.assertEqual(1, result.returncode)
+                    self.assertEqual("", result.stdout)
+
+    def test_git_https_verification_remains_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            result = manager.run_git(
+                ["config", "--bool", "--get", "http.sslVerify"],
+                cwd=Path(temporary),
+                check=False,
+            )
+            self.assertEqual(0, result.returncode)
+            self.assertEqual("true", result.stdout.strip())
+
+    def test_repository_independent_git_ignores_caller_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary).resolve()
+            self.run_git(repo, "init")
+            self.run_git(repo, "config", "core.description", "caller-config-sentinel")
+            self.run_git(repo, "config", "http.sslCert", "caller-client.pem")
+            self.run_git(repo, "config", "http.sslKey", "caller-client.key")
+            self.run_git(repo, "config", "http.sslVerify", "false")
+            neutral = repo / "neutral"
+            neutral.mkdir()
+            environment = manager.git_environment()
+            environment["HOME"] = str(neutral)
+            previous = Path.cwd()
+            try:
+                os.chdir(repo)
+                with mock.patch.object(manager, "git_environment", return_value=environment):
+                    for key in ("core.description", "http.sslCert", "http.sslKey"):
+                        with self.subTest(key=key):
+                            result = manager.run_git(["config", "--get", key], check=False)
+                            self.assertEqual(1, result.returncode)
+                            self.assertEqual("", result.stdout)
+                    verify = manager.run_git(["config", "--bool", "--get", "http.sslVerify"])
+                    self.assertEqual("true", verify.stdout.strip())
+            finally:
+                os.chdir(previous)
+
+    def test_repository_independent_git_rejects_git_in_neutral_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            neutral = Path(temporary).resolve()
+            (neutral / ".git").mkdir()
+            environment = manager.git_environment()
+            environment["HOME"] = str(neutral)
+            with (
+                mock.patch.object(manager, "git_environment", return_value=environment),
+                self.assertRaisesRegex(manager.ManagerError, "contains .git"),
+            ):
+                manager.run_git(["config", "--get", "http.sslCert"], check=False)
+
+    def test_local_certificate_and_tls_overrides_are_rejected(self) -> None:
+        for key, value in (
+            ("http.sslCert", "client.pem"),
+            ("http.sslKey", "client.key"),
+            ("http.sslVerify", "false"),
+        ):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as temporary:
+                repo = Path(temporary).resolve()
+                self.run_git(repo, "init")
+                self.run_git(repo, "config", key, value)
+                state = manager.inspect_repository(repo)
+                self.assertIn("unsupported_or_unsafe_local_git_config", state["blockers"])
+                self.assertIsNone(state["head"])
 
     def test_atomic_clone_commit_never_replaces_destination(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -315,6 +395,63 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual(0, report["counts"]["blocked"])
             self.assertEqual([], report["repositories"][0]["blockers"])
 
+    def test_missing_license_is_an_advisory_not_a_repository_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            pool = Path(temporary).resolve()
+            repo = pool / "fixture"
+            repo.mkdir()
+            self.run_git(repo, "init")
+            self.run_git(repo, "config", "user.name", "Fixture")
+            self.run_git(repo, "config", "user.email", "fixture@example.invalid")
+            (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+            self.run_git(repo, "add", "README.md")
+            self.run_git(repo, "commit", "-m", "fixture")
+            self.run_git(repo, "branch", "-M", "main")
+            self.run_git(repo, "remote", "add", "origin", "https://github.com/example/fixture.git")
+            head = self.run_git(repo, "rev-parse", "HEAD").stdout.strip()
+            self.run_git(repo, "update-ref", "refs/remotes/origin/main", head)
+            self.run_git(repo, "branch", "--set-upstream-to", "origin/main", "main")
+
+            report = manager.inventory(pool)
+            repository = report["repositories"][0]
+            self.assertEqual([], repository["blockers"])
+            self.assertEqual(["license_unverified"], repository["advisories"])
+            self.assertEqual(0, report["counts"]["blocked"])
+
+    def test_github_snapshot_allows_unverified_license_metadata(self) -> None:
+        metadata = {
+            "full_name": "example/fixture",
+            "private": False,
+            "archived": False,
+            "disabled": False,
+            "default_branch": "main",
+            "license": None,
+        }
+
+        def github_json(path: str) -> dict[str, object]:
+            if path == "/repos/example/fixture":
+                return metadata
+            raise manager.ManagerError("GitHub API request failed with HTTP 404")
+
+        with (
+            mock.patch.object(manager, "github_json", side_effect=github_json),
+            mock.patch.object(manager, "remote_default_head", return_value="a" * 40),
+        ):
+            snapshot = manager.github_repository_snapshot("https://github.com/example/fixture")
+
+        self.assertEqual("example/fixture", snapshot["identity"])
+        self.assertEqual(
+            {
+                "status": "unverified",
+                "spdx_id": None,
+                "path": None,
+                "blob_sha": None,
+                "reason": "license_metadata_unavailable",
+            },
+            snapshot["license"],
+        )
+        manager.validate_github_snapshot_shape(snapshot)
+
     def test_unknown_or_credential_local_config_blocks_before_inspection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary).resolve()
@@ -376,7 +513,13 @@ class OthersManagerTests(unittest.TestCase):
                 "canonical_url": "https://github.com/example/fixture.git",
                 "default_branch": "main",
                 "remote_head": head,
-                "license": {"spdx_id": "MIT"},
+                "license": {
+                    "status": "verified",
+                    "spdx_id": "MIT",
+                    "path": "LICENSE",
+                    "blob_sha": "b" * 40,
+                    "reason": None,
+                },
             }
             with mock.patch.object(manager, "github_update_snapshot", return_value=github_snapshot):
                 plan = manager.plan_update(pool)
@@ -384,6 +527,91 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual(manager.path_fingerprint(pool), plan["pool_fingerprint"])
             self.assertEqual("already_current", plan["repositories"][0]["action"])
             self.assertEqual(github_snapshot, plan["repositories"][0]["github_snapshot"])
+
+    def test_update_report_preserves_unverified_github_license_advisory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            pool = Path(temporary).resolve()
+            repo = pool / "fixture"
+            repo.mkdir()
+            head = "a" * 40
+            pool_fingerprint = manager.path_fingerprint(pool)
+            local_state = {
+                "name": "fixture",
+                "path": str(repo),
+                "fingerprint": {"device": 1, "inode": 2, "mode": 16384},
+                "git_fingerprint": {"device": 1, "inode": 3, "mode": 16384},
+                "identity": "example/fixture",
+                "canonical_url": "https://github.com/example/fixture.git",
+                "branch": "main",
+                "upstream": "origin/main",
+                "head": head,
+                "clean": True,
+                "ahead": 0,
+                "behind": 0,
+                "licenses": ["LICENSE"],
+                "advisories": [],
+                "operation_markers": [],
+                "executable_local_config": [],
+                "blockers": [],
+            }
+            github_snapshot = {
+                "identity": "example/fixture",
+                "identity_key": "example/fixture",
+                "canonical_url": "https://github.com/example/fixture.git",
+                "default_branch": "main",
+                "remote_head": head,
+                "license": {
+                    "status": "unverified",
+                    "spdx_id": None,
+                    "path": None,
+                    "blob_sha": None,
+                    "reason": "spdx_unrecognized",
+                },
+            }
+            planned = {
+                **local_state,
+                "remote_head": head,
+                "github_snapshot": github_snapshot,
+                "action": "already_current",
+            }
+            plan = {
+                "plan_id": "b" * 64,
+                "pool": str(pool),
+                "pool_fingerprint": pool_fingerprint,
+                "repository_names": ["fixture"],
+                "repositories": [planned],
+            }
+
+            def fake_git_text(_repo: Path, arguments: list[str]) -> str:
+                if arguments == ["rev-parse", "FETCH_HEAD"]:
+                    return head
+                if arguments == ["rev-parse", "refs/remotes/origin/main"]:
+                    return head
+                raise AssertionError(f"unexpected git_text call: {arguments}")
+
+            with (
+                mock.patch.object(manager, "discover_repositories", return_value=([repo], [])),
+                mock.patch.object(manager, "inspect_repository", return_value=local_state),
+                mock.patch.object(manager, "github_update_snapshot", return_value=github_snapshot),
+                mock.patch.object(manager, "git_text", side_effect=fake_git_text),
+                mock.patch.object(
+                    manager,
+                    "run_git",
+                    return_value=subprocess.CompletedProcess([], 0, stdout="", stderr=""),
+                ),
+                mock.patch.object(
+                    manager,
+                    "candidate_license_evidence",
+                    return_value=[{"path": "LICENSE", "blob_sha": "c" * 40}],
+                ),
+            ):
+                report = manager.apply_update(pool, plan)
+
+            self.assertTrue(report["complete_without_blockers"])
+            self.assertEqual(
+                ["license_unverified"],
+                report["repositories"][0]["advisories"],
+            )
 
     @staticmethod
     def run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
