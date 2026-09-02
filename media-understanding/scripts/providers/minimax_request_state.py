@@ -139,7 +139,14 @@ def verified_response_evidence(
         raise ValueError("response evidence reference is not operation-local and hash-bound")
     operation_dir = operation_dir.resolve()
     candidate = operation_dir / relative
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    # Windows file descriptors default to text mode.  Without O_BINARY,
+    # os.read() translates CRLF and the bytes no longer match the digest that
+    # was recorded from Path.read_bytes().
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
     descriptor = os.open(candidate, flags)
     try:
         info = os.fstat(descriptor)

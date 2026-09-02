@@ -29,6 +29,10 @@ AGNES = load_module("media_understanding_agnes", "scripts/providers/agnes_vision
 AUDIO = load_module("media_understanding_m3_audio", "scripts/providers/minimax_m3_course_audio.py")
 VIDEO = load_module("media_understanding_m3_video", "scripts/providers/minimax_m3_course_video.py")
 ROUTES = load_module("media_understanding_routes", "scripts/check_routes.py")
+REQUEST_STATE = load_module(
+    "media_understanding_request_state",
+    "scripts/providers/minimax_request_state.py",
+)
 
 
 class ProviderHelperTests(unittest.TestCase):
@@ -76,6 +80,32 @@ class ProviderHelperTests(unittest.TestCase):
             path.write_text("KEY=placeholder\n", encoding="utf-8")
             with mock.patch.object(ROUTES.os, "name", "nt"):
                 self.assertIsNone(ROUTES.private_permissions(path))
+
+    def test_response_evidence_is_verified_from_binary_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            operation_dir = Path(temporary)
+            response = operation_dir / "attempt_01.json"
+            payload = {
+                "operation_fingerprint": "fingerprint",
+                "request_state": "rejected",
+                "status_code": 429,
+            }
+            response.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            reference = REQUEST_STATE.response_reference(response, operation_dir)
+
+            self.assertEqual(
+                payload,
+                REQUEST_STATE.verified_response_evidence(
+                    operation_dir,
+                    reference,
+                    "fingerprint",
+                    "rejected",
+                    429,
+                ),
+            )
 
     def test_minimax_base64_limit_is_checked_before_read(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

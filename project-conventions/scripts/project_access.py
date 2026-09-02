@@ -402,54 +402,74 @@ def connect(database: Path) -> sqlite3.Connection:
             os.close(descriptor)
     ensure_runtime_boundary(database, create=False)
     connection = sqlite3.connect(database, timeout=5.0, isolation_level=None)
-    connection.execute("PRAGMA busy_timeout = 5000")
-    connection.execute("PRAGMA journal_mode = DELETE")
-    connection.execute("PRAGMA synchronous = FULL")
-    connection.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS claims (
-            session_id TEXT PRIMARY KEY,
-            mode TEXT NOT NULL CHECK (mode IN ('read-only', 'writer', 'isolated-writer')),
-            token_hash TEXT NOT NULL,
-            actor TEXT NOT NULL,
-            workspace TEXT NOT NULL,
-            acquired_at TEXT NOT NULL,
-            write_paths_json TEXT NOT NULL,
-            evidence_json TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS history (
-            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            mode TEXT NOT NULL,
-            actor TEXT NOT NULL,
-            event TEXT NOT NULL,
-            occurred_at TEXT NOT NULL,
-            reason TEXT NOT NULL,
-            evidence_json TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS recovery_plans (
-            session_id TEXT PRIMARY KEY,
-            token_hash TEXT NOT NULL,
-            claim_token_hash TEXT NOT NULL,
-            reason TEXT NOT NULL,
-            planned_at TEXT NOT NULL
-        );
-        """
-    )
-    connection.execute(
-        "INSERT OR IGNORE INTO meta(key, value) VALUES('protocol_version', ?)",
-        (str(PROTOCOL_VERSION),),
-    )
-    observed = connection.execute(
-        "SELECT value FROM meta WHERE key = 'protocol_version'"
-    ).fetchone()
-    if observed is None or observed[0] != str(PROTOCOL_VERSION):
+    try:
+        connection.execute("PRAGMA busy_timeout = 5000")
+        journal_mode = connection.execute("PRAGMA journal_mode").fetchone()
+        if journal_mode is None or str(journal_mode[0]).lower() != "delete":
+            raise AccessError("runtime database must use DELETE journal mode")
+        connection.execute("PRAGMA synchronous = FULL")
+
+        # One transaction serializes first-use schema creation.  Reissuing
+        # PRAGMA journal_mode=DELETE in every process takes a competing write
+        # lock on Windows and can fail before SQLite's busy timeout applies.
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in (
+            """
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS claims (
+                session_id TEXT PRIMARY KEY,
+                mode TEXT NOT NULL CHECK (mode IN ('read-only', 'writer', 'isolated-writer')),
+                token_hash TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                workspace TEXT NOT NULL,
+                acquired_at TEXT NOT NULL,
+                write_paths_json TEXT NOT NULL,
+                evidence_json TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS history (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                event TEXT NOT NULL,
+                occurred_at TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                evidence_json TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS recovery_plans (
+                session_id TEXT PRIMARY KEY,
+                token_hash TEXT NOT NULL,
+                claim_token_hash TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                planned_at TEXT NOT NULL
+            )
+            """,
+        ):
+            connection.execute(statement)
+        connection.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES('protocol_version', ?)",
+            (str(PROTOCOL_VERSION),),
+        )
+        observed = connection.execute(
+            "SELECT value FROM meta WHERE key = 'protocol_version'"
+        ).fetchone()
+        if observed is None or observed[0] != str(PROTOCOL_VERSION):
+            raise AccessError("runtime database uses an unsupported protocol version")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
         connection.close()
-        raise AccessError("runtime database uses an unsupported protocol version")
+        raise
     return connection
 
 
