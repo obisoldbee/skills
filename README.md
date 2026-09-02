@@ -18,6 +18,7 @@ Use one checkout per device and keep local project governance outside Git:
 │   ├── media-creator/                        # true cross-Agent media generation router
 │   ├── project-handoff/                      # true handoff/orchestration controller source
 │   ├── others-manager/                       # true third-party checkout management source
+│   ├── minimax-h3-prompt/                    # true MiniMax H3 prompt guidance source
 │   └── document-workspace/                   # true file-based document governance source
 ├── project-conventions/                     # stable local Project Root
 │   ├── docs/
@@ -40,6 +41,8 @@ Use one checkout per device and keep local project governance outside Git:
 │   └── src/project-handoff                   # projection to GitHub package
 ├── others-manager/                           # stable local Project Root
 │   └── src/others-manager                    # projection to GitHub package
+├── MiniMax-H3-prompt/                        # stable local Project Root
+│   └── src/minimax-h3-prompt                 # projection to GitHub package
 └── skills/                                  # local collection-control project
     └── src/
         ├── AGENTS.md -> ../../GitHub/AGENTS.md
@@ -72,6 +75,8 @@ python3 -B <collection>/GitHub/project-handoff/scripts/validate_package.py \
   <collection>/GitHub/project-handoff
 python3 -B <collection>/GitHub/others-manager/scripts/validate_package.py \
   <collection>/GitHub/others-manager
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" \
+  <collection>/GitHub/minimax-h3-prompt
 python3 -B <collection>/GitHub/document-workspace/scripts/validate_package.py \
   <collection>/GitHub/document-workspace
 ```
@@ -87,7 +92,7 @@ python3 -B <collection>/GitHub/project-conventions/scripts/initialize_skills_con
   <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-The initializer creates the routing files, complete `skills/` control project, its four projections to the repository-root `AGENTS.md`, `README.md`, `config/`, and `scripts/`, the stable `project-conventions/` wrapper, and its package projection. The control project never receives an aggregate `src/skills` link or package projections. It does not install the Skill into any Agent. Additional package directories present in a checkout, such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `paper-downloader`, `buddy-travelling`, `media-creator`, `document-workspace`, `project-handoff`, and `others-manager`, require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members or imply that uncommitted bytes are published.
+The initializer creates the routing files, complete `skills/` control project, its four projections to the repository-root `AGENTS.md`, `README.md`, `config/`, and `scripts/`, the stable `project-conventions/` wrapper, and its package projection. The control project never receives an aggregate `src/skills` link or package projections. It does not install the Skill into any Agent. Additional package directories present in a checkout, such as `web-bookmark-intelligence`, `media-understanding`, `research-qa-plugin`, `paper-downloader`, `buddy-travelling`, `media-creator`, `document-workspace`, `project-handoff`, `others-manager`, and `minimax-h3-prompt`, require a separately authorized member-wrapper/index migration on each device; the fresh initializer does not invent those local members or imply that uncommitted bytes are published.
 
 On macOS/Linux the projection is the relative link:
 
@@ -219,6 +224,13 @@ The handoff controller is exported only to Codex consumers:
 ./scripts/link-macos.sh --apply --agent codex --skill project-handoff
 ```
 
+MiniMax H3 prompt guidance is exported through the shared `.agents` root:
+
+```bash
+./scripts/link-macos.sh --agent agents --skill minimax-h3-prompt
+./scripts/link-macos.sh --apply --agent agents --skill minimax-h3-prompt
+```
+
 ## Validation boundaries
 
 Repository root:
@@ -250,6 +262,7 @@ python3 -B project-handoff/scripts/validate_package.py project-handoff
 python3 -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
 python3 -B others-manager/scripts/validate_package.py others-manager
 python3 -B -m unittest discover -s others-manager/tests -p 'test_*.py'
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" minimax-h3-prompt
 python3 -B document-workspace/scripts/validate_package.py document-workspace
 python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ```
@@ -317,6 +330,10 @@ python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 │   ├── references/
 │   ├── scripts/
 │   └── tests/
+├── minimax-h3-prompt/
+│   ├── SKILL.md
+│   ├── agents/
+│   └── references/
 └── document-workspace/
     ├── SKILL.md
     ├── agents/
