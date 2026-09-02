@@ -207,6 +207,177 @@ class BatchQualityGateTests(unittest.TestCase):
             self.assertEqual("planned", batch["cases"][0]["status"])
             self.assertTrue(batch["cases"][0]["quality_assessment_required"])
 
+    def test_default_plan_is_runtime_neutral_for_web_and_wechat(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out_dir = root / "batch"
+            web_url = "https://example.com/article"
+            wechat_url = "https://mp.weixin.qq.com/s/example"
+
+            completed = self.run_plan(root, out_dir, web_url, wechat_url)
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            batch = json.loads((out_dir / "batch-plan.json").read_text(encoding="utf-8"))
+            self.assertEqual("web-bookmark-intelligence/batch/v3", batch["schema"])
+            self.assertEqual("runtime_browser_or_case_local_html", batch["capture_pipeline"])
+            self.assertEqual("runtime_selected", batch["capture_adapter"])
+            self.assertNotIn("workbuddy_adapter", batch)
+            self.assertEqual(2, len(batch["cases"]))
+            for item in batch["cases"]:
+                self.assertEqual("runtime_browser_or_case_local_html", item["capture_pipeline"])
+                self.assertEqual("runtime_selected", item["capture_adapter"])
+                self.assertNotIn("workbuddy_adapter", item)
+
+    def test_resume_replaces_legacy_adapter_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out_dir = root / "batch"
+            out_dir.mkdir()
+            source_url = "https://example.com/resume"
+            case_id = stable_id("case", source_url)
+            (out_dir / "batch-state.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "web-bookmark-intelligence/batch/v2",
+                        "workbuddy_adapter": "workbuddy_wechat_article_archive",
+                        "cases": [
+                            {
+                                "case_id": case_id,
+                                "source_url": source_url,
+                                "status": "planned",
+                                "capture_pipeline": "workbuddy_shared_pending_quality",
+                                "workbuddy_adapter": "workbuddy_wechat_article_archive",
+                                "capture_mode": "playwright",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = self.run_plan(root, out_dir, source_url)
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            batch = json.loads((out_dir / "batch-plan.json").read_text(encoding="utf-8"))
+            item = batch["cases"][0]
+            self.assertEqual("web-bookmark-intelligence/batch/v3", batch["schema"])
+            self.assertEqual("runtime_browser_or_case_local_html", item["capture_pipeline"])
+            self.assertEqual("runtime_selected", item["capture_adapter"])
+            self.assertEqual("rendered_browser_or_case_local_html", item["capture_mode"])
+            self.assertNotIn("workbuddy_adapter", batch)
+            self.assertNotIn("workbuddy_adapter", item)
+
+    def test_resume_replans_legacy_adapter_only_block_and_preserves_attempt(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out_dir = root / "batch"
+            out_dir.mkdir()
+            source_url = "https://example.com/recover"
+            case_id = stable_id("case", source_url)
+            (out_dir / "batch-state.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "web-bookmark-intelligence/batch/v2",
+                        "cases": [
+                            {
+                                "case_id": case_id,
+                                "source_url": source_url,
+                                "status": "blocked",
+                                "blocked_reason": "missing_workbuddy_script",
+                                "capture_pipeline": "workbuddy_shared_pending_quality",
+                                "workbuddy_adapter": "workbuddy_wechat_article_archive",
+                                "capture_mode": "playwright",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = self.run_plan(root, out_dir, source_url)
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            item = json.loads((out_dir / "batch-plan.json").read_text(encoding="utf-8"))["cases"][0]
+            self.assertEqual("planned", item["status"])
+            self.assertIsNone(item["blocked_reason"])
+            self.assertEqual("runtime_selected", item["capture_adapter"])
+            self.assertNotIn("workbuddy_adapter", item)
+            previous = item["previous_legacy_capture_attempt"]
+            self.assertEqual("blocked", previous["status"])
+            self.assertEqual("missing_workbuddy_script", previous["blocked_reason"])
+            self.assertEqual("workbuddy_wechat_article_archive", previous["workbuddy_adapter"])
+
+    def test_resume_keeps_captured_legacy_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out_dir = root / "batch"
+            out_dir.mkdir()
+            source_url = "https://example.com/captured"
+            case_id = stable_id("case", source_url)
+            (out_dir / "batch-state.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "web-bookmark-intelligence/batch/v2",
+                        "cases": [
+                            {
+                                "case_id": case_id,
+                                "source_url": source_url,
+                                "status": "captured",
+                                "capture_pipeline": "workbuddy_shared_pending_quality",
+                                "workbuddy_adapter": "workbuddy_wechat_article_archive",
+                                "capture_mode": "playwright",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.write_case_evidence(root, out_dir, case_id, source_url)
+
+            completed = self.run_plan(root, out_dir, source_url)
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            item = json.loads((out_dir / "batch-plan.json").read_text(encoding="utf-8"))["cases"][0]
+            self.assertEqual("captured", item["status"])
+            self.assertEqual("workbuddy_shared_pending_quality", item["capture_pipeline"])
+            self.assertEqual("workbuddy_wechat_article_archive", item["workbuddy_adapter"])
+            self.assertNotIn("capture_adapter", item)
+
+    def test_resume_keeps_real_blocker_and_legacy_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out_dir = root / "batch"
+            out_dir.mkdir()
+            source_url = "https://example.com/profile-blocked"
+            case_id = stable_id("case", source_url)
+            (out_dir / "batch-state.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "web-bookmark-intelligence/batch/v2",
+                        "cases": [
+                            {
+                                "case_id": case_id,
+                                "source_url": source_url,
+                                "status": "blocked",
+                                "blocked_reason": "shoulong_profile_host_mismatch",
+                                "capture_pipeline": "workbuddy_shared_pending_quality",
+                                "workbuddy_adapter": "workbuddy_wechat_article_archive",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = self.run_plan(root, out_dir, source_url)
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            item = json.loads((out_dir / "batch-plan.json").read_text(encoding="utf-8"))["cases"][0]
+            self.assertEqual("blocked", item["status"])
+            self.assertEqual("shoulong_profile_host_mismatch", item["blocked_reason"])
+            self.assertEqual("workbuddy_wechat_article_archive", item["workbuddy_adapter"])
+            self.assertNotIn("capture_adapter", item)
+
     def test_substantive_dom_with_image_stays_pending_without_inventory(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

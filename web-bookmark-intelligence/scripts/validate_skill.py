@@ -78,14 +78,14 @@ def main() -> int:
         raise SystemExit("pass --package-root and --out together when persisting a validation report")
     checks = [
         "rich_dom_body_passes_without_promoting_meta_description",
-        "meta_only_html_routes_to_playwright",
+        "meta_only_html_routes_to_browser_render",
         "canvas_and_placeholder_dom_route_to_media_understanding",
         "evidence_fusion_requires_same_case_hash_lineage",
         "cross_case_media_is_rejected",
         "screenshot_and_video_page_intake_use_single_flow",
         "shoulong_batch_starts_planned_and_requires_pending_quality",
         "action_cards_require_bound_passing_assessment",
-        "unknown_exit_zero_script_cannot_claim_workbuddy_v1_5_1",
+        "legacy_adapter_rejects_unknown_exit_zero_script",
     ]
     with tempfile.TemporaryDirectory(prefix="web-bookmark-intelligence-") as temporary:
         root = Path(temporary)
@@ -114,7 +114,7 @@ def main() -> int:
         meta_out = meta_case / "capture.json"
         capture_html(root, meta_case, meta_intake, meta_only, meta_out, meta_url)
         meta_record = load(meta_out)
-        assert meta_record["quality_gate"]["status"] == "needs_playwright"
+        assert meta_record["quality_gate"]["status"] == "needs_browser_render"
         assert meta_record["quality_gate"]["body_text"] != meta_record["quality_gate"]["meta_description"]
 
         canvas_case = root / "cases" / "canvas"
@@ -289,7 +289,11 @@ def main() -> int:
         urls.write_text("https://chinalowcarb.com/example\n", encoding="utf-8")
         run(str(SCRIPT_DIR / "plan_batch.py"), "--url-file", str(urls), "--profile", "shoulong", "--package-root", str(root), "--out-dir", str(root / "batch"))
         batch = load(root / "batch" / "batch-plan.json")
-        assert batch["capture_pipeline"] == "workbuddy_shared_pending_quality"
+        assert batch["schema"] == "web-bookmark-intelligence/batch/v3"
+        assert batch["capture_pipeline"] == "runtime_browser_or_case_local_html"
+        assert batch["capture_adapter"] == "runtime_selected"
+        assert "workbuddy_adapter" not in batch
+        assert "workbuddy_adapter" not in batch["cases"][0]
         assert batch["cases"][0]["status"] == "planned"
         assert batch["cases"][0]["quality_assessment_required"] is True
 

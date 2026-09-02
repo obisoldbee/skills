@@ -165,9 +165,9 @@ def decide_gate(document: str, rendered: bool) -> dict[str, object]:
         if substantive:
             status, next_route = "pass", "media_inventory" if media_inventory_required else "purpose_handoff"
         elif has_canvas or image_count:
-            status, next_route = "needs_playwright", "playwright_render_then_media_inventory"
+            status, next_route = "needs_browser_render", "browser_render_then_media_inventory"
         else:
-            status, next_route = "needs_playwright", "playwright_render"
+            status, next_route = "needs_browser_render", "browser_render"
     elif has_canvas or (body_evidence_state != "substantive" and image_count > 0):
         status, next_route = "needs_media_understanding", "media_understanding_then_ocr"
     elif substantive:

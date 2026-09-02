@@ -1,64 +1,109 @@
 ---
 name: web-bookmark-intelligence
-description: Turn a public URL, webpage, bookmark batch, screenshot, long image, or video page into a reviewable evidence case with verified body/media evidence, contextual comparison, GitHub record snapshots, and user-gated action cards. Use for webpage capture quality, WeChat or Shoulong bookmark batches, screenshot or canvas understanding, video-page intake, and deciding whether a discovered project merits research, a PoC, cataloging, or later adoption.
+description: Read, summarize, evaluate, or fact-check public webpages and WeChat Official Account articles from one or more URLs. Use whenever the user supplies a webpage or WeChat/微信公众号 link, including a bare URL with no stated task; acknowledge this Skill and ask one concise question when the intended result is unclear. Also use for supplied webpage screenshots or long images. Default to response-only; create files, evidence cases, batches, or action cards only when explicitly requested.
 ---
 
 # Web Bookmark Intelligence
 
-## Materials
+Background:
 
-Materials: Use the user-authorized public URL list or local screenshot/video-page input, one declared package output root and case root, the resolved capture-script path and pre/post SHA-256, and only caller-provided privacy-filtered context. The detailed references and fixtures are indexed below.
+Read and evaluate public web content without binding the task to a particular Agent, browser, or capture product. A bare Skill invocation does not authorize file creation, archiving, adoption, installation, or publication.
 
-## Task
+Materials:
 
-Core purpose — turn each in-scope source into a receipted evidence case and a user-gated action card without treating discovery as adoption.
+Use only the webpage URL, screenshot, long image, PDF, pasted text, or batch list supplied by the user, plus body or media evidence obtained through an authorized available route. Do not load unrelated project history or create a knowledge package for an ordinary review.
 
-Create evidence cases and user-gated action cards only. This top-level package is the single implementation source inside the shared `obisoldbee/skills` checkout; wrapper projections, route adapters, export rows, and Agent links must not contain copied implementation bytes. Source presence, a healthy link, and a passing offline validator do not prove runtime discovery, browser availability, execution, or adoption.
+Parameters:
 
-## Workflow
+- `source`: one or more user-supplied URLs or local inputs.
+- `requested_result`: read, summarize, evaluate, compare, fact-check, save, archive, or batch-process.
+- `output_root`: required only when the user asks for saved files and no project rule already defines the destination.
 
-1. Create one case with `scripts/intake_case.py`: accept a public URL, local screenshot/long image, or a video-page URL under one explicit case root. Keep the original input, case id, source boundary, and authorization state.
-2. For URLs, use `scripts/run_workbuddy_capture.py`. It binds the resolved implementation path, recognized implementation hash/version, pre/post SHA, exact commands, logs, and artifact hashes. The retained WorkBuddy v1.5.1 hash does not prove per-hop redirect DNS revalidation or destination IP pinning, so current network execution stops as `needs_compatible_executor`; a plan is not a capture receipt.
-3. Run `scripts/capture_pipeline.py` on static or rendered case-local HTML and declare every media asset that may later supply evidence. It binds the intake path/hash and case root, keeps title and meta description separate from body evidence, and routes weak/noisy/image-led pages to media review.
-4. Route local screenshots, long images, canvas evidence, and substantive page images through the existing `media-understanding` workflow. Record image inventory, raw/OCR/visual outputs, hashes, and any uncertainty before interpreting the page.
-5. Fuse intake, DOM, and media results with `scripts/assess_capture_evidence.py`. The intake, capture, media receipt, case root, case id, source asset, and every lineage hash must agree. Cross-case or mismatched evidence is `failed`. Use only these final evidence states: `full_body`, `full_body_with_media_supplement`, `needs_image_supplement`, or `failed`.
-6. Prepare a bounded page-purpose handoff with `scripts/prepare_page_purpose.py`; semantic interpretation must cite the fused evidence rather than page metadata alone.
-7. Compare the resulting case against caller-provided, privacy-filtered current-affairs/project/office/life/GitHub context. Build user-gated action cards with `scripts/build_action_cards.py` only from the same case-bound passing assessment, purpose request, and content-unit binding. Failed, blocked, or mismatched evidence produces no card.
+Path boundary: this general Skill has no fixed `input/` or `output/` directories. In read-only review, every user-supplied input is read-only and no filesystem path is writable. In durable mode, only the authorized `output_root` is writable.
 
-## Constraints
+Do not use this Skill for general web searching without a supplied source, authenticated private content without explicit access authority, or installing/adopting a project discovered on a webpage.
 
-Constraints: Preserve access, provenance, privacy, and evidence gates; a capture attempt never grants adoption or formal-write authority.
+Task:
 
-- Start with fast local HTML/body extraction, then render with Playwright only when the quality gate requires it. Do not treat a static probe as a completed capture.
-- Before any compatible network executor starts, resolve both A and AAAA, reject NXDOMAIN/empty answers and any non-public or mixed result (including private IPv4-mapped IPv6), and require an unchanged second resolution. This preflight is not redirect/rebind protection: the executor must also prove every-hop DNS revalidation or destination IP pinning, otherwise fail closed as `needs_compatible_executor`.
-- A rendered DOM that is short, placeholder-like, canvas-led, or materially image-led must receive media inventory/understanding. A valid text body may still become `full_body_with_media_supplement` when images carry claims needed for the case.
-- `plan_batch.py --profile shoulong` is only a continuity/batch profile over the same WorkBuddy capture and media pipeline. It is not a second scraper.
-- A successful capture execution becomes `pending_quality`, never terminal `captured`. Only a case-bound `evidence-assessment/v2` with a passing final state may promote it to `captured` on resume.
-- Follow the bounded TLS retry in [capture-and-quality-gates.md](references/capture-and-quality-gates.md): preserve every attempt receipt, retry only one eligible certificate failure with certifi, and never disable TLS verification.
+Choose the mode from the result the user requested:
 
-## Reference materials
+| User request | Mode |
+| --- | --- |
+| Read, summarize, evaluate, explain, compare, or fact-check a page | Read-only review |
+| Save, archive, audit, batch-process, or resume a set of pages | Durable evidence |
+| Install, adopt, publish, deploy, or write to a formal knowledge layer | Stop for explicit authorization |
 
-- [Capture quality gates and TLS receipts](references/capture-and-quality-gates.md)
-- [Media routing and evidence contract](references/media-routing.md)
-- [Batch profiles](references/batch-profiles.md)
-- [Context and GitHub contract](references/context-and-github-contract.md)
-- [Purpose and action-card prompt](references/prompts/page-purpose-action-card.md)
-- [Candidate provenance](references/provenance.md)
-- [Historical baseline fixture](fixtures/historical-15.json) and [real-recapture regression fixture](fixtures/recapture-regression.json)
+When handling a supplied webpage or WeChat article, say in the first short progress update that `web-bookmark-intelligence` is handling the link. If the user sends only a URL and their intended result is unclear, ask one concise question. Explicitly naming this Skill alone does not switch a read-only request into durable mode.
 
-Task: Execute the single evidence flow for every in-scope source, preserve each route receipt, and stop at a user decision gate.
+## Select The Retrieval Route Before Access
 
-## Output format
+Choose the primary route before opening or fetching the page.
 
-Output format: Persist the case artifacts below and respond in the user's language; default to Chinese.
+1. If the user explicitly selected a browser or retrieval tool, that choice overrides the default priority. Use that route and obey its own fallback and stop rules.
+2. Otherwise inspect the Skills and tools listed in the current session for a purpose-built page-extraction or browser-control route. Read the applicable Skill completely and follow its stated selection priority. For example, when `ego-browser` is listed, its contract prefers it over built-in browser automation and web fetch for page extraction, so use it first. This is conditional capability discovery, not a required edition or dependency of `web-bookmark-intelligence`.
+3. Only when no applicable purpose-built route is available, use the current runtime's authorized generic web or browser capability.
+4. A static fetch that returns only metadata is a probe, not the one allowed rendered-browser attempt. It must not prevent use of the selected browser route.
+5. If the selected route reports an ordinary bootstrap or sandbox-only availability failure, follow that route's documented recovery once. Then use at most one materially different authorized route if its contract permits fallback. A listed Skill or healthy link does not prove execution availability; its executable may still be unavailable. Do not switch tools to evade an explicit safety-policy, access-control, CAPTCHA, login, or user-control stop.
+6. If a tool rejects the URL before navigation, report that the selected automation route was blocked. Do not claim that the webpage itself is inaccessible unless a request actually reached the page and established that fact.
 
-Write one case directory per source with its intake record, capture plan or execution receipt, body/media evidence state, source/hash lineage, purpose handoff, and user-gated action cards. Preserve per-attempt failures instead of flattening them into one status. Respond in the user's language; default to Chinese.
+Examples:
 
-## Success criteria
+| Situation | Required action |
+| --- | --- |
+| WeChat link plus “如何评价”, and `ego-browser` is listed | Use `ego-browser` first, read the substantive body, return a response only |
+| WeChat link plus “如何评价”, with no purpose-built route listed | Use the runtime's authorized generic browser, return a response only |
+| A chosen browser rejects the URL by an explicit safety policy | Stop that browser route; report the route-level blocker without calling the page unavailable |
+| WeChat link plus “保存到本地” | Enter durable mode; do not confuse the archive request with ordinary review |
 
-Success criteria: Require evidence-backed final states and an explicit user gate before any next action.
+## Read-Only Review
 
-- Stop and ask before authenticated/private capture, publication, adoption, installation, or any formal-layer write. Never bypass CAPTCHA or access controls.
-- Article existence, title, meta description, screenshot cover, video metadata, a capture plan, or a route prediction is not complete content evidence.
-- Do not silently switch engines, suppress a failed receipt, rerun unrelated historical cases, or query live GitHub/context without explicit authorization.
-- Success requires a case-bound final evidence state backed by the required DOM/media receipts, package-contained outputs, exact hashes, and a user decision gate for any next action; merely invoking a browser, returning one page title, or obtaining exit code 0 from an unknown script is not success.
+Use this mode by default.
+
+1. Retrieve the supplied public page with the primary route selected above. Runtime-neutral means the Skill does not require one brand everywhere; it does not mean ignoring a higher-priority route that is actually listed and available in the current session.
+2. Prefer substantive body text. Render the page when a static response is incomplete, and keep title, metadata, body text, and image evidence distinct.
+3. Inspect images or canvas content only when they carry claims needed for the requested review and the current runtime can safely inspect them.
+4. If the selected route and its permitted recovery cannot obtain usable body or media evidence, apply the fallback and hard-stop rules above. When no permitted route remains, ask for pasted text, a long screenshot, PDF, or another authorized input.
+5. Reply in the user's language with the requested summary or evaluation, the main claims, evidence quality, and important uncertainties.
+
+Read-only review is response-only. Do not create a case, reserve a package, write files, query unrelated context, refresh GitHub records, or build action cards unless the user asked for those effects.
+
+An unavailable browser or legacy adapter means only that route is unavailable. Do not describe the Skill itself as unusable when another authorized route or user-supplied content can still satisfy the request.
+
+## Durable Evidence
+
+Enter this mode only when the user explicitly asks to save, archive, audit, batch-process, or resume later.
+
+1. Use a user-provided output root or a project-rule-defined writable root already in scope. If neither exists, ask for the destination before writing.
+2. Create one case per source with `scripts/intake_case.py`.
+3. Capture the page with the current runtime's authorized browser or retrieval capability, save only the authorized case-local HTML/media, then run `scripts/capture_pipeline.py`.
+4. When material claims depend on images, use the available image-understanding route and preserve the body/media distinction described in [media-routing.md](references/media-routing.md).
+5. Bind the case with `scripts/assess_capture_evidence.py`. Prepare page-purpose notes or action cards only when the user requested them.
+6. For batches, use `scripts/plan_batch.py` to create or resume the case plan. The plan does not select or execute a browser; the current Agent captures each planned case with an authorized available route.
+
+Read [capture-and-quality-gates.md](references/capture-and-quality-gates.md) only for durable capture and quality checks. Read [batch-profiles.md](references/batch-profiles.md) only for a requested batch. Historical adapter receipts and compatibility code remain regression/provenance material; they are not the default route and must not appear in a normal user response unless the user is diagnosing that adapter.
+
+Constraints:
+
+- A title, meta description, cover, browser-open event, route prediction, or exit code is not article-body evidence.
+- Keep observed page content, media interpretation, your analysis, and unknowns distinct.
+- Never bypass login, CAPTCHA, paywalls, or access controls.
+- When package code makes direct network requests, accept only public `http` or `https` destinations, reject embedded credentials and non-public addresses, validate redirects, and keep TLS verification enabled. Runtime-managed browsers rely on their own enforced network boundary.
+- Do not send private or restricted content to an external provider without approval for the exact asset and provider.
+- Do not silently switch a user-selected browser, suppress a failed attempt, or claim that discovery equals adoption.
+- Once a route has produced substantive body evidence, do not let a later weaker probe or failed route downgrade it to “正文不可得”.
+- Do not install a missing browser, executor, or compatibility component unless the user explicitly asks for installation.
+- Do not mention executor brands, versions, hashes, receipt schemas, or internal status codes in an ordinary review. Surface them only for an explicitly requested diagnostic or durable audit where they materially explain the result.
+
+Output format:
+
+For read-only review, return the observed source/title, concise summary or evaluation, main claims, evidence quality, and uncertainties. State plainly when the review is partial or blocked.
+
+For durable mode, additionally report the output path, completed/partial/blocked/failed counts, and whether saved artifacts were read back and their hashes verified.
+
+Success criteria:
+
+Read-only review succeeds only when substantive body or necessary media evidence was obtained and the answer is grounded in it. No filesystem or formal-layer write may occur.
+
+Durable mode succeeds only when the user authorized persistence, every written path stays inside the authorized root, artifacts are read back with matching hashes, and each source has a terminal or resumable status. A truthful blocker is a valid outcome, but it is not a successful capture.
+
+Final task: obtain the best authorized body or media evidence for the user's supplied source, answer the requested question, and report route-level blockers without turning them into unsupported claims about the page or the Skill.
