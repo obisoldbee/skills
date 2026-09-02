@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from typing import Any
 
@@ -1399,6 +1400,28 @@ class ValidatorTests(unittest.TestCase):
                 self.skipTest(str(error))
             with self.assertRaisesRegex(ValueError, "symlink is forbidden"):
                 verify_bundled.inventory(tree)
+
+    def test_bundled_link_check_detects_legacy_windows_junction(self) -> None:
+        candidate = Path("junction")
+        observed = mock.Mock(st_mode=0o040000, st_reparse_tag=0xA0000003)
+        with (
+            mock.patch.object(verify_bundled.os, "name", "nt"),
+            mock.patch.object(
+                verify_bundled.os.path, "isjunction", None, create=True
+            ),
+            mock.patch.object(verify_bundled.os, "lstat", return_value=observed),
+        ):
+            self.assertTrue(verify_bundled.link_like(candidate))
+
+    def test_bundled_link_check_fails_closed_when_unreadable(self) -> None:
+        with mock.patch.object(
+            verify_bundled.os.path,
+            "isjunction",
+            side_effect=OSError("unreadable"),
+            create=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "cannot inspect link boundary"):
+                verify_bundled.link_like(Path("unreadable"))
 
     def test_windows_link_targets_drop_nt_namespace_prefixes(self) -> None:
         self.assertEqual(

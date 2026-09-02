@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 
 
 ROOT = Path(__file__).resolve().parent
@@ -49,12 +50,20 @@ def link_like(path: Path) -> bool:
     if path.is_symlink():
         return True
     is_junction = getattr(os.path, "isjunction", None)
-    if is_junction is None:
+    if is_junction is not None:
+        try:
+            return bool(is_junction(path))
+        except OSError as exc:
+            raise ValueError(f"cannot inspect link boundary: {path}") from exc
+    if os.name != "nt":
         return False
     try:
-        return bool(is_junction(path))
-    except OSError:
-        return False
+        observed = os.lstat(path)
+    except OSError as exc:
+        raise ValueError(f"cannot inspect link boundary: {path}") from exc
+    return getattr(observed, "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003
+    )
 
 
 def inventory(root: Path) -> tuple[dict[str, str], int]:
