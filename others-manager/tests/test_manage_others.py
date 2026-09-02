@@ -475,6 +475,7 @@ class OthersManagerTests(unittest.TestCase):
             mock.patch.object(manager, "remote_default_head", return_value="a" * 40),
         ):
             snapshot = manager.github_repository_snapshot("https://github.com/example/fixture")
+            manager.validate_github_snapshot_shape(snapshot)
 
         self.assertEqual("example/fixture", snapshot["identity"])
         self.assertEqual(
@@ -487,8 +488,6 @@ class OthersManagerTests(unittest.TestCase):
             },
             snapshot["license"],
         )
-        manager.validate_github_snapshot_shape(snapshot)
-
     @requires_supported_runtime
     def test_unknown_or_credential_local_config_blocks_before_inspection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
