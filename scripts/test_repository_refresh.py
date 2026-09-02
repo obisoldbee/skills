@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -39,7 +40,7 @@ class RepositoryRefreshTests(unittest.TestCase):
             shutil.copyfile(SOURCE / name, target)
         self.member = self.seed / "example-member" / "SKILL.md"
         self.member.parent.mkdir()
-        self.member.write_text("fixture member, not a root-managed file\n", encoding="utf-8")
+        self.write_lf(self.member, "fixture member, not a root-managed file\n")
         release.rebuild_manifest(self.seed)
         self.git(self.seed, "init", "-q", "-b", "main")
         self.git(self.seed, "config", "user.name", "Fixture")
@@ -62,6 +63,14 @@ class RepositoryRefreshTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout.strip()
+
+    @staticmethod
+    def write_lf(path, text, *, append=False):
+        """Write fixture text exactly as Git stores files governed by eol=lf."""
+        with path.open(
+            "a" if append else "w", encoding="utf-8", newline="\n"
+        ) as handle:
+            handle.write(text)
 
     def publish(self, *, rebuild=True, stage=True):
         if rebuild:
@@ -104,7 +113,7 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before, "failed candidate changed HEAD/index/worktree")
 
     def test_check_only_is_read_only_and_does_not_fetch(self):
-        self.member.write_text("remote change\n", encoding="utf-8")
+        self.write_lf(self.member, "remote change\n")
         self.publish()
         before = self.snapshot()
         result = self.refresh(update=False)
@@ -113,9 +122,10 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_success_updates_root_and_member_to_full_validated_sha(self):
-        self.member.write_text("new member bytes\n", encoding="utf-8")
-        with (self.seed / "README.md").open("a", encoding="utf-8") as handle:
-            handle.write("\nFixture candidate.\n")
+        self.write_lf(self.member, "new member bytes\n")
+        self.write_lf(
+            self.seed / "README.md", "\nFixture candidate.\n", append=True
+        )
         candidate = self.publish()
         with patch.object(release, "git", wraps=release.git) as calls:
             result = self.refresh()
@@ -131,8 +141,11 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_extraction_is_root_only_and_ignores_archive_attributes(self):
-        with (self.seed / ".gitattributes").open("a", encoding="utf-8") as handle:
-            handle.write("\nscripts/link-macos.sh export-ignore\n")
+        self.write_lf(
+            self.seed / ".gitattributes",
+            "\nscripts/link-macos.sh export-ignore\n",
+            append=True,
+        )
         candidate = self.publish()
         self.git(self.checkout, "fetch", "origin")
         destination = self.root / "extracted"
@@ -153,9 +166,15 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.assert_candidate_rejected("root manifest missing")
 
     def test_digest_mismatch_rejected_before_move(self):
-        (self.seed / "README.md").write_text("bad digest\n", encoding="utf-8")
+        self.write_lf(self.seed / "README.md", "bad digest\n")
         self.publish(rebuild=False)
         self.assert_candidate_rejected("digest mismatch")
+
+    def test_crlf_root_file_rejected_before_manifest_rebuild(self):
+        readme = self.seed / "README.md"
+        readme.write_bytes(readme.read_bytes().replace(b"\n", b"\r\n"))
+        with self.assertRaisesRegex(ValueError, "non-LF line ending: README.md"):
+            release.rebuild_manifest(self.seed)
 
     def test_existing_ignored_file_cannot_be_overwritten(self):
         # Use the shipped *.tmp rule, not a synthetic ignore-policy change.
@@ -168,7 +187,7 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.assert_candidate_rejected("untracked landing conflict")
 
     def test_index_only_concurrent_flag_is_preserved(self):
-        self.member.write_text("candidate\n", encoding="utf-8")
+        self.write_lf(self.member, "candidate\n")
         self.publish()
         original_validate = release.validate_candidate
         observed = []
@@ -187,11 +206,25 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.assertEqual(release.index_state(self.checkout), index_states[0])
         self.assertTrue(self.git(self.checkout, "ls-files", "-v", "README.md").startswith("h "))
 
+    def test_index_identity_ignores_platform_specific_ctime(self):
+        stable = dict(st_dev=1, st_ino=2, st_mode=3, st_size=4, st_mtime_ns=5)
+        path_stat = SimpleNamespace(**stable, st_ctime_ns=6)
+        handle_stat = SimpleNamespace(**stable, st_ctime_ns=7)
+        self.assertEqual(
+            release._index_identity(path_stat),
+            release._index_identity(handle_stat),
+        )
+        changed = SimpleNamespace(**(stable | {"st_size": 8}), st_ctime_ns=6)
+        self.assertNotEqual(
+            release._index_identity(path_stat),
+            release._index_identity(changed),
+        )
+
     def test_ignored_file_parent_is_preserved(self):
         name = "file-parent.tmp"
         (self.seed / name).mkdir()
-        (self.seed / name / "tracked").write_text("candidate", encoding="utf-8")
-        (self.checkout / name).write_text("user", encoding="utf-8")
+        self.write_lf(self.seed / name / "tracked", "candidate")
+        self.write_lf(self.checkout / name, "user")
         self.git(self.seed, "add", "-f", name)
         self.publish()
         self.assert_candidate_rejected("untracked landing conflict")
@@ -200,7 +233,7 @@ class RepositoryRefreshTests(unittest.TestCase):
     def test_ignored_symlink_parent_is_preserved(self):
         name = "symlink-parent.tmp"
         (self.seed / name).mkdir()
-        (self.seed / name / "tracked").write_text("candidate", encoding="utf-8")
+        self.write_lf(self.seed / name / "tracked", "candidate")
         (self.checkout / name).symlink_to(self.root, target_is_directory=True)
         self.git(self.seed, "add", "-f", name)
         self.publish()
@@ -210,14 +243,14 @@ class RepositoryRefreshTests(unittest.TestCase):
         name = "directory-extra.tmp"
         tracked = self.seed / name / "tracked"
         tracked.parent.mkdir()
-        tracked.write_text("old tracked bytes", encoding="utf-8")
+        self.write_lf(tracked, "old tracked bytes")
         self.git(self.seed, "add", "-f", name)
         self.publish()
         self.refresh()
         tracked.unlink()
         tracked.parent.rmdir()
-        (self.seed / name).write_text("new file", encoding="utf-8")
-        (self.checkout / name / "extra.tmp").write_text("user", encoding="utf-8")
+        self.write_lf(self.seed / name, "new file")
+        self.write_lf(self.checkout / name / "extra.tmp", "user")
         self.git(self.seed, "add", "-f", name)
         self.publish()
         self.assert_candidate_rejected("untracked landing conflict")
@@ -225,7 +258,7 @@ class RepositoryRefreshTests(unittest.TestCase):
     def test_noncolliding_ignored_file_survives_success(self):
         keep = self.checkout / "user-draft.tmp"
         keep.write_bytes(b"untouched\n")
-        self.member.write_text("candidate\n", encoding="utf-8")
+        self.write_lf(self.member, "candidate\n")
         candidate = self.publish()
         self.assertEqual(self.refresh()["after"], candidate)
         self.assertEqual(keep.read_bytes(), b"untouched\n")
@@ -254,7 +287,7 @@ class RepositoryRefreshTests(unittest.TestCase):
         path = self.seed / "scripts/link-macos.sh"
         path.unlink()
         path.mkdir()
-        (path / "nested").write_text("wrong type", encoding="utf-8")
+        self.write_lf(path / "nested", "wrong type")
         self.publish(rebuild=False)
         self.assert_candidate_rejected("required root file missing or wrong type")
 
@@ -278,16 +311,36 @@ class RepositoryRefreshTests(unittest.TestCase):
 
     def test_windows_ambiguous_path_rejected_on_every_platform(self):
         oid = self.git(self.seed, "hash-object", "-w", "--stdin", input="ambiguous")
-        self.git(self.seed, "update-index", "--add", "--cacheinfo", f"100644,{oid},scripts/NUL.txt")
+        before_index = self.git(self.seed, "ls-files", "--stage", "-z")
+        injected = subprocess.run(
+            [
+                "git", "--no-optional-locks", "-C", str(self.seed),
+                "update-index", "--add", "--cacheinfo",
+                f"100644,{oid},scripts/NUL.txt",
+            ],
+            capture_output=True, text=True, check=False,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+        if injected.returncode:
+            # Git for Windows rejects the unsafe path before our validator can
+            # receive it.  That is the same safety outcome, while Unix runners
+            # still exercise our platform-independent rejection below.
+            self.assertEqual(os.name, "nt", injected.stderr)
+            self.assertIn("invalid path", injected.stderr.lower())
+            self.assertEqual(
+                self.git(self.seed, "ls-files", "--stage", "-z"),
+                before_index,
+            )
+            return
         self.publish(rebuild=False, stage=False)
         self.assert_candidate_rejected("unsafe or duplicate candidate path")
 
     def fake_verifier(self):
-        (self.seed / "scripts/verify_release.py").write_text(
+        self.write_lf(
+            self.seed / "scripts/verify_release.py",
             "import os\nfrom pathlib import Path\n"
             "Path(os.environ['CANDIDATE_EXECUTION_MARKER']).write_text('executed')\n"
             "print('{\"status\": \"verified\", \"scope\": \"repository-root-only\"}')\n",
-            encoding="utf-8",
         )
         self.execution_marker = self.root / "must-not-exist"
         os.environ["CANDIDATE_EXECUTION_MARKER"] = str(self.execution_marker)
@@ -301,7 +354,7 @@ class RepositoryRefreshTests(unittest.TestCase):
     def test_self_reported_verified_cannot_hide_digest_mismatch(self):
         self.fake_verifier()
         release.rebuild_manifest(self.seed)  # The fake verifier's own hash is valid.
-        (self.seed / "README.md").write_text("incorrect managed bytes\n", encoding="utf-8")
+        self.write_lf(self.seed / "README.md", "incorrect managed bytes\n")
         self.publish(rebuild=False)
         self.assert_candidate_rejected("digest mismatch: README.md")
         self.assertFalse(self.execution_marker.exists())
@@ -309,13 +362,13 @@ class RepositoryRefreshTests(unittest.TestCase):
     def test_self_reported_verified_cannot_hide_extra_managed_file(self):
         self.fake_verifier()
         release.rebuild_manifest(self.seed)
-        (self.seed / "scripts/extra.txt").write_text("unlisted bytes\n", encoding="utf-8")
+        self.write_lf(self.seed / "scripts/extra.txt", "unlisted bytes\n")
         self.publish(rebuild=False)
         self.assert_candidate_rejected("root-managed file set differs")
         self.assertFalse(self.execution_marker.exists())
 
     def test_concurrent_changes_are_not_overwritten(self):
-        self.member.write_text("candidate\n", encoding="utf-8")
+        self.write_lf(self.member, "candidate\n")
         candidate = self.publish()
         original_validate = release.validate_candidate
         changes = ("head", "branch", "upstream", "remote", "rewrite", "tracked", "untracked", "staged", "marker", "candidate", "skip-worktree", "index-replaced")
@@ -343,11 +396,11 @@ class RepositoryRefreshTests(unittest.TestCase):
                     elif change == "rewrite":
                         self.git(root, "config", f"url.{self.seed}.insteadOf", str(self.origin))
                     elif change in {"tracked", "staged"}:
-                        (root / "README.md").write_text("concurrent user bytes\n", encoding="utf-8")
+                        self.write_lf(root / "README.md", "concurrent user bytes\n")
                         if change == "staged":
                             self.git(root, "add", "README.md")
                     elif change == "untracked":
-                        (root / "user-file").write_text("keep", encoding="utf-8")
+                        self.write_lf(root / "user-file", "keep")
                     elif change == "marker":
                         (root / ".git/index.lock").touch()
                     elif change == "candidate":
@@ -372,9 +425,9 @@ class RepositoryRefreshTests(unittest.TestCase):
         self.checkout = original_checkout
 
     def test_dirty_checkout_stops_before_fetch(self):
-        self.member.write_text("candidate\n", encoding="utf-8")
+        self.write_lf(self.member, "candidate\n")
         self.publish()
-        (self.checkout / "keep").write_text("user", encoding="utf-8")
+        self.write_lf(self.checkout / "keep", "user")
         before = self.snapshot()
         with self.assertRaisesRegex(ValueError, "dirty"):
             self.refresh()

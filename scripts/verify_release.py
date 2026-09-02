@@ -148,6 +148,8 @@ def root_managed_files(root: Path) -> dict[str, Path]:
 def validate_portability(files: dict[str, Path]) -> None:
     for relative, path in files.items():
         data = path.read_bytes()
+        if b"\r" in data:
+            raise ValueError(f"portability violation non-LF line ending: {relative}")
         for marker, label in FORBIDDEN_MARKERS.items():
             if marker in data:
                 raise ValueError(f"portability violation {label}: {relative}")
@@ -329,15 +331,22 @@ def operation_markers(root: Path) -> list[str]:
     return found
 
 
+def _index_identity(observed) -> tuple[int, int, int, int, int]:
+    """Return index metadata whose meaning agrees across path and handle stats."""
+    return (
+        observed.st_dev,
+        observed.st_ino,
+        observed.st_mode,
+        observed.st_size,
+        observed.st_mtime_ns,
+    )
+
+
 def index_state(root: Path) -> dict[str, object]:
     """Freeze the real index, including flags that porcelain status omits."""
     path = Path(git(root, "rev-parse", "--git-path", "index"))
     if not path.is_absolute():
         path = root / path
-
-    def identity(observed):
-        return (observed.st_dev, observed.st_ino, observed.st_mode,
-                observed.st_size, observed.st_mtime_ns, observed.st_ctime_ns)
 
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode) or is_link_or_junction(path):
@@ -348,9 +357,19 @@ def index_state(root: Path) -> dict[str, object]:
         after = os.fstat(handle.fileno())
     # Logical entries also cover shared-index entries in split-index checkouts.
     entries = git(root, "ls-files", "-v", "--stage", "-z")
-    if not identity(before) == identity(opened) == identity(after) == identity(path.lstat()):
+    # Windows can expose different creation/change-time semantics for path
+    # stat() and fstat() on the same open file.  ctime is not
+    # part of Git's index contents, so freeze the stable file identity and
+    # metadata here; the byte digest and logical-entry digest below bind the
+    # actual index state.
+    if not (
+        _index_identity(before)
+        == _index_identity(opened)
+        == _index_identity(after)
+        == _index_identity(path.lstat())
+    ):
         raise ValueError("checkout index changed while reading state")
-    return {"path": str(path), "identity": identity(after), "sha256": digest,
+    return {"path": str(path), "identity": _index_identity(after), "sha256": digest,
             "entries_sha256": hashlib.sha256(entries.encode("utf-8")).hexdigest()}
 
 
