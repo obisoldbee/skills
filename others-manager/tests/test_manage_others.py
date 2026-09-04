@@ -148,6 +148,58 @@ class OthersManagerTests(unittest.TestCase):
         self.assertEqual("1", environment["GIT_CONFIG_NOSYSTEM"])
         self.assertEqual("/usr/bin:/bin", environment["PATH"])
 
+    def test_git_proxy_accepts_one_credential_free_loopback_value(self) -> None:
+        proxy = "http://127.0.0.1:7897"
+        with mock.patch.dict(
+            os.environ,
+            {key: proxy for key in manager.PROXY_ENV_KEYS},
+            clear=True,
+        ):
+            self.assertEqual(proxy, manager.validated_loopback_proxy())
+
+    def test_git_proxy_rejects_unsafe_or_conflicting_values(self) -> None:
+        for proxy in (
+            "http://user:secret@127.0.0.1:7897",
+            "http://proxy.example:7897",
+            "https://127.0.0.1:7897",
+            "http://127.0.0.1",
+            "http://127.0.0.1:0",
+            "http://127.0.0.1:7897/path",
+            "http://127.0.0.1:7897?token=secret",
+        ):
+            with self.subTest(proxy=proxy), mock.patch.dict(
+                os.environ, {"HTTPS_PROXY": proxy}, clear=True
+            ), self.assertRaises(manager.ManagerError):
+                manager.validated_loopback_proxy()
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HTTPS_PROXY": "http://127.0.0.1:7897",
+                "HTTP_PROXY": "http://127.0.0.1:7898",
+            },
+            clear=True,
+        ), self.assertRaisesRegex(manager.ManagerError, "conflicting"):
+            manager.validated_loopback_proxy()
+
+    @requires_supported_runtime
+    def test_network_git_uses_validated_proxy_without_copying_proxy_environment(self) -> None:
+        completed = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with (
+            mock.patch.dict(
+                os.environ,
+                {"HTTPS_PROXY": "http://localhost:7897"},
+                clear=True,
+            ),
+            mock.patch.object(manager.subprocess, "run", return_value=completed) as run,
+        ):
+            manager.run_git(["ls-remote", "https://github.com/example/fixture.git"])
+
+        command = run.call_args.args[0]
+        environment = run.call_args.kwargs["env"]
+        self.assertIn("http.proxy=http://localhost:7897", command)
+        self.assertNotIn("HTTPS_PROXY", environment)
+
     @requires_supported_runtime
     def test_git_https_client_certificate_paths_remain_unset(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -501,6 +553,47 @@ class OthersManagerTests(unittest.TestCase):
             state = manager.inspect_repository(repo)
             self.assertIn("unsupported_or_unsafe_local_git_config", state["blockers"])
             self.assertIsNone(state["head"])
+
+    @requires_supported_runtime
+    def test_clone_uniqueness_reads_origin_from_blocked_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            pool = Path(temporary).resolve()
+            repo = pool / "partial-clone"
+            repo.mkdir()
+            self.run_git(repo, "init")
+            self.run_git(
+                repo,
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/example/partial-clone.git",
+            )
+            self.run_git(repo, "config", "core.repositoryFormatVersion", "1")
+            self.run_git(repo, "config", "remote.origin.promisor", "true")
+            self.run_git(repo, "config", "remote.origin.partialCloneFilter", "blob:none")
+
+            state = manager.inspect_repository(repo)
+            self.assertIn("unsupported_or_unsafe_local_git_config", state["blockers"])
+            self.assertIsNone(state["identity"])
+
+            identities = manager.existing_identity_map(pool)
+            self.assertEqual(["partial-clone"], identities["example/partial-clone"])
+
+    @requires_supported_runtime
+    def test_clone_uniqueness_still_rejects_unknown_blocked_origin(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            pool = Path(temporary).resolve()
+            repo = pool / "unknown-origin"
+            repo.mkdir()
+            self.run_git(repo, "init")
+            self.run_git(repo, "remote", "add", "origin", "file:///private/tmp/not-github")
+            self.run_git(repo, "config", "core.alternateRefsCommand", "unsafe-command")
+
+            with self.assertRaisesRegex(
+                manager.ManagerError,
+                "cannot prove origin uniqueness for: unknown-origin",
+            ):
+                manager.existing_identity_map(pool)
 
     @requires_supported_runtime
     def test_no_tags_clone_policy_is_the_only_allowed_tag_override(self) -> None:

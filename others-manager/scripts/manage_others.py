@@ -62,6 +62,15 @@ SAFE_CORE_CONFIG: dict[str, set[str]] = {
 SAFE_ARBITRARY_CONFIG = {"user.name", "user.email"}
 BRANCH_CONFIG = re.compile(r"^branch\.([A-Za-z0-9][A-Za-z0-9._/-]*)\.(remote|merge)$", re.IGNORECASE)
 TRUSTED_GIT = Path("/usr/bin/git")
+PROXY_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+)
+LOOPBACK_PROXY_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
 class ManagerError(RuntimeError):
@@ -596,6 +605,40 @@ def git_environment() -> dict[str, str]:
     }
 
 
+def validated_loopback_proxy() -> str | None:
+    """Return one credential-free local HTTP proxy or fail closed."""
+    proxies: list[str] = []
+    for key in PROXY_ENV_KEYS:
+        value = os.environ.get(key)
+        if not value:
+            continue
+        try:
+            parsed = urllib.parse.urlsplit(value)
+            port = parsed.port
+        except ValueError as exc:
+            raise ManagerError("Git proxy environment is malformed") from exc
+        host = (parsed.hostname or "").casefold()
+        if (
+            parsed.scheme.casefold() != "http"
+            or host not in LOOPBACK_PROXY_HOSTS
+            or port is None
+            or not 1 <= port <= 65535
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ManagerError("Git proxy environment is outside the safe loopback boundary")
+        rendered_host = f"[{host}]" if ":" in host else host
+        proxies.append(f"http://{rendered_host}:{port}")
+    if not proxies:
+        return None
+    if len(set(proxies)) != 1:
+        raise ManagerError("Git proxy environment contains conflicting values")
+    return proxies[0]
+
+
 def trusted_git() -> str:
     try:
         metadata = TRUSTED_GIT.lstat()
@@ -617,6 +660,7 @@ def run_git(
 ) -> subprocess.CompletedProcess[str]:
     require_supported_runtime()
     environment = git_environment()
+    proxy = validated_loopback_proxy() if args and args[0] in {"clone", "fetch", "ls-remote"} else None
     if cwd is None:
         # Remote probes and clones must not inherit the caller's repository config.
         cwd = Path(environment["HOME"]).resolve(strict=True)
@@ -642,7 +686,7 @@ def run_git(
         "-c",
         "http.cookieFile=",
         "-c",
-        "http.proxy=",
+        f"http.proxy={proxy or ''}",
         "-c",
         # Leave client cert/key paths unset; empty values are not a disable switch.
         "http.sslVerify=true",
@@ -1499,6 +1543,31 @@ def github_repository_snapshot(url: str) -> dict[str, Any]:
     }
 
 
+def origin_identity_for_uniqueness(repo: Path) -> str | None:
+    """Read only the local origin URL without admitting the repository for Git writes."""
+    result = run_git(
+        [
+            "config",
+            "--local",
+            "--no-includes",
+            "--null",
+            "--get-all",
+            "remote.origin.url",
+        ],
+        cwd=repo,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    values = [value for value in result.stdout.split("\0") if value]
+    if len(values) != 1:
+        return None
+    try:
+        return normalize_github_url(values[0])["identity"]
+    except ManagerError:
+        return None
+
+
 def existing_identity_map(pool: Path) -> dict[str, list[str]]:
     paths, _ = discover_repositories(pool)
     identities: dict[str, list[str]] = {}
@@ -1506,6 +1575,8 @@ def existing_identity_map(pool: Path) -> dict[str, list[str]]:
     for path in paths:
         state = inspect_repository(path)
         identity = state.get("identity")
+        if not isinstance(identity, str):
+            identity = origin_identity_for_uniqueness(path)
         if isinstance(identity, str):
             identities.setdefault(identity.casefold(), []).append(path.name)
         else:

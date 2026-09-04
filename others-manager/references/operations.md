@@ -10,6 +10,12 @@ Resolve the host's exact real temporary root once before using the examples belo
 SYSTEM_TEMP_ROOT="$(python3 -c 'import tempfile; from pathlib import Path; print(Path(tempfile.gettempdir()).resolve(strict=True))')"
 ```
 
+### Local proxy boundary
+
+For `ls-remote`, `clone`, and `fetch`, the controller may use one consistent proxy value from the standard `HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` environment variables and their lowercase forms. The value must use `http://`, resolve syntactically to `localhost`, `127.0.0.1`, or `::1`, include an explicit port, and contain no credentials, path, query, or fragment. Any malformed, remote, credential-bearing, or conflicting value stops the network Git operation.
+
+The validated value is passed as an explicit `http.proxy` Git configuration entry. Proxy environment variables themselves are not copied into the minimal Git subprocess environment. Non-network inventory and local validation do not consume the proxy setting. This allows a user-controlled local network proxy without admitting arbitrary environment-driven Git configuration or credentials.
+
 ## Ownership model
 
 The pool is a non-Git directory. Every real first-level repository child owns its own `.git`, upstream, branch, worktree, and license. Pool governance and public Skill publication are controller responsibilities, not worker responsibilities.
