@@ -89,6 +89,10 @@ Shared collection invariants:
 
 Validation:
 
+The commands below are a scope-indexed catalog, not a sequence to run for every change. For root-owned changes, rebuild and verify the root manifest; run refresh/consumer regressions when their behavior or boundary changes. For a named package, run its validator and checks relevant to the changed contract or behavior. Read-only inspection and wording-only edits do not require unrelated package suites. Preserve any specifically required acceptance gate; explain an unavailable or failing check instead of substituting a broader suite.
+
+Within the authorized write set, complete the edit, inspect the result, fix failures caused by that edit, and rerun affected checks without asking for approval at each step. Stop when the requested deliverable and its applicable gates are satisfied, or report the exact unresolved blocker. This does not authorize dependency installation, live provider/model runs, consumer changes, commit, push, or publication.
+
 ```text
 python3 -B scripts/verify_release.py <checkout-root>
 python3 -B scripts/test_repository_refresh.py

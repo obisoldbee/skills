@@ -12,6 +12,10 @@ AGENTS.md is an **index**, not a reference manual. It follows three principles:
 
 ## Template
 
+The managed access block below is for an explicitly initialized or adopted Project Root. Do not paste it into an unrelated legacy project merely because its helper is absent. Missing or failed access infrastructure blocks writes only when the project's current rules require it; actual concurrent-write conflicts remain independent blockers.
+
+Template maintenance affects future initialization. It does not authorize regenerating existing projects, replacing their managed blocks, or changing stored contract hashes. An existing adopted project keeps its current access contract until a separately scoped maintenance operation safely updates and validates it.
+
 ```markdown
 # AGENTS.md
 
@@ -25,10 +29,10 @@ AGENTS.md is an **index**, not a reference manual. It follows three principles:
 
 <!-- project-conventions:access:start -->
 - Before substantive work, run `python3 -B .project-conventions/project_access.py status`.
-- Response-only inspection enters `read-only`; any possible side effect enters `writer`. Do not write until the JSON receipt says `status: entered`.
-- Save the returned `session_id` and `token`, re-read current state, run `check` before write batches, and `finish` only after project records are complete.
-- A blocked Agent writes nothing. Never auto-clear another claim; recovery needs explicit user authorization, a reason, dry-run, then `--apply`.
-- A clean linked Git worktree may use `isolated-writer` with exact non-overlapping `--write-path` values, but canonical records still require the exclusive writer.
+- Response-only inspection enters `read-only` and may coexist with every writer. Reports and bounded edits use `scoped-writer --write-file <file>` or `--write-dir <dedicated-subtree>`; different files in one folder may coexist. Do not write until the JSON receipt says `status: entered`.
+- Save the returned `session_id` and `token`, re-read current state, run `check` before write batches, and `finish` after required in-scope work and records. Response-only tasks create no project records; admission metadata still follows this adopted protocol.
+- A blocked Agent writes nothing under the denied claim; permitted reading and fresh nonconflicting claims can continue. Never auto-clear another claim; recovery needs explicit user authorization, a reason, dry-run, then `--apply`.
+- Prefer a task-specific branch and clean linked Git worktree for code. `isolated-writer` allows the same logical paths in different worktrees; one physical worktree has one writer. Claim canonical record files briefly in their owning Project Root after releasing the worktree claim. Use the exclusive writer for unbounded/shared maintenance or integration.
 <!-- project-conventions:access:end -->
 
 ## Directory Index
@@ -58,11 +62,12 @@ AGENTS.md is an **index**, not a reference manual. It follows three principles:
 
 ## Quick Reminders
 
-- Missing or failed local access helper? Remain read-only; do not guess that no other Agent is active
+- Missing or failed helper required by this managed block? Remain read-only; do not guess that no other Agent is active
 - Explicit repository/Skill update? Use update-only: fast-forward and validate the requested project or named package, then stop without restructuring, records, or link work
-- Significant decision or direction change? Only the active exclusive writer scans and creates the next `conversation/NN-topic.md`
+- Significant decision or direction change? Briefly claim `conversation/` while scanning and creating the next `conversation/NN-topic.md`
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Done working? The active exclusive writer updates canonical conversation, memory, and indexes before releasing its claim
+- Claim exact record files for the short write batch to record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records
+- Read the rules and materials needed for the selected task; reuse current readings, preserve required quality gates, and run checks for the changed behavior. Complete authorized corrections without per-step approval
 - Harness-owned memory does not replace project `conversation/` or `memory/`; never write into the harness's system memory directory
 - Concurrent work does not add fixed role directories or a permanent `work/lanes/` tree; the project-local access receipt, not a role or separate chat, controls admission
 - Document/submission projects only: treat canonical certificates and reports as read-only; copy before modifying
@@ -78,7 +83,7 @@ For an Agent Skill Code Project, the generated managed block must additionally i
 
 The package entry is `src/<skill-name>/SKILL.md`; do not shorten it to `src/SKILL.md` or move it under `docs/` merely because it is Markdown.
 
-The project-root `conversation/` and `memory/` directories are required for Code, Document, and Hybrid projects. Direct writes require a valid exclusive project-local writer claim. Separate Agent tasks or Harness conversations do not create isolated filesystems, and another Skill is not required to discover active claims.
+The project-root `conversation/` and `memory/` directories are required for Code, Document, and Hybrid projects. Direct writes require a valid project-local claim covering the exact record file; directory claims reserve the full subtree. Separate Agent tasks or Harness conversations do not create isolated filesystems, and another Skill is not required to discover active claims.
 
 The Source Mapping is required for every Git-backed Project Root. Keep one mapping per Project Root. If the source is a subdirectory of a larger GitHub repository, record the repository's clone URL and put the subtree in `Managed scope`; never use a `/tree/...` page as the clone URL.
 
@@ -127,8 +132,8 @@ When working in this workspace, follow its initialized project-local access entr
 - Run `.project-conventions/project_access.py status`, then obtain the appropriate claim before substantive work
 - Centralize all documents under `docs/` (specs/plans/reviews/research)
 - Review files: `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md` under `docs/reviews/`
-- Conversation files: `NN-kebab-topic.md` under `conversation/`; only the exclusive writer allocates the next number
-- Project memory: only the exclusive writer updates `memory/YYYY-MM-DD.md` and `memory/MEMORY.md`
+- Conversation files: `NN-kebab-topic.md` under `conversation/`; briefly claim `conversation/` to allocate the next number
+- Project memory: claim only the files being updated, reread them, save the merged change, then release
 
 ## Directory Index
 
@@ -150,10 +155,10 @@ When working in this workspace, follow its initialized project-local access entr
 
 - Before work, run project-local `status` and `enter`; without an entered receipt, do not write
 - Explicit repository/Skill update? Fast-forward and validate only; do not turn it into a directory migration
-- Significant decision or direction change? The exclusive writer scans and creates the next `conversation/NN-topic.md`
+- Significant decision or direction change? Briefly claim `conversation/` while scanning and creating the next `conversation/NN-topic.md`
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Done working? Update project memory and conversation before finishing the exclusive writer claim
-- Concurrent work? Readers may coexist; shared writers are exclusive; isolated Git writers need distinct worktrees and disjoint paths
+- Record significant decisions and substantive work under short scoped claims for the exact record files; update indexes only when their represented facts change. Response-only work needs no project record
+- Concurrent work? readers coexist with writers; scoped files may share a folder; isolated Git writers need distinct worktrees and reconcile logical overlap at integration
 - Harness-owned memory is reserved for the tool and never substitutes for project `conversation/` or `memory/`
 - Code goes in `src/`, artifacts in `release/`, never in `docs/`
 - Source namespace is `ScreenTimeoutToggle` (legacy, not renamed to `OBDim` — intentional)
@@ -214,4 +219,4 @@ The brainstorming process involved 8 decision points... [20 more lines]
 
 - **When to update AGENTS.md**: directory structure changes, new top-level files/dirs added, key conventions change.
 - **When NOT to update**: individual file content changes (update the file itself, not the index), daily work logs (go to `memory/`), conversation records (go to `conversation/`).
-- **Keep it under ~60 lines**. If it grows beyond that, you're probably inlining details that belong elsewhere.
+- **Review length for duplication, not as a quota.** Around 60 lines can prompt a review of inlined detail, but retain project facts, domain knowledge, quality standards, and necessary authority/safety boundaries. Route substantial conditional detail to its source; length alone does not justify deletion.

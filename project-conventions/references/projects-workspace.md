@@ -252,7 +252,7 @@ Keep the workspace entry short:
 4. Keep research, plans, specs, decisions, conversation, memory, and source inside the relevant Project Root.
 5. Inspect before and after changing paths, categories, remotes, or Skill links.
 6. Report missing directories, duplicates, and dangling links before acting.
-7. Do not move, delete, clone, pull, push, or create links without explicit approval.
+7. Moves, deletion, cloning, pulling, pushing, and link creation require authorization for the affected scope. A current or earlier explicit request can provide it; ask again only if the scope, conflict handling, or required authority changes.
 
 ## Entry Points
 
@@ -271,7 +271,7 @@ Before apply:
 2. Confirm the target parent exists.
 3. Detect existing files, directories, links, and dangling links.
 4. Produce a dry run.
-5. Require explicit user approval.
+5. Apply within existing exact authorization when the plan is conflict-free. Ask only if authorization is missing or the scope, conflict handling, or required authority changes.
 
 Do not create an agent configuration directory merely because a default path is listed. Validate Windows symlink/junction behavior on Windows before claiming support.
 

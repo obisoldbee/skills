@@ -15,11 +15,13 @@ import stat
 import subprocess
 import sys
 import unicodedata
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
+CONFIG_SCHEMA_VERSION = 1
 SESSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 CONTROL_DIRECTORY = ".project-conventions"
@@ -194,7 +196,7 @@ def resolve_control(script_path: Path) -> tuple[Path, Path, dict[str, object]]:
         config = json.loads(config_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeError) as exc:
         raise AccessError(f"invalid project configuration: {exc}") from exc
-    if config.get("schema_version") != PROTOCOL_VERSION:
+    if config.get("schema_version") != CONFIG_SCHEMA_VERSION:
         raise AccessError("unsupported project coordination schema")
     if set(config) != CONFIG_KEYS:
         raise AccessError("project configuration field set is invalid")
@@ -423,7 +425,7 @@ def connect(database: Path) -> sqlite3.Connection:
             """
             CREATE TABLE IF NOT EXISTS claims (
                 session_id TEXT PRIMARY KEY,
-                mode TEXT NOT NULL CHECK (mode IN ('read-only', 'writer', 'isolated-writer')),
+                mode TEXT NOT NULL CHECK (mode IN ('read-only', 'writer', 'isolated-writer', 'scoped-writer')),
                 token_hash TEXT NOT NULL,
                 actor TEXT NOT NULL,
                 workspace TEXT NOT NULL,
@@ -462,7 +464,23 @@ def connect(database: Path) -> sqlite3.Connection:
         observed = connection.execute(
             "SELECT value FROM meta WHERE key = 'protocol_version'"
         ).fetchone()
-        if observed is None or observed[0] != str(PROTOCOL_VERSION):
+        if observed is not None and observed[0] == "1":
+            # Preserve active sessions, token hashes, recovery plans and history.
+            # Old helpers reject version 2 instead of applying the old conflict rules.
+            connection.execute("ALTER TABLE claims RENAME TO claims_v1")
+            connection.execute("""
+                CREATE TABLE claims (
+                    session_id TEXT PRIMARY KEY,
+                    mode TEXT NOT NULL CHECK (mode IN ('read-only', 'writer', 'isolated-writer', 'scoped-writer')),
+                    token_hash TEXT NOT NULL, actor TEXT NOT NULL,
+                    workspace TEXT NOT NULL, acquired_at TEXT NOT NULL,
+                    write_paths_json TEXT NOT NULL, evidence_json TEXT NOT NULL
+                )
+            """)
+            connection.execute("INSERT INTO claims SELECT * FROM claims_v1")
+            connection.execute("DROP TABLE claims_v1")
+            connection.execute("UPDATE meta SET value = ? WHERE key = 'protocol_version'", (str(PROTOCOL_VERSION),))
+        elif observed is None or observed[0] != str(PROTOCOL_VERSION):
             raise AccessError("runtime database uses an unsupported protocol version")
         connection.execute("COMMIT")
     except Exception:
@@ -507,11 +525,18 @@ def public_claims(connection: sqlite3.Connection) -> list[dict[str, object]]:
             "actor": row[2],
             "workspace": row[3],
             "acquired_at": row[4],
-            "write_paths": json.loads(row[5]),
+            **claim_paths(row[1], row[5]),
             "evidence": json.loads(row[6]),
         }
         for row in rows
     ]
+
+
+def claim_paths(mode: str, encoded: str) -> dict[str, object]:
+    values = json.loads(encoded)
+    if mode == "scoped-writer":
+        return {"write_paths": [scope["path"] for scope in values], "write_scopes": values}
+    return {"write_paths": values, "write_scopes": []}
 
 
 def validate_session(value: str | None) -> str:
@@ -530,7 +555,7 @@ def normalize_write_paths(values: list[str]) -> list[str]:
     normalized: list[str] = []
     for value in values:
         if not value or value != value.strip() or "\\" in value:
-            raise AccessError("write paths must be normalized workspace-relative Git paths")
+            raise AccessError("write paths must be normalized workspace-relative paths")
         value = unicodedata.normalize("NFC", value)
         path = PurePosixPath(value)
         candidate = path.as_posix()
@@ -541,7 +566,7 @@ def normalize_write_paths(values: list[str]) -> list[str]:
             or candidate != value
             or any(part in {"", ".", ".."} for part in path.parts)
         ):
-            raise AccessError("write paths must be normalized workspace-relative Git paths")
+            raise AccessError("write paths must be normalized workspace-relative paths")
         for part in path.parts:
             stem = part.split(".", 1)[0].upper()
             if (
@@ -565,7 +590,10 @@ def path_overlap(left: str, right: str) -> bool:
 
 
 def reaches_reserved(path: str) -> bool:
-    return any(path_overlap(path, reserved) for reserved in RESERVED_SHARED_PATHS)
+    return any(path_overlap(path, reserved) for reserved in RESERVED_SHARED_PATHS) or any(
+        part.casefold() in {entry.casefold() for entry in RESERVED_OPTIONAL_PATH_PARTS}
+        for part in PurePosixPath(path).parts
+    )
 
 
 def reject_linked_write_paths(workspace: Path, write_paths: list[str]) -> None:
@@ -582,21 +610,61 @@ def reject_linked_write_paths(workspace: Path, write_paths: list[str]) -> None:
                 break
 
 
+def validate_write_scopes(workspace: Path, scopes: list[dict[str, str]]) -> None:
+    """Validate explicit file/subtree declarations; never infer a parent claim."""
+    reject_linked_write_paths(workspace, [scope["path"] for scope in scopes])
+    reserved = {entry.casefold() for entry in RESERVED_OPTIONAL_PATH_PARTS}
+    for scope in scopes:
+        relative = scope["path"]
+        if any(part.casefold() in reserved for part in PurePosixPath(relative).parts):
+            raise AccessError("scoped writers cannot claim Git, protocol or Harness metadata")
+        target = workspace / relative
+        if target.exists():
+            if scope["kind"] == "file" and not target.is_file():
+                raise AccessError(f"--write-file target is not a regular file: {relative}")
+            if scope["kind"] == "directory" and not target.is_dir():
+                raise AccessError(f"--write-dir target is not a directory: {relative}")
+            if target.is_file() and target.stat().st_nlink > 1:
+                raise AccessError(f"write target has hard-link aliases: {relative}")
+
+
+def physical_claim_paths(claim: dict[str, object]) -> list[str]:
+    workspace = Path(str(claim["workspace"]))
+    if claim["mode"] == "isolated-writer":
+        # One writer per physical worktree: its index/build outputs are shared.
+        return [workspace.as_posix()]
+    return [(workspace / path).as_posix() for path in claim["write_paths"]]
+
+
+def claims_conflict(requested: dict[str, object], existing: dict[str, object]) -> bool:
+    if "read-only" in {requested["mode"], existing["mode"]}:
+        return False
+    if "writer" in {requested["mode"], existing["mode"]}:
+        return True
+    return any(
+        path_overlap(left, right)
+        for left in physical_claim_paths(requested)
+        for right in physical_claim_paths(existing)
+    )
+
+
 def status(project_root: Path, database: Path, storage: str) -> dict[str, object]:
     if not database.exists():
         claims: list[dict[str, object]] = []
     else:
-        with connect(database) as connection:
+        with closing(connect(database)) as connection:
             claims = public_claims(connection)
     modes = [claim["mode"] for claim in claims]
     return {
-        "status": "available" if "writer" not in modes else "writer_active",
+        "status": "ready",
         "protocol_version": PROTOCOL_VERSION,
         "project_root": str(project_root),
         "runtime_storage": storage,
         "claims": claims,
-        "read_only_allowed": "writer" not in modes,
-        "writer_allowed": not claims,
+        "read_only_allowed": True,
+        "writer_allowed": not any(mode != "read-only" for mode in modes),
+        "scoped_writer_allowed": "requires_nonconflicting_paths",
+        "next_action": "select the actual task mode and enter; active claims alone do not deny reading",
     }
 
 
@@ -609,12 +677,28 @@ def enter(
     actor: str,
     write_paths: list[str],
     workspace: Path | None,
+    write_files: list[str] | None = None,
+    write_dirs: list[str] | None = None,
 ) -> dict[str, object]:
     session_id = validate_session(session_id)
     actor = actor.strip()
     if not actor or len(actor) > 160:
         raise AccessError("actor must be a non-empty label of at most 160 characters")
     write_paths = normalize_write_paths(write_paths)
+    scopes = [
+        {"kind": kind, "path": path}
+        for kind, values in (("file", write_files or []), ("directory", write_dirs or []))
+        for path in normalize_write_paths(values)
+    ]
+    if mode == "scoped-writer":
+        if not scopes or write_paths:
+            raise AccessError("scoped-writer requires --write-file and/or --write-dir; not --write-path")
+        for index, scope in enumerate(scopes):
+            if any(path_overlap(scope["path"], other["path"]) for other in scopes[:index]):
+                raise AccessError("write scopes must not duplicate or contain one another")
+        validate_write_scopes(project_root, scopes)
+    elif scopes:
+        raise AccessError("--write-file and --write-dir are valid only with scoped-writer")
     if mode == "isolated-writer":
         if not write_paths:
             raise AccessError("isolated-writer requires at least one --write-path")
@@ -635,6 +719,8 @@ def enter(
         if workspace is not None:
             raise AccessError("--workspace is valid only with isolated-writer")
         actual_workspace = project_root
+    if mode == "scoped-writer":
+        write_paths = [scope["path"] for scope in scopes]
     token = secrets.token_hex(24)
     evidence = git_evidence(actual_workspace)
     if mode == "writer" and evidence.get("linked_worktree"):
@@ -669,30 +755,11 @@ def enter(
                 f"session already has an active {existing[0]} claim for actor {existing[1]!r}"
             )
         claims = public_claims(connection)
-        conflict = mode == "writer" and bool(claims)
-        if mode == "read-only" and any(claim["mode"] == "writer" for claim in claims):
-            conflict = True
-        if mode == "isolated-writer":
-            for claim in claims:
-                if claim["mode"] == "writer":
-                    conflict = True
-                    break
-                if claim["mode"] != "isolated-writer":
-                    continue
-                same_workspace = path_identity(str(claim["workspace"])) == path_identity(
-                    actual_workspace
-                )
-                overlapping = any(
-                    path_overlap(left, right)
-                    for left in write_paths
-                    for right in claim["write_paths"]
-                )
-                if same_workspace or overlapping:
-                    conflict = True
-                    break
-        if conflict:
+        requested = {"mode": mode, "workspace": str(actual_workspace), "write_paths": write_paths}
+        conflicts = [claim for claim in claims if claims_conflict(requested, claim)]
+        if conflicts:
             connection.execute("ROLLBACK")
-            raise AccessConflict(json.dumps(claims, ensure_ascii=False, sort_keys=True))
+            raise AccessConflict(json.dumps(conflicts, ensure_ascii=False, sort_keys=True))
         connection.execute(
             "INSERT INTO claims(session_id, mode, token_hash, actor, workspace, acquired_at, write_paths_json, evidence_json) "
             "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
@@ -703,7 +770,7 @@ def enter(
                 actor,
                 str(actual_workspace),
                 acquired_at,
-                json.dumps(write_paths, ensure_ascii=False, sort_keys=True),
+                json.dumps(scopes if mode == "scoped-writer" else write_paths, ensure_ascii=False, sort_keys=True),
                 json.dumps(evidence, ensure_ascii=False, sort_keys=True),
             ),
         )
@@ -725,6 +792,7 @@ def enter(
         "mode": mode,
         "actor": actor,
         "write_paths": write_paths,
+        "write_scopes": scopes,
         "acquired_at": acquired_at,
         "evidence": evidence,
         "next_action": "re-read current project and Git state before continuing",
@@ -748,7 +816,7 @@ def require_claim(
         "actor": row[1],
         "token_hash": row[2],
         "workspace": row[3],
-        "write_paths": json.loads(row[4]),
+        **claim_paths(row[0], row[4]),
         "evidence": json.loads(row[5]),
     }
 
@@ -759,10 +827,14 @@ def check_claim(
     session_id = validate_session(session_id)
     if not database.exists():
         raise AccessError("runtime database does not exist")
-    with connect(database) as connection:
+    with closing(connect(database)) as connection:
         claim = require_claim(connection, session_id, token)
     workspace = Path(str(claim["workspace"]))
     evidence = git_evidence(workspace)
+    if claim["mode"] == "scoped-writer":
+        if is_link_or_junction(workspace) or not workspace.is_dir():
+            raise AccessError("scoped-writer workspace no longer exists as a real directory")
+        validate_write_scopes(workspace, list(claim["write_scopes"]))
     if claim["mode"] == "isolated-writer":
         if is_link_or_junction(workspace) or not workspace.is_dir():
             raise AccessError("isolated-writer workspace no longer exists as a real directory")
@@ -787,6 +859,8 @@ def check_claim(
         "mode": claim["mode"],
         "actor": claim["actor"],
         "workspace": str(workspace),
+        "write_paths": claim["write_paths"],
+        "write_scopes": claim["write_scopes"],
         "evidence": evidence,
     }
 
@@ -931,11 +1005,13 @@ def main() -> int:
 
     enter_parser = subparsers.add_parser("enter")
     enter_parser.add_argument(
-        "--mode", choices=("read-only", "writer", "isolated-writer"), required=True
+        "--mode", choices=("read-only", "scoped-writer", "isolated-writer", "writer"), required=True
     )
     enter_parser.add_argument("--session")
     enter_parser.add_argument("--actor", required=True)
     enter_parser.add_argument("--write-path", action="append", default=[])
+    enter_parser.add_argument("--write-file", action="append", default=[])
+    enter_parser.add_argument("--write-dir", action="append", default=[])
     enter_parser.add_argument("--workspace", type=Path)
 
     check_parser = subparsers.add_parser("check")
@@ -971,6 +1047,8 @@ def main() -> int:
                 arguments.actor,
                 arguments.write_path,
                 arguments.workspace,
+                arguments.write_file,
+                arguments.write_dir,
             )
         elif arguments.command == "check":
             result = check_claim(project_root, database, arguments.session, arguments.token)

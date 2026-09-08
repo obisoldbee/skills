@@ -1,24 +1,31 @@
-# Agnes Image 2.1 Flash
+# Agnes Image 2.5 Flash
 
-官方文档：<https://agnes-ai.com/zh-Hans/docs/agnes-image-21-flash>
+官方文档：<https://agnes-ai.com/zh-Hans/docs/agnes-image-25-flash>。参数复核日期：2026-09-07；文档兼容性不等于本机生成实测。
 
 ## 能力
 
-- 模型：`agnes-image-2.1-flash`
+- 模型：`agnes-image-2.5-flash`；本适配器不再创建 2.1 任务。
 - 端点：`POST /v1/images/generations`
 - 文生图；
 - 图生图/转换/重绘/风格化；
 - 多图合成；
 - URL 或 Base64 输入和输出。
 
-## 请求合同
+## 参数与执行顺序
 
-- 文生图必填：`model`、`prompt`、`size`。
-- 推荐 `size`：`1K`、`2K`、`3K`、`4K`，配合 `ratio`。
-- 图生图/多图：在 `extra_body.image` 中传入图片 URL 或 Data URI Base64 数组。
-- URL/B64 输出：使用 `extra_body.response_format: url|b64_json`；不要把 `response_format` 放在顶层。
-- 文生图 Base64 也可用 `return_base64: true`。
-- 图生图不需要 `tags: ["img2img"]`。
+先绑定用户选定的文本、输入图及顺序和授权输出路径，再构造下面的请求。预览不读取本地图像或密钥、不写文件、不联网。已有明确生成授权时，复核预览后直接在同一范围使用 `--execute`，不用再按步骤询问。
+
+| API 参数 | CLI | 合同 |
+|---|---|---|
+| `model` | `--model` | 默认且仅支持 `agnes-image-2.5-flash` |
+| `prompt` | `--prompt` | 必填、非空；描述生成目标或编辑要求 |
+| `size` | `--size` | 默认 `1K`；推荐 `1K/2K/3K/4K`，兼容正整数 `WIDTHxHEIGHT` |
+| `ratio` | `--ratio` | 默认 `1:1`；支持 `1:1/3:4/4:3/16:9/9:16/2:3/3:2/21:9` |
+| `extra_body.image` | 重复 `--image` | 按输入顺序传入 URL 或 Data URI；本地文件仅在执行时编码成 Data URI |
+| `return_base64` | `--return-base64` | 仅文生图；等价于文生图 `--response-format b64_json` |
+| `extra_body.response_format` | `--response-format url\|b64_json` | 默认 URL；图生图/多图 Base64 使用这个嵌套字段 |
+
+文生图 Base64 请求发送顶层 `return_base64: true`；图生图发送 `extra_body.image` 和 `extra_body.response_format: b64_json`。`--return-base64` 与输入图或显式 URL 输出冲突时在提交前拒绝。不要把 `response_format` 放顶层，也不要加 `tags: ["img2img"]`。官方参数表简称 `image`，但其“重要说明”和 cURL 示例要求实际 JSON 使用 `extra_body.image`；本适配器遵循该具体示例。没有文档定义的参数不作为任意 `extra_body` 透传。
 
 使用本包适配器先 dry-run：
 
@@ -27,14 +34,40 @@ python3 -B scripts/agnes_media.py image \
   --prompt "<prompt>" \
   --size 2K \
   --ratio 16:9 \
-  --output <output.png>
+  --output "<authorized-output.png>"
 ```
 
-图生图或多图追加重复的 `--image <url-or-data-uri>`。确认预览正确后，只有用户授权真实调用时才加 `--execute`。
+图生图或多图追加重复的 `--image <url-or-local-file-or-data-uri>`，次序必须与提示词中的图片角色一致。所有示例占位符应先绑定到本次授权材料和输出；未带 `--execute` 只是预览。
+
+## 尺寸与提示词
+
+精确像素写法可能被服务标准化，不能仅凭请求值声称实际分辨率。以下是官方尺寸参考；交付时检查文件的实际尺寸、类型和非零大小。
+
+| 比例 | 1K | 2K | 3K | 4K |
+|---|---|---|---|---|
+| 1:1 | 1024×1024 | 2048×2048 | 3072×3072 | 4096×4096 |
+| 3:4 | 864×1152 | 1728×2304 | 2592×3456 | 3456×4608 |
+| 4:3 | 1152×864 | 2304×1728 | 3456×2592 | 4608×3456 |
+| 16:9 | 1312×736 | 2624×1472 | 3936×2208 | 5248×2944 |
+| 9:16 | 736×1312 | 1472×2624 | 2208×3936 | 2944×5248 |
+| 2:3 | 832×1248 | 1664×2496 | 2496×3744 | 3328×4992 |
+| 3:2 | 1248×832 | 2496×1664 | 3744×2496 | 4992×3328 |
+| 21:9 | 1568×672 | 3136×1344 | 4704×2016 | 6272×2688 |
+
+按所选工作流组织最终提示词，无需在每次任务中塞入整张模板表：
+
+- 文生图：交代主体、环境、光线、构图和风格，例如“玻璃茶壶置于石台，侧面自然光，简洁背景，产品摄影”。
+- 图生图：同时说明改变项与保留项，例如“把背景改为雨夜，保留主体姿态、相机角度和衣服形状”。
+- 多图合成：逐张分配角色，例如“图 1 提供人物身份，图 2 提供服装，图 3 提供场景”，并说明组合关系。
+- 高信息密度画面：明确主要主体、次要细节和背景的层次，避免平铺大量互相争抢重点的元素。
+
+输出说明使用用户要求的语言；不可把官方对质量和构图保留的介绍当成本次成品已经通过验收。
 
 ## 鉴权与结果
 
 从外部环境或显式 env 文件读取 `AGNES_API_KEY`。不要把 Key 写入命令、日志或包内。成功结果位于 `data[0].url` 或 `data[0].b64_json`。
+
+`AGNES_BASE_URL` 接受服务根 `https://apihub.agnes-ai.com` 或官方示例的 `/v1` 基址；适配器统一拼接端点，避免重复 `/v1`。默认 HTTP 超时 120 秒，可用 `--timeout` 指定有限正数。2026-09-07 官方页面显示图片各档位及参考输入免费；执行时按最新公告和用户既有费用授权判断，不把快照当作永久价格。
 
 未执行供应商调用时使用 `configured_not_called`，不能因 env 文件存在而报告生成成功。
 
@@ -44,6 +77,6 @@ python3 -B scripts/agnes_media.py image \
 
 下载或解码完成后，临时文件、原子不替换硬链接、清理及恢复回执都通过同一个父目录句柄操作，不重新跟随绝对路径。父目录被改名或替换时停止，不向替换目录写入。若移动发生在发布的最后时刻，已完成产物只会留在原绑定目录；错误中的 `artifact` 给出文件名和目录设备/inode 身份，`path_verified=false` 表示旧路径已失效，不能按旧路径宣称保存成功。禁止覆盖目标或降级为 `rename/replace`。
 
-提交后的下载、解码或保存失败返回非零，且不重新生成。若绑定目录仍可安全使用，错误报告的 `recovery.path` 指向独占创建的 `.agnes-recovery-*.json`（POSIX 权限 `0600`），只保留本次图片 `data[0].url/b64_json` 或视频 ID、状态与 `metadata.url`；不保存鉴权配置或任意调试字段。所有公共错误只使用安全类别、HTTP 状态码或固定失败状态，不回显 HTTP body、URLError 原文、供应商 `error` 对象、签名 URL 或媒体内容。该回执是私有恢复材料，不得提交到 Git 或公开分享。
+提交后的下载、解码或保存失败返回非零，且不重新生成。若绑定目录仍可安全使用，错误报告的 `recovery.path` 指向独占创建的 `.agnes-recovery-*.json`（POSIX 权限 `0600`），只保留本次图片 `data[0].url/b64_json` 或视频原始 ID、模型、已知模式、状态与完成的 `metadata.url`；不保存鉴权配置或任意调试字段。所有公共错误只使用安全类别、HTTP 状态码或固定失败状态，不回显 HTTP body、URLError 原文、供应商 `error` 对象、签名 URL 或媒体内容。该回执是私有恢复材料，不得提交到 Git 或公开分享。
 
-恢复时只读取该回执，向另一个获授权且不存在的目标保存同一结果；视频也可凭同一 ID 继续查询。不要重跑生成命令。若 `recovery.status=unavailable`，表示没有已验证的完整回执；`partial_location` 仅说明未清理文件的名称与绑定目录身份，不能当作成功回执，尤其不可沿 `path_verified=false` 的旧路径寻找。停止并说明恢复材料缺失或位置需重新确认，不自动重试生成。回执不保证下载 URL 永久有效，也不保证无效 Base64 可以恢复。
+恢复时只读取该回执，向另一个获授权且不存在的目标保存同一结果；视频也可凭同一 ID 和原始模型继续查询。不要重跑生成命令。若 `recovery.status=unavailable`，表示没有已验证的完整回执；`partial_location` 仅说明未清理文件的名称与绑定目录身份，不能当作成功回执，尤其不可沿 `path_verified=false` 的旧路径寻找。停止并说明恢复材料缺失或位置需重新确认，不自动重试生成。回执不保证下载 URL 永久有效，也不保证无效 Base64 可以恢复。

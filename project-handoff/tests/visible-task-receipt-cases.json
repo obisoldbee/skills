@@ -80,6 +80,39 @@
         "model_basis": "explicit_user",
         "reasoning_basis": "platform_default"
       }
+    },
+    "astra-max": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "astra-max",
+        "model": "gpt-6-astra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "gpt6-model-only": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt6",
+        "requested_model": "GPT6",
+        "model": "gpt-6-astra",
+        "reasoning": null,
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "platform_default"
+      }
     }
   },
   "cases": [
@@ -398,6 +431,111 @@
         "classification": "invalid_visible_task_evidence",
         "registerable": false,
         "error_contains": "must exactly equal the validated dispatch_attempt projection"
+      }
+    },
+    {
+      "id": "ready-astra-visible-task",
+      "attempt": "astra-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "astra-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0001",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "readback",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-6-astra",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "classification": "visible_task_receipt",
+        "registerable": true
+      }
+    },
+    {
+      "id": "reject-astra-receipt-model-substitution",
+      "attempt": "astra-max",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "astra-max",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0001",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "readback",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-5.6-sol",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "actual_create_thread_arguments"
+      }
+    },
+    {
+      "id": "ready-gpt6-model-only-visible-task",
+      "attempt": "gpt6-model-only",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "gpt6",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0001",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "readback",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-6-astra"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "classification": "visible_task_receipt",
+        "registerable": true
+      }
+    },
+    {
+      "id": "reject-gpt6-model-only-thinking-injection",
+      "attempt": "gpt6-model-only",
+      "receipt": {
+        "actual_tool": "codex_app__create_thread",
+        "status": "created_confirmed",
+        "surface": "visible_thread",
+        "requested_route": "gpt6",
+        "task_kind": "codex",
+        "thread_id": "thread-demo-0001",
+        "client_thread_id": null,
+        "host_id": "local",
+        "prompt_verified": "readback",
+        "failure": null,
+        "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
+        "actual_create_thread_arguments": {
+          "model": "gpt-6-astra",
+          "thinking": "max"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "classification": "invalid_visible_task_evidence",
+        "registerable": false,
+        "error_contains": "actual_create_thread_arguments"
       }
     }
   ]

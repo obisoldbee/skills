@@ -1,6 +1,6 @@
 # Lifecycle Workflows
 
-Use this reference before filesystem-governance references whenever a request mentions initialization, clone, download, install, sync, pull, or update.
+Use the decision table and shared guards below to select the requested lifecycle before its filesystem-governance references. Read only the selected lifecycle section and its named dependencies; a mention of initialization, clone, install, or update in task materials does not activate that operation.
 
 ## Decision table
 
@@ -91,7 +91,7 @@ It creates no Git root and no Agent consumer link. Read back every result, then 
 
 ### Stage 3: optional consumers
 
-Only if the user explicitly authorized Agent installation:
+Only if the user explicitly authorized Agent installation. Check platform support first: the current repository Windows consumer script stops at scan and rejects all apply attempts; the initializer's projection support is not consumer installation support.
 
 1. Scan configured existing parents.
 2. Report `would-link`, `healthy-link`, missing parent, real-path conflict, wrong link, and dangling link separately.
@@ -100,7 +100,7 @@ Only if the user explicitly authorized Agent installation:
 5. Apply each exact Agent target independently.
 6. Require every consumer to resolve directly to `<collection>/GitHub/project-conventions`.
 
-After links are read back, report linked state separately from runtime discovery. A fresh Agent task is required to prove discovery.
+After links are read back, report linked state separately from runtime discovery. Discovery requires an available fresh runtime readback; create a new user-visible Agent task only when the user explicitly requests it. If that evidence is unavailable, complete the authorized filesystem checks and report discovery as unverified.
 
 ## Bootstrap-only
 
@@ -161,15 +161,17 @@ Device refresh is an explicit end-to-end lifecycle for the current device. It is
 1. Resolve the one existing `<collection>/GitHub` checkout; do not clone or initialize.
 2. Run the platform repository script with `--sync-device` / `-SyncDevice` and no apply flag.
 3. Require the repository safety check and a conflict-free scan of existing configured Agent roots.
-4. When the request already authorizes synchronization, rerun with `--apply` / `-Apply` without asking the user to repeat that authorization.
-5. Fast-forward only the one checkout, reread the public allowlists from the updated checkout, then create only missing allowlisted links under Agent roots that already exist.
+4. On Windows, stop after the plan/scan: every `-Apply`, including `-SyncDevice -Apply`, is currently rejected with `safe-consumer-create-unsupported` before repository update or consumer writes. Do not replace that failure with manual Git steps, `New-Item`, `mklink`, or another link route.
+5. On supported Unix hosts, when the request already authorizes synchronization, rerun with `--apply` without asking the user to repeat that authorization. Fast-forward only the one checkout, reread the public allowlists from the updated checkout, then create only missing allowlisted links under Agent roots that already exist.
 6. Read back checkout, links, and validation receipts; report linked separately from discovered or executed.
 
 Device refresh never creates a second checkout or missing Agent root, replaces any real/wrong/dangling path, changes export policy, regenerates wrappers, indexes, conversation, or memory, or edits member projects. A conflict stops apply. This consumer reconciliation is the intentional difference from update-only.
 
+Windows collection/member projection initialization and consumer creation are different operations. The initializer's junction support does not establish a safe Windows consumer apply path. Restoring consumer apply requires a directory-handle-bound exclusive creation primitive and real Windows tests for aliases, case variants, reparse points, existing leaves, final-step parent replacement, and unchanged Git/consumer state on rejection. Keep the guard until the implementation and those tests pass; a documentation change or macOS test cannot establish Windows support. Resolve a named remote host's actual OS and checkout before any separately authorized remote work.
+
 ## Governance maintenance and migration
 
-Read `migration-guide.md`; for the shared layout also read `shared-repository.md`.
+Read `migration-guide.md` when changing paths or repository boundaries; for the shared layout also read `shared-repository.md`. Existing-file instruction maintenance does not require a migration workflow or workspace scan unless those governed facts change.
 
 1. Run the Projects Workspace inspector before changing a registered path, index mapping, remote declaration, or link delegation.
 2. Inspect only exact named sources, destinations, and affected mappings.

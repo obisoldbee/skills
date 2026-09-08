@@ -4,7 +4,7 @@
     "request": "创建新任务，模型和推理都自动选，为跨设备 Repo Hub 设计控制面、数据模型与迁移方案。",
     "expected": {
       "surface": "visible_thread",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "reasoning": "max"
     }
   },
@@ -13,7 +13,7 @@
     "request": "创建新任务，模型和推理都自动选；方案已批准，按 docs/specs/api-v2.md 落地开发并完成测试。",
     "expected": {
       "surface": "visible_thread",
-      "model": "gpt-5.6-terra",
+      "model": "gpt-5.6-sol",
       "reasoning": "max"
     }
   },
@@ -24,11 +24,11 @@
       "surface": "visible_thread_pipeline",
       "sequence": [
         {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6-astra",
           "reasoning": "max"
         },
         {
-          "model": "gpt-5.6-terra",
+          "model": "gpt-5.6-sol",
           "reasoning": "max"
         }
       ]
@@ -62,7 +62,7 @@
     },
     "expected": {
       "surface": "visible_thread",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "reasoning": "max"
     }
   },
@@ -114,7 +114,9 @@
       "reasoning": null,
       "model_basis": "explicit_user",
       "reasoning_basis": "platform_default",
-      "create_thread_arguments": {"model": "gpt-5.6-sol"}
+      "create_thread_arguments": {
+        "model": "gpt-5.6-sol"
+      }
     }
   },
   {
@@ -127,7 +129,9 @@
       "reasoning": "ultra",
       "model_basis": "platform_default",
       "reasoning_basis": "explicit_user",
-      "create_thread_arguments": {"thinking": "ultra"}
+      "create_thread_arguments": {
+        "thinking": "ultra"
+      }
     }
   },
   {
@@ -200,14 +204,264 @@
     "expected": {
       "surface": "visible_thread",
       "requested_route": "auto",
-      "model": "gpt-5.6-terra",
+      "model": "gpt-5.6-sol",
       "reasoning": "max",
       "model_basis": "explicit_auto",
+      "reasoning_basis": "explicit_auto",
+      "create_thread_arguments": {
+        "model": "gpt-5.6-sol",
+        "thinking": "max"
+      }
+    }
+  },
+  {
+    "id": "explicit-astra-max-alias",
+    "request": "用 ASTRA-MAX 创建新任务。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "astra-max",
+      "model": "gpt-6-astra",
+      "reasoning": "max",
+      "model_basis": "explicit_skill_route",
+      "reasoning_basis": "explicit_skill_route",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra",
+        "thinking": "max"
+      }
+    }
+  },
+  {
+    "id": "explicit-gpt6-max-alias",
+    "request": "用 GPT6-MAX 创建新任务。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "gpt6-max",
+      "model": "gpt-6-astra",
+      "reasoning": "max",
+      "model_basis": "explicit_skill_route",
+      "reasoning_basis": "explicit_skill_route",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra",
+        "thinking": "max"
+      }
+    }
+  },
+  {
+    "id": "explicit-astra-ultra-alias",
+    "request": "用 ASTRA-ULTRA 创建新任务。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "astra-ultra",
+      "model": "gpt-6-astra",
+      "reasoning": "ultra",
+      "model_basis": "explicit_skill_route",
+      "reasoning_basis": "explicit_skill_route",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra",
+        "thinking": "ultra"
+      }
+    }
+  },
+  {
+    "id": "explicit-gpt6-ultra-alias",
+    "request": "用 GPT6-ULTRA 创建新任务。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "gpt6-ultra",
+      "model": "gpt-6-astra",
+      "reasoning": "ultra",
+      "model_basis": "explicit_skill_route",
+      "reasoning_basis": "explicit_skill_route",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra",
+        "thinking": "ultra"
+      }
+    }
+  },
+  {
+    "id": "explicit-astra-model-only",
+    "request": "创建任务，模型用 Astra，推理用平台默认。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "astra",
+      "model": "gpt-6-astra",
+      "reasoning": null,
+      "model_basis": "explicit_user",
+      "reasoning_basis": "platform_default",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra"
+      }
+    }
+  },
+  {
+    "id": "explicit-gpt6-model-only",
+    "request": "创建任务，模型用 GPT6，推理用平台默认。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "gpt6",
+      "model": "gpt-6-astra",
+      "reasoning": null,
+      "model_basis": "explicit_user",
+      "reasoning_basis": "platform_default",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra"
+      }
+    }
+  },
+  {
+    "id": "explicit-terra-alias-compatibility",
+    "request": "用 terra-max 创建新任务，为复杂系统设计架构。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "terra-max",
+      "model": "gpt-5.6-terra",
+      "reasoning": "max",
+      "model_basis": "explicit_skill_route",
+      "reasoning_basis": "explicit_skill_route",
+      "create_thread_arguments": {
+        "model": "gpt-5.6-terra",
+        "thinking": "max"
+      }
+    }
+  },
+  {
+    "id": "explicit-sol-alias-compatibility",
+    "request": "用 sol-max 创建新任务，为复杂系统设计架构。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "sol-max",
+      "model": "gpt-5.6-sol",
+      "reasoning": "max",
+      "model_basis": "explicit_skill_route",
+      "reasoning_basis": "explicit_skill_route",
+      "create_thread_arguments": {
+        "model": "gpt-5.6-sol",
+        "thinking": "max"
+      }
+    }
+  },
+  {
+    "id": "explicit-terra-auto-reasoning",
+    "request": "创建任务，模型用 gpt-5.6-terra，推理自动选。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "auto",
+      "model": "gpt-5.6-terra",
+      "reasoning": "max",
+      "model_basis": "explicit_user",
       "reasoning_basis": "explicit_auto",
       "create_thread_arguments": {
         "model": "gpt-5.6-terra",
         "thinking": "max"
       }
+    }
+  },
+  {
+    "id": "auto-model-explicit-reasoning",
+    "request": "创建任务，模型自动选，推理用 high，设计系统架构。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "auto",
+      "model": "gpt-6-astra",
+      "reasoning": "high",
+      "model_basis": "explicit_auto",
+      "reasoning_basis": "explicit_user",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra",
+        "thinking": "high"
+      }
+    }
+  },
+  {
+    "id": "auto-model-default-reasoning",
+    "request": "创建任务，模型自动选，推理用平台默认，设计系统架构。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "auto",
+      "model": "gpt-6-astra",
+      "reasoning": null,
+      "model_basis": "explicit_auto",
+      "reasoning_basis": "platform_default",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra"
+      }
+    }
+  },
+  {
+    "id": "default-model-auto-reasoning",
+    "request": "创建任务，模型用平台默认，推理自动选。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "auto",
+      "model": null,
+      "reasoning": "max",
+      "model_basis": "platform_default",
+      "reasoning_basis": "explicit_auto",
+      "create_thread_arguments": {
+        "thinking": "max"
+      }
+    }
+  },
+  {
+    "id": "astra-controller-bounded-support",
+    "request": "创建任务，模型和推理都自动选，实现已验收的单组件方案。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "auto",
+      "model": "gpt-5.6-sol",
+      "reasoning": "max",
+      "model_basis": "explicit_auto",
+      "reasoning_basis": "explicit_auto",
+      "create_thread_arguments": {
+        "model": "gpt-5.6-sol",
+        "thinking": "max"
+      }
+    },
+    "context": {
+      "controller_model": "gpt-6-astra",
+      "controller_reasoning": "ultra",
+      "project_scale": "super-large",
+      "lane_difficulty": "bounded"
+    }
+  },
+  {
+    "id": "astra-controller-demanding-integration",
+    "request": "创建任务，模型和推理都自动选，集成已验收的多工作流设计。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "auto",
+      "model": "gpt-6-astra",
+      "reasoning": "max",
+      "model_basis": "explicit_auto",
+      "reasoning_basis": "explicit_auto",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra",
+        "thinking": "max"
+      }
+    },
+    "context": {
+      "controller_model": "gpt-6-astra",
+      "controller_reasoning": "ultra",
+      "project_scale": "super-large"
+    }
+  },
+  {
+    "id": "high-consequence-review",
+    "request": "创建任务，模型和推理都自动选，审核跨系统迁移的关键风险。",
+    "expected": {
+      "surface": "visible_thread",
+      "requested_route": "auto",
+      "model": "gpt-6-astra",
+      "reasoning": "max",
+      "model_basis": "explicit_auto",
+      "reasoning_basis": "explicit_auto",
+      "create_thread_arguments": {
+        "model": "gpt-6-astra",
+        "thinking": "max"
+      }
+    },
+    "context": {
+      "lane_difficulty": "high"
     }
   }
 ]

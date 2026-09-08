@@ -5,9 +5,13 @@ description: "Initialize and maintain project filesystems and the obisoldbee Ski
 
 # Project Conventions
 
+## Reading and applicability
+
+Select the lifecycle and governance layer from the current task. Mode-specific sections apply only to that selection; they are not a checklist to execute across all layers. Read applicable `AGENTS.md` files and the selected operation's required references before acting. Reuse a complete, current reading in the same task; reread when the rules, target, or relevant state change or a missing fact requires it. An ordinary package edit does not select initialization, migration, workspace scanning, or consumer installation.
+
 ## Route the lifecycle before touching the filesystem
 
-For clone, initialization, sync, pull, or update work, read `references/lifecycle-workflows.md` completely. Choose exactly one lifecycle:
+For clone, initialization, sync, pull, or update work, choose exactly one lifecycle from this table. Read the decision table, shared guards, and selected lifecycle section in `references/lifecycle-workflows.md`; load another lifecycle only when the task or a named dependency requires it.
 
 | Intent | Lifecycle | Stop boundary |
 |---|---|---|
@@ -120,7 +124,7 @@ One repository commit may contain changes to more than one published package. Th
 
 ### Device refresh
 
-The exact intents “本机全量同步 Skills”, “更新 GitHub 并让本机 Agent 使用”, and “同步共享 Skill 根” select **Device refresh**, not update-only or full initialization. Run the checked-out platform script in plan mode first. If the request authorizes synchronization and the plan is conflict-free, apply without asking the user to restate the same authorization.
+The exact intents “本机全量同步 Skills”, “更新 GitHub 并让本机 Agent 使用”, and “同步共享 Skill 根” select **Device refresh**, not update-only or full initialization. Run the checked-out platform script in plan mode first. On supported Unix hosts, an authorized conflict-free plan may proceed to apply without asking the user to restate the same authorization. Windows is plan/scan-only: every `-Apply`, including `-SyncDevice -Apply`, stops with `safe-consumer-create-unsupported` before repository update or consumer writes.
 
 ```text
 bash <collection>/GitHub/scripts/link-macos.sh --sync-device
@@ -128,11 +132,9 @@ bash <collection>/GitHub/scripts/link-macos.sh --sync-device --apply
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
   <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
-  <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice -Apply
 ```
 
-Apply may fast-forward only the one existing `GitHub` checkout and add only missing public allowlisted Skill links under already existing configured Agent roots. It never creates a checkout or Agent root, regenerates wrappers/indexes/records, changes export policy, or replaces a real path, wrong link, or dangling link. Link readback proves linked state only, not runtime discovery or execution. Unlike update-only, Device refresh intentionally reconciles consumers; unlike full initialization, it never materializes the collection.
+Supported Unix apply may fast-forward only the one existing `GitHub` checkout and add only missing public allowlisted Skill links under already existing configured Agent roots. It never creates a checkout or Agent root, regenerates wrappers/indexes/records, changes export policy, or replaces a real path, wrong link, or dangling link. Do not bypass Windows rejection with `New-Item`, `mklink`, another script, or manual Git/link steps. Link readback proves linked state only, not runtime discovery or execution. Unlike update-only, Device refresh intentionally reconciles consumers; unlike full initialization, it never materializes the collection.
 
 ### Agent consumers
 
@@ -144,9 +146,9 @@ Initialization and installation are separate states. For links:
 4. Show exact conflicts and preserve rollback evidence for any existing real path or wrong link.
 5. Apply only the explicitly authorized Agent targets, one at a time.
 6. Every consumer must resolve directly to `<collection>/GitHub/project-conventions`.
-7. Read back raw link/junction type and resolved target, then start a fresh Agent task to test discovery.
+7. Read back raw link/junction type and resolved target. Verify discovery from an available fresh runtime readback. Create a new user-visible Agent task only when the user explicitly requests it; otherwise report discovery as unverified if no suitable runtime evidence is available.
 
-A healthy filesystem link proves only the linked state, not runtime discovery, loading, activation, or execution.
+These steps do not make every platform apply-capable: the current repository Windows consumer script supports scan only. A healthy filesystem link proves only the linked state, not runtime discovery, loading, activation, or execution.
 
 ## Name the governance layer
 
@@ -189,7 +191,7 @@ Read `references/project-collection.md` completely.
 
 ## Project Root mode
 
-Read `references/directory-layout.md` completely and select the primary deliverable. For initialization or adoption, also read `references/project-root-initialization.md`:
+For initialization, layout changes, or an unresolved placement question, read `references/directory-layout.md` completely and select the primary deliverable. Maintaining existing files with a verified source mapping does not require repeating the layout specification. For initialization or adoption, also read `references/project-root-initialization.md`:
 
 | Type | Required paths |
 |---|---|
@@ -209,9 +211,11 @@ Core rules:
 6. Verify Repository Roots with Git; do not infer them from folder names.
 7. Keep wrapper metadata and machine paths out of portable/public packages.
 8. Ordinary initialization installs `.project-conventions/project_access.py` inside the target. This project-local helper—not Codex, another Skill, a role name, or Agent messaging—is the admission authority for cooperating Harnesses after adoption.
-9. In an adopted Project Root whose local `AGENTS.md` contains the managed access block, every Agent runs `status` and obtains `read-only`, exclusive `writer`, or validated linked-worktree `isolated-writer` admission. A blocked or failed configured admission means no write, including reviews, conversation, memory, indexes, caches, Git, databases, or services. Missing governance in a legacy project is not itself permission to initialize and is not an unrelated-task blocker.
-10. Do not create permanent role directories or worktrees during ordinary initialization. A Git worktree is an optional temporary execution resource and does not remove logical path, merge, lockfile, service, or canonical-record conflicts.
-11. `conversation/`, `memory/`, indexes, status files, and other canonical records require the exclusive shared writer. An isolated writer cannot claim them; merge and final record updates happen only after isolated writers finish.
+9. In an adopted Project Root, read `references/project-access.md` for access changes and use the project-local helper. Select `read-only` for response-only reading, `scoped-writer --write-file <file>` for a report or bounded edit, `scoped-writer --write-dir <dedicated-subtree>` for multiple outputs, `isolated-writer` for code in a clean linked worktree, and exclusive `writer` for unbounded/shared maintenance. A blocked or failed configured admission means no write under that claim. Missing governance in a legacy project is not itself permission to initialize and is not an unrelated-task blocker.
+10. Readers coexist with every writer; use fixed snapshots or recheck changed inputs. Different files in the same folder may be written concurrently. A directory claim reserves its whole subtree; a file claim does not reserve its parent. Prefer a task-specific branch/worktree for code: different worktrees may edit the same logical filename and resolve overlap at integration. Ordinary initialization creates no permanent roles or worktrees.
+11. Claim exact canonical record files only for their short write batch; reread before updating and preserve concurrent additions. Briefly claim `conversation/` when allocating its next number. An isolated writer releases its worktree claim before updating canonical records in their owning Project Root. Use the exclusive writer for shared Git maintenance/integration, not for the duration of ordinary report research. Upgrade an already adopted project's copied helper only through an authorized, hash-checked `scripts/upgrade_project_access.py` dry-run/apply.
+
+The scope flags above require `status.protocol_version == 2`. A project-local version-1 copy still uses its old contract even when the global Skill is newer. For an authorized concurrency fix, upgrade that exact named target; do not repeatedly send unsupported flags or silently update other projects.
 
 Initialize an ordinary Project Root with a dry-run, explicit type/mode, apply, and target validation:
 
@@ -244,12 +248,14 @@ Before a write:
 After a write:
 
 1. Read back every changed path and mapping.
-2. Run the named validator/tests.
+2. Run the named validator and checks applicable to the changed contract or behavior. Preserve required acceptance gates; do not run unrelated suites or repeat passing checks without a new change, failure, or unresolved concern. Continue authorized local corrections and affected checks without asking for the same permission again.
 3. Rerun the workspace inspector when its governed facts changed.
 4. Distinguish source, checkout, projection, linked, discovered, and executed states.
 5. Report unresolved findings without expanding scope.
 
 ## Success criteria
+
+Completion follows the selected lifecycle. Governance maintenance is complete when the authorized changes are read back, applicable checks pass, required in-scope records are updated, and unresolved findings are reported. Read-only work completes with its requested findings and evidence; it creates no maintenance records. Update-only and Device refresh stop at their own declared boundaries. Existing unrelated validation failures remain explicit debt, not proof of a passing gate or permission to repair other paths.
 
 A successful shared Skills initialization has:
 
@@ -287,7 +293,7 @@ A successful shared Skills initialization has:
 
 Materials: Use only the request, exact named paths, current disk/Git/link evidence, and routed references. Never invent a local path, repository state, Agent root, or remote fact.
 
-Task: Select one lifecycle. For a shared Skills initialization, create or verify the final `GitHub` checkout, run the deterministic initializer, validate the four control projections and member projection, and handle only separately authorized Agent consumers. For update-only, run the narrow updater and stop. For Device refresh, plan first, then apply an already authorized conflict-free refresh of the one checkout and missing public allowlisted links in existing Agent roots.
+Task: Select one lifecycle. For a shared Skills initialization, create or verify the final `GitHub` checkout, run the deterministic initializer, validate the four control projections and member projection, and handle only separately authorized Agent consumers. For update-only, run the narrow updater and stop. For Device refresh, plan first; supported Unix hosts may then apply an already authorized conflict-free refresh of the one checkout and missing public allowlisted links in existing Agent roots. On Windows, report the plan and unsupported apply boundary, then stop.
 
 Constraints: Stay within named paths; preserve conflicts and rollback evidence; never create a second source copy; never turn update-only into governance or link work.
 

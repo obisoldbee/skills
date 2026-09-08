@@ -580,7 +580,7 @@ Real workflow.
             self.assertEqual(sum(code == 2 for code, _, _ in results), 15)
             winner = winners[0]
 
-            blocked_reader = self.run_command(
+            concurrent_reader = self.run_command(
                 [
                     sys.executable,
                     "-B",
@@ -592,7 +592,8 @@ Real workflow.
                     "reviewer",
                 ]
             )
-            self.assertEqual(blocked_reader.returncode, 2, blocked_reader.stderr)
+            self.assertEqual(concurrent_reader.returncode, 0, concurrent_reader.stderr)
+            self.finish_claim(root, json.loads(concurrent_reader.stdout))
             wrong_token = self.run_command(
                 [
                     sys.executable,
@@ -694,7 +695,7 @@ Real workflow.
             self.assertEqual(invalid_write.returncode, 3)
             self.assertIn("portable", invalid_write.stderr)
 
-    def test_readers_share_and_block_writer_until_all_finish(self) -> None:
+    def test_readers_share_with_writer_without_freezing_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw) / "project"
             self.initialize(root)
@@ -728,7 +729,8 @@ Real workflow.
                     "editor",
                 ]
             )
-            self.assertEqual(writer.returncode, 2)
+            self.assertEqual(writer.returncode, 0, writer.stderr)
+            self.finish_claim(root, json.loads(writer.stdout))
             for reader in readers:
                 self.finish_claim(root, reader)
             writer = self.run_command(
@@ -904,7 +906,7 @@ Real workflow.
             self.finish_claim(root, json.loads(main_claim.stdout))
 
     @unittest.skipUnless(shutil.which("git"), "git is required")
-    def test_disjoint_isolated_writers_can_run_but_overlap_and_records_are_blocked(self) -> None:
+    def test_distinct_worktrees_allow_logical_overlap_but_one_writer_per_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             base = Path(raw)
             root = base / "project"
@@ -993,7 +995,8 @@ Real workflow.
                     "src/component-a/file.py",
                 ]
             )
-            self.assertEqual(overlap.returncode, 2, overlap.stderr)
+            self.assertEqual(overlap.returncode, 0, overlap.stderr)
+            third_receipt = json.loads(overlap.stdout)
             case_alias = self.run_command(
                 [
                     sys.executable,
@@ -1024,6 +1027,7 @@ Real workflow.
                 ]
             )
             self.assertEqual(unicode_alias.returncode, 2, unicode_alias.stderr)
+            self.finish_claim(worktrees[2], third_receipt)
             canonical = self.run_command(
                 [
                     sys.executable,

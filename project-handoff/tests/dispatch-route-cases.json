@@ -446,7 +446,10 @@
       "classification": "none",
       "spark_unavailable_supported": false,
       "create_thread_arguments": {},
-      "omitted_create_thread_fields": ["model", "thinking"]
+      "omitted_create_thread_fields": [
+        "model",
+        "thinking"
+      ]
     }
   },
   {
@@ -473,7 +476,10 @@
       "classification": "none",
       "spark_unavailable_supported": false,
       "create_thread_arguments": {},
-      "omitted_create_thread_fields": ["model", "thinking"]
+      "omitted_create_thread_fields": [
+        "model",
+        "thinking"
+      ]
     }
   },
   {
@@ -549,8 +555,12 @@
       "valid": true,
       "classification": "none",
       "spark_unavailable_supported": false,
-      "create_thread_arguments": {"model": "gpt-5.6-sol"},
-      "omitted_create_thread_fields": ["thinking"]
+      "create_thread_arguments": {
+        "model": "gpt-5.6-sol"
+      },
+      "omitted_create_thread_fields": [
+        "thinking"
+      ]
     }
   },
   {
@@ -576,8 +586,12 @@
       "valid": true,
       "classification": "none",
       "spark_unavailable_supported": false,
-      "create_thread_arguments": {"thinking": "ultra"},
-      "omitted_create_thread_fields": ["model"]
+      "create_thread_arguments": {
+        "thinking": "ultra"
+      },
+      "omitted_create_thread_fields": [
+        "model"
+      ]
     }
   },
   {
@@ -620,7 +634,7 @@
       "explicit_user_route_change": false,
       "route": {
         "requested_route": "auto",
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning": "max",
         "surface": "visible_thread",
         "model_basis": "explicit_auto",
@@ -632,7 +646,7 @@
       "classification": "none",
       "spark_unavailable_supported": false,
       "create_thread_arguments": {
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "thinking": "max"
       },
       "omitted_create_thread_fields": []
@@ -649,7 +663,7 @@
       "explicit_user_route_change": false,
       "route": {
         "requested_route": "auto",
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning": null,
         "surface": "visible_thread",
         "model_basis": "explicit_auto",
@@ -660,8 +674,12 @@
       "valid": true,
       "classification": "none",
       "spark_unavailable_supported": false,
-      "create_thread_arguments": {"model": "gpt-5.6-terra"},
-      "omitted_create_thread_fields": ["thinking"]
+      "create_thread_arguments": {
+        "model": "gpt-5.6-sol"
+      },
+      "omitted_create_thread_fields": [
+        "thinking"
+      ]
     }
   },
   {
@@ -801,7 +819,7 @@
       "explicit_user_route_change": false,
       "route": {
         "requested_route": "gpt-5.6-terra",
-        "model": "gpt-5.6-terra",
+        "model": "gpt-5.6-sol",
         "reasoning": null,
         "surface": "visible_thread",
         "model_basis": "explicit_auto",
@@ -871,6 +889,352 @@
       "error_contains": "axis_authority_mismatch",
       "classification": "none",
       "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "valid-astra-max",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "astra-max",
+        "model": "gpt-6-astra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-astra-max-reasoning-drift",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "astra-max",
+        "model": "gpt-6-astra",
+        "reasoning": "low",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "error_contains": "alias astra-max requires"
+    }
+  },
+  {
+    "id": "valid-gpt6-max",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt6-max",
+        "model": "gpt-6-astra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-gpt6-max-reasoning-drift",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt6-max",
+        "model": "gpt-6-astra",
+        "reasoning": "low",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "error_contains": "alias gpt6-max requires"
+    }
+  },
+  {
+    "id": "valid-astra-ultra",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "astra-ultra",
+        "model": "gpt-6-astra",
+        "reasoning": "ultra",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-astra-ultra-reasoning-drift",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "astra-ultra",
+        "model": "gpt-6-astra",
+        "reasoning": "low",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "error_contains": "alias astra-ultra requires"
+    }
+  },
+  {
+    "id": "valid-gpt6-ultra",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt6-ultra",
+        "model": "gpt-6-astra",
+        "reasoning": "ultra",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-gpt6-ultra-reasoning-drift",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt6-ultra",
+        "model": "gpt-6-astra",
+        "reasoning": "low",
+        "surface": "visible_thread",
+        "model_basis": "explicit_skill_route",
+        "reasoning_basis": "explicit_skill_route"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "error_contains": "alias gpt6-ultra requires"
+    }
+  },
+  {
+    "id": "reject-terra-automatic-model",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "auto",
+        "model": "gpt-5.6-terra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_auto",
+        "reasoning_basis": "explicit_auto"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "error_contains": "automatic_model_not_allowed"
+    }
+  },
+  {
+    "id": "preserve-explicit-terra-auto-reasoning",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "auto",
+        "requested_model": "gpt-5.6-terra",
+        "model": "gpt-5.6-terra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "explicit_auto"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "gpt6-model-name-omits-reasoning",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt6",
+        "requested_model": "GPT6",
+        "model": "gpt-6-astra",
+        "reasoning": null,
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "platform_default"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-gpt6-model-name-substitution",
+    "attempt": {
+      "operation": "initial_dispatch",
+      "action": "create_visible_task",
+      "tool": "codex_app__create_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "gpt6",
+        "requested_model": "GPT6",
+        "model": "gpt-5.6-sol",
+        "reasoning": null,
+        "surface": "visible_thread",
+        "model_basis": "explicit_user",
+        "reasoning_basis": "platform_default"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "error_contains": "axis_authority_mismatch"
+    }
+  },
+  {
+    "id": "preserve-existing-automatic-terra-followup",
+    "attempt": {
+      "operation": "followup",
+      "action": "send_followup",
+      "tool": "codex_app__send_message_to_thread",
+      "failure_class": "none",
+      "route_changed": false,
+      "explicit_user_route_change": false,
+      "route": {
+        "requested_route": "auto",
+        "model": "gpt-5.6-terra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_auto",
+        "reasoning_basis": "explicit_auto"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "classification": "none",
+      "spark_unavailable_supported": false
+    }
+  },
+  {
+    "id": "reject-new-auto-terra-via-route-change",
+    "attempt": {
+      "operation": "followup",
+      "action": "send_followup",
+      "tool": "codex_app__send_message_to_thread",
+      "failure_class": "none",
+      "route_changed": true,
+      "explicit_user_route_change": true,
+      "route": {
+        "requested_route": "auto",
+        "model": "gpt-5.6-terra",
+        "reasoning": "max",
+        "surface": "visible_thread",
+        "model_basis": "explicit_auto",
+        "reasoning_basis": "explicit_auto"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "classification": "none",
+      "spark_unavailable_supported": false,
+      "error_contains": "automatic_model_not_allowed"
     }
   }
 ]

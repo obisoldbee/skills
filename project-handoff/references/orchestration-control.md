@@ -1,6 +1,6 @@
 # Orchestration Control
 
-Use this contract when a handoff contains multiple lanes, visible tasks, parallel work, or a gated phase transfer. The current task remains the Controller unless the user explicitly assigns that role elsewhere.
+Use this contract for requested handoff or visible-task orchestration with multiple lanes or a gated phase transfer. Ordinary task decomposition or internal subagent collaboration alone does not select this visible-task workflow. The current task remains the Controller unless the user explicitly assigns that role elsewhere.
 
 In a visible-task run, `worker` means a separate user-owned Codex task created through `create_thread`. It never means `spawn_agent`, a collaboration subagent, or an agent path.
 
@@ -63,8 +63,8 @@ Use this machine-checkable shape when a durable plan is useful:
       "expected_outputs": ["docs/specs/protocol-v2.md"],
       "validation": "test -s docs/specs/protocol-v2.md",
       "route": {
-        "requested_route": "sol-max",
-        "model": "gpt-5.6-sol",
+        "requested_route": "astra-max",
+        "model": "gpt-6-astra",
         "reasoning": "max",
         "surface": "visible_thread",
         "model_basis": "explicit_skill_route",
@@ -75,7 +75,7 @@ Use this machine-checkable shape when a durable plan is useful:
 }
 ~~~
 
-Allowed route bases are `explicit_user`, `explicit_skill_route`, `explicit_auto`, and `platform_default`. Record model and reasoning bases separately, and retain every raw user value as `requested_model` or `requested_reasoning`. A raw user-selected value applies to one axis and must equal its effective value; an explicitly selected alias binds both axes; explicit `auto` authorizes classification only on that axis; an unselected axis has a null value and must be omitted from `create_thread`. A bare Skill trigger or task-creation request therefore uses `requested_route=platform-default`, not an automatically selected worker alias. `requested_route` still binds explicit alias semantics: `spark` requires the bundled CLI at `xhigh`, while `luna-max` requires a visible Luna task at `max`.
+Allowed route bases are `explicit_user`, `explicit_skill_route`, `explicit_auto`, and `platform_default`. Record model and reasoning bases separately, and retain every raw user value as `requested_model` or `requested_reasoning`. A raw user-selected value applies to one axis and must equal its effective value, with only the documented Astra/GPT6 model-name normalization; an explicitly selected alias binds both axes; explicit `auto` authorizes classification only on that axis; an unselected axis has a null value and must be omitted from `create_thread`. A bare Skill trigger or task-creation request therefore uses `requested_route=platform-default`, not an automatically selected worker alias. `requested_route` still binds explicit alias semantics: `spark` requires the bundled CLI at `xhigh`, while `luna-max` requires a visible Luna task at `max`.
 
 ## 3. Independence and concurrency
 
@@ -102,7 +102,7 @@ Treat the following as conflicts unless an explicit dependency serializes them:
 
 For every conflict, record the affected lanes, paths/resources, chosen order, and integration owner. Resolve it by narrowing scopes, serializing lanes, or using an explicitly authorized isolated worktree/environment. Never assume that naming an integration owner makes concurrent same-file writes safe.
 
-The integration owner is the only actor allowed to reconcile cross-lane changes, resolve collisions, run the full validation surface, and declare the integrated result. When the owner is a worker lane, that lane must depend on every lane whose output it integrates. Otherwise keep the Controller as owner.
+The integration owner is the only actor allowed to reconcile cross-lane changes, resolve collisions, run the declared integration validation applicable to the final deliverable, and declare the integrated result. When the owner is a worker lane, that lane must depend on every lane whose output it integrates. Otherwise keep the Controller as owner.
 
 ## 5. Controller records
 
@@ -133,7 +133,7 @@ Controller to worker:
 
 Worker to Controller:
 
-- Reconcile task state and filesystem artifacts; chat text alone is not completion evidence.
+- Reconcile task state and the required artifacts or response evidence; an unsupported self-report is not completion evidence. A response-only audit is assessed against its requested findings and verifiable sources, without creating unrequested files.
 - Record changed files, validation, risks, and the lane's requested next state.
 - Carry forward only verified outputs. Mark replaced or superseded outputs stale until revalidated.
 
@@ -188,7 +188,7 @@ The run succeeds only when:
 
 1. every required lane is integrated, or an omitted/aborted lane is explicitly accepted by the user;
 2. the integration owner has reconciled all changes and write conflicts;
-3. full integration validation passes;
+3. all declared integration checks applicable to the final deliverable pass; unrelated suites and repeated passing runs require a concrete new concern;
 4. no required dependency, retry, user intervention, or stale output remains unresolved;
 5. the final deliverable and task receipts are reported.
 

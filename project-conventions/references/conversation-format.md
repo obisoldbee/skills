@@ -2,7 +2,9 @@
 
 This document defines the standard format for files under `conversation/`. The goal is to capture not just the outcome of a discussion, but the **reasoning process**: what the agent proposed, what the user changed, and why.
 
-Allocate and write a canonical conversation file only while holding the Project Root's exclusive `writer` claim. Read-only and isolated-worktree Agents return their findings or commits first; the later shared writer records the integrated reasoning and user corrections without replacing the original inputs.
+Use a conversation record for a significant decision, user correction, or direction change; routine steps and response-only inspections do not need one. Describe the decision, evidence, alternatives and stated rationale, without requesting private chain-of-thought. Do not infer missing user reasons as fact.
+
+In projects with adopted access governance, briefly hold `scoped-writer --write-dir conversation` while allocating the next number and creating the canonical conversation file without clobbering. Release after the write batch; do not reserve this directory for the entire research task. An existing conversation file can be updated under an exact `--write-file` claim. Isolated-worktree Agents release their worktree claim first and record integrated decisions in the owning Project Root, preserving the original inputs. Legacy projects follow their existing write rules; this format does not require installing a helper.
 
 ## File Template
 

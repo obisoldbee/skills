@@ -16,7 +16,8 @@ from pathlib import Path, PurePosixPath
 
 
 CONTROL_DIRECTORY = ".project-conventions"
-PROTOCOL_VERSION = 1
+CONFIG_SCHEMA_VERSION = 1
+ACCESS_PROTOCOL_VERSION = 2
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MANAGED_START = "<!-- project-conventions:access:start -->"
 MANAGED_END = "<!-- project-conventions:access:end -->"
@@ -391,7 +392,7 @@ def validate(target: Path, run_access_check: bool = True) -> dict[str, object]:
     }
     if set(config) != expected_keys:
         raise ProjectValidationError("project.json field set is invalid")
-    if config["schema_version"] != PROTOCOL_VERSION:
+    if config["schema_version"] != CONFIG_SCHEMA_VERSION:
         raise ProjectValidationError("project.json schema_version is unsupported")
     project_type = config["project_type"]
     if project_type not in {"code", "document", "hybrid"}:
@@ -595,7 +596,7 @@ def validate(target: Path, run_access_check: bool = True) -> dict[str, object]:
             access_status = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
             raise ProjectValidationError("project access status did not return JSON") from exc
-        if access_status.get("protocol_version") != PROTOCOL_VERSION:
+        if access_status.get("protocol_version") != ACCESS_PROTOCOL_VERSION:
             raise ProjectValidationError("project access status protocol mismatch")
 
     repository_state = "not-configured"

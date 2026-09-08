@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or execute Agnes Image 2.1 and Video V2 requests.
+"""Build or execute Agnes Image 2.5 Flash and Video 2.5 requests.
 
 The CLI is dry-run by default. It reads no credential source and performs no
 network request unless ``--execute`` is supplied explicitly.
@@ -10,9 +10,12 @@ from __future__ import annotations
 import argparse
 import base64
 import http.client
+import ipaddress
 import json
+import math
 import mimetypes
 import os
+import re
 import stat
 import time
 import urllib.error
@@ -24,10 +27,15 @@ from typing import Any, Callable
 
 
 DEFAULT_BASE_URL = "https://apihub.agnes-ai.com"
-IMAGE_MODEL = "agnes-image-2.1-flash"
-VIDEO_MODEL = "agnes-video-v2.0"
+IMAGE_MODEL = "agnes-image-2.5-flash"
+VIDEO_MODEL = "agnes-video-2.5-flash"
+STANDARD_VIDEO_MODEL = "agnes-video-2.5"
+VIDEO_MODELS = (VIDEO_MODEL, STANDARD_VIDEO_MODEL)
 TERMINAL_VIDEO_STATES = {"completed", "failed"}
+VIDEO_STATES = {"queued", "in_progress", *TERMINAL_VIDEO_STATES}
 RATIOS = ("1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9")
+VIDEO_RATIOS = ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16")
+VIDEO_SIZES = ("720P", "1080P", "1K", "2K")
 DIR_FD_OUTPUT_SUPPORTED = (
     all(function in os.supports_dir_fd for function in (os.open, os.mkdir, os.stat, os.link, os.unlink))
     and all(function in os.supports_follow_symlinks for function in (os.stat, os.link))
@@ -45,6 +53,13 @@ class AgnesError(RuntimeError):
         self.secrets_read = False
         self.recovery: dict[str, Any] | None = None
         self.artifact: dict[str, Any] | None = None
+
+
+class SingleFrameURL(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if getattr(namespace, self.dest) is not None:
+            parser.error(f"{option_string} accepts one frame; use reference mode for multiple images")
+        setattr(namespace, self.dest, values)
 
 
 def error_category(exc: BaseException) -> str:
@@ -162,11 +177,12 @@ def execution_parent() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     subparsers = parser.add_subparsers(dest="media", required=True)
     common = execution_parent()
 
-    image = subparsers.add_parser("image", parents=[common], help="Generate or edit an image.")
+    image = subparsers.add_parser("image", parents=[common], allow_abbrev=False, help="Generate or edit an image.")
+    image.add_argument("--model", choices=(IMAGE_MODEL,), default=IMAGE_MODEL)
     image.add_argument("--prompt", required=True)
     image.add_argument("--size", default="1K")
     image.add_argument("--ratio", choices=RATIOS, default="1:1")
@@ -177,31 +193,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="URL_OR_FILE",
         help="Input image; repeat for multi-image composition.",
     )
-    image.add_argument("--response-format", choices=("url", "b64_json"), default="url")
+    image.add_argument("--response-format", choices=("url", "b64_json"))
+    image.add_argument("--return-base64", action="store_true", help="Text-to-image Base64 output.")
     image.add_argument("--output", type=Path, help="Save the first returned image here.")
 
-    video = subparsers.add_parser("video", parents=[common], help="Create an async video task.")
+    video = subparsers.add_parser("video", parents=[common], allow_abbrev=False, help="Create a Video 2.5 task.")
+    video.add_argument("--model", choices=VIDEO_MODELS, default=VIDEO_MODEL)
     video.add_argument("--prompt", required=True)
-    inputs = video.add_mutually_exclusive_group()
-    inputs.add_argument("--image", metavar="PUBLIC_URL", help="Single public image URL.")
-    inputs.add_argument(
-        "--keyframe",
-        action="append",
-        default=[],
-        metavar="PUBLIC_URL",
-        help="Public keyframe URL; repeat at least twice.",
-    )
-    video.add_argument("--width", type=int, default=1152)
-    video.add_argument("--height", type=int, default=768)
-    video.add_argument("--num-frames", type=int, default=121)
-    video.add_argument("--frame-rate", type=float, default=24)
-    video.add_argument("--num-inference-steps", type=int)
+    video.add_argument("--mode", choices=("text", "keyframe", "reference"), help="Omit to infer from explicit media flags.")
+    video.add_argument("--seconds", choices=tuple(str(n) for n in range(4, 13)), default="5")
+    video.add_argument("--size", choices=VIDEO_SIZES, default="720P")
+    video.add_argument("--aspect-ratio", choices=VIDEO_RATIOS, help="Default: 16:9, or 1:1 for standard 1K.")
     video.add_argument("--seed", type=int)
-    video.add_argument("--negative-prompt")
-    video.add_argument("--wait", action="store_true", help="Poll until completed or failed.")
-    video.add_argument("--poll-interval", type=float, default=5.0)
-    video.add_argument("--max-wait", type=float, default=360.0)
-    video.add_argument("--output", type=Path, help="With --wait, download metadata.url here.")
+    video.add_argument("--n", type=int, choices=(1,), default=1)
+    video.add_argument("--first-frame", "--image", dest="first_frame", action=SingleFrameURL, metavar="PUBLIC_URL", help="First frame; --image is a single-frame alias.")
+    video.add_argument("--last-frame", action=SingleFrameURL, metavar="PUBLIC_URL")
+    video.add_argument("--reference-image", action="append", default=[], metavar="PUBLIC_URL")
+    video.add_argument("--reference-audio", action="append", default=[], metavar="PUBLIC_URL")
+    video.add_argument("--reference-video", action="append", default=[], metavar="PUBLIC_URL", help="Standard 2.5 only; maximum one.")
+    video.add_argument("--video-start-seconds", type=float)
+    video.add_argument("--video-require-audio", action=argparse.BooleanOptionalAction, default=None)
+
+    status = subparsers.add_parser("video-status", parents=[common], allow_abbrev=False, help="Query the same task without creating a video.")
+    status.add_argument("--video-id", required=True)
+    status.add_argument("--model", choices=VIDEO_MODELS, required=True, help="Use the original task's model.")
+    for command in (video, status):
+        command.add_argument("--wait", action="store_true", help="Poll until completed or failed.")
+        command.add_argument("--poll-interval", type=float, default=1.5)
+        command.add_argument("--max-wait", type=float, default=600.0)
+        command.add_argument("--output", type=Path, help="With --wait, download metadata.url here.")
 
     args = parser.parse_args(argv)
     validate_args(parser, args)
@@ -209,19 +229,72 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    if args.timeout <= 0:
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
-    if args.media == "video":
-        if args.num_frames < 1 or args.num_frames > 441 or (args.num_frames - 1) % 8:
-            parser.error("--num-frames must be <= 441 and follow the 8n+1 rule")
-        if not 1 <= args.frame_rate <= 60:
-            parser.error("--frame-rate must be between 1 and 60")
-        if args.keyframe and len(args.keyframe) < 2:
-            parser.error("keyframe mode requires at least two --keyframe values")
+    if args.media in ("image", "video") and not args.prompt.strip():
+        parser.error("--prompt must not be empty")
+    if args.media == "image":
+        if not re.fullmatch(r"(?:[1-4]K|[1-9][0-9]*x[1-9][0-9]*)", args.size):
+            parser.error("image --size must be 1K, 2K, 3K, 4K or positive WIDTHxHEIGHT")
+        if args.return_base64 and (args.image or args.response_format == "url"):
+            parser.error("--return-base64 is text-only and conflicts with --image or URL output")
+        args.response_format = args.response_format or ("b64_json" if args.return_base64 else "url")
+    else:
         if args.output and not args.wait:
             parser.error("--output requires --wait for video generation")
-        if args.poll_interval <= 0 or args.max_wait <= 0:
+        if any(not math.isfinite(n) or n <= 0 for n in (args.poll_interval, args.max_wait)):
             parser.error("--poll-interval and --max-wait must be greater than zero")
+        if args.media == "video-status":
+            if not args.video_id.strip():
+                parser.error("--video-id must not be empty")
+            return
+        frames = bool(args.first_frame or args.last_frame)
+        references = bool(args.reference_image or args.reference_audio or args.reference_video)
+        args.mode = args.mode or ("keyframe" if frames else "reference" if references else "text")
+        if args.mode == "text" and (frames or references):
+            parser.error("text mode accepts no media; choose keyframe or reference")
+        if args.mode == "keyframe" and (not frames or references):
+            parser.error("keyframe requires first/last frame and forbids reference media")
+        if args.mode == "reference" and (frames or not references):
+            parser.error("reference requires reference media and forbids first/last frame")
+        flash = args.model == VIDEO_MODEL
+        if flash and args.size != "720P":
+            parser.error("Agnes Video 2.5 Flash size must be 720P; model will not be changed automatically")
+        if args.size == "1K" and args.aspect_ratio not in (None, "1:1"):
+            parser.error("standard Video 2.5 size 1K is fixed at 1024x1024; choose 1:1 or another size")
+        args.aspect_ratio = args.aspect_ratio or ("1:1" if args.size == "1K" else "16:9")
+        if flash and args.reference_video:
+            parser.error("Agnes Video 2.5 Flash does not support reference video")
+        if len(args.reference_image) > (5 if flash else 8):
+            parser.error(f"reference images must not exceed {5 if flash else 8}")
+        if len(args.reference_audio) > 3 or len(args.reference_video) > 1:
+            parser.error("reference audio must not exceed 3; reference video must not exceed 1")
+        if not args.reference_video and (args.video_start_seconds is not None or args.video_require_audio is not None):
+            parser.error("video object options require --reference-video")
+        if args.video_start_seconds is not None and (not math.isfinite(args.video_start_seconds) or args.video_start_seconds < 0):
+            parser.error("--video-start-seconds must be finite and non-negative")
+        media_urls = [args.first_frame, args.last_frame, *args.reference_image, *args.reference_audio, *args.reference_video]
+        if any(not public_media_url(value) for value in media_urls if value is not None):
+            parser.error("video media requires public HTTP(S) URLs without credentials; local paths and Data URIs are unsupported")
+
+
+def public_media_url(value: str) -> bool:
+    """Check URL form only; never fetch media or claim public reachability."""
+    try:
+        url = urllib.parse.urlsplit(value)
+        host = url.hostname
+        if url.scheme not in ("https", "http") or not host or url.username or url.password:
+            return False
+        if any(c.isspace() for c in value) or url.fragment or url.port == 0:
+            return False
+        if host.lower().rstrip(".") == "localhost" or host.lower().rstrip(".").endswith((".localhost", ".local")):
+            return False
+        try:
+            return ipaddress.ip_address(host).is_global
+        except ValueError:
+            return True  # DNS and actual accessibility remain runtime checks.
+    except ValueError:
+        return False
 
 
 def _is_remote_or_data_uri(value: str) -> bool:
@@ -249,39 +322,65 @@ def build_image_payload(args: argparse.Namespace, *, execute: bool) -> dict[str,
     extra_body: dict[str, Any] = {"response_format": args.response_format}
     if args.image:
         extra_body["image"] = [image_input(value, execute=execute) for value in args.image]
-    return {
-        "model": IMAGE_MODEL,
+    payload = {
+        "model": args.model,
         "prompt": args.prompt,
         "size": args.size,
         "ratio": args.ratio,
         "extra_body": extra_body,
     }
+    if not args.image and args.response_format == "b64_json":
+        payload.pop("extra_body")
+        payload["return_base64"] = True
+    return payload
 
 
 def build_video_payload(args: argparse.Namespace) -> dict[str, Any]:
-    frame_rate: int | float = args.frame_rate
-    if frame_rate == int(frame_rate):
-        frame_rate = int(frame_rate)
     payload: dict[str, Any] = {
-        "model": VIDEO_MODEL,
+        "model": args.model,
         "prompt": args.prompt,
-        "width": args.width,
-        "height": args.height,
-        "num_frames": args.num_frames,
-        "frame_rate": frame_rate,
+        "mode": args.mode,
+        "seconds": args.seconds,
+        "size": args.size,
+        "aspect_ratio": args.aspect_ratio,
+        "n": args.n,
     }
-    if args.image:
-        payload["image"] = args.image
-    if args.keyframe:
-        payload["extra_body"] = {"image": args.keyframe, "mode": "keyframes"}
-    for argument, field in (
-        (args.num_inference_steps, "num_inference_steps"),
-        (args.seed, "seed"),
-        (args.negative_prompt, "negative_prompt"),
-    ):
-        if argument is not None:
-            payload[field] = argument
+    if args.seed is not None:
+        payload["seed"] = args.seed
+    for field in ("first_frame", "last_frame"):
+        if getattr(args, field) is not None:
+            payload[field] = getattr(args, field)
+    for flag, field in ((args.reference_image, "images"), (args.reference_audio, "audios")):
+        if flag:
+            payload[field] = flag
+    if args.reference_video:
+        payload["videos"] = [{
+            "url": args.reference_video[0],
+            "start_seconds": args.video_start_seconds if args.video_start_seconds is not None else 0,
+            "require_audio": args.video_require_audio if args.video_require_audio is not None else False,
+        }]
     return payload
+
+
+def service_root(value: str) -> str:
+    """Accept the documented origin or /v1 API base, without duplicating /v1."""
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        if (parsed.scheme not in ("https", "http") or not parsed.hostname
+                or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or parsed.port == 0 or any(c.isspace() for c in value)
+                or parsed.path.rstrip("/") not in ("", "/v1")):
+            raise ValueError
+        return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+    except ValueError:
+        raise AgnesError("AGNES_BASE_URL must be a service origin or its /v1 API base") from None
+
+
+def video_query_url(base_url: str, video_id: str, model: str) -> str:
+    if not isinstance(video_id, str) or not video_id.strip() or model not in VIDEO_MODELS:
+        raise AgnesError("video query requires the original video_id and a supported model")
+    query = urllib.parse.urlencode({"video_id": video_id, "model_name": model})
+    return f"{service_root(base_url)}/agnesapi?{query}"
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -309,7 +408,7 @@ def execution_config(args: argparse.Namespace) -> tuple[str, str]:
     if not key:
         raise AgnesError("AGNES_API_KEY is not configured in the environment or credential file")
     base_url = os.environ.get("AGNES_BASE_URL") or file_values.get("AGNES_BASE_URL") or DEFAULT_BASE_URL
-    return base_url.rstrip("/"), key
+    return service_root(base_url), key
 
 
 def request_json(
@@ -461,11 +560,26 @@ def save_image_result(result: dict[str, Any], output: OutputTarget | Path, *, ti
 
 
 def video_result_url(result: dict[str, Any]) -> str | None:
+    if result.get("status") != "completed":
+        return None
     metadata = result.get("metadata")
     if not isinstance(metadata, dict):
         return None
     url = metadata.get("url")
     return url if isinstance(url, str) and url else None
+
+
+def validate_video_response(result: dict[str, Any], *, model: str, video_id: str | None = None) -> None:
+    if not isinstance(result.get("status"), str) or result["status"] not in VIDEO_STATES:
+        raise AgnesError("Agnes video response has a missing or unknown status")
+    if result.get("model") is not None and result["model"] != model:
+        raise AgnesError("Agnes video response model does not match the requested model")
+    if video_id is not None and result.get("video_id") is not None and result["video_id"] != video_id:
+        raise AgnesError("Agnes video response ID does not match the queried task")
+    if result["status"] == "failed":
+        raise AgnesError("Agnes video generation failed (status=failed)")
+    if result["status"] == "completed" and not video_result_url(result):
+        raise AgnesError("completed Agnes video response has no metadata.url")
 
 
 def poll_video(
@@ -476,44 +590,47 @@ def poll_video(
     timeout: float,
     poll_interval: float,
     max_wait: float,
-    request: Callable[..., dict[str, Any]] = request_json,
+    model: str | None = None,
+    request: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     video_id = initial.get("video_id")
-    task_id = initial.get("task_id") or initial.get("id")
-    if video_id:
-        query = urllib.parse.urlencode({"video_id": str(video_id)})
-        result_url = f"{base_url}/agnesapi?{query}"
-    elif task_id:
-        result_url = f"{base_url}/v1/videos/{urllib.parse.quote(str(task_id), safe='')}"
-    else:
-        raise AgnesError("Agnes create response contains neither video_id nor task_id")
+    selected_model = model or initial.get("model")
+    if not video_id:
+        raise AgnesError("Agnes response has no video_id; task_id and id are not query IDs")
+    result_url = video_query_url(base_url, video_id, selected_model)
+    validate_video_response(initial, model=selected_model, video_id=video_id)
+    request = request or request_json
 
     deadline = time.monotonic() + max_wait
     result = initial
     while result.get("status") not in TERMINAL_VIDEO_STATES:
         if time.monotonic() >= deadline:
             raise AgnesError(f"timed out waiting for Agnes video after {max_wait:g} seconds")
-        time.sleep(poll_interval)
-        result = request("GET", result_url, key, timeout=timeout)
-    if result.get("status") == "failed":
-        raise AgnesError("Agnes video generation failed (status=failed)")
-    if not video_result_url(result):
-        raise AgnesError("completed Agnes video response has no metadata.url")
+        time.sleep(min(poll_interval, max(0.0, deadline - time.monotonic())))
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AgnesError(f"timed out waiting for Agnes video after {max_wait:g} seconds")
+        result = request("GET", result_url, key, timeout=min(timeout, remaining))
+        validate_video_response(result, model=selected_model, video_id=video_id)
     return result
 
 
 def dry_run(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]:
     endpoint = "/v1/images/generations" if args.media == "image" else "/v1/videos"
+    request = {"method": "POST", "url": DEFAULT_BASE_URL + endpoint, "payload": payload}
+    if args.media == "video-status":
+        request = {"method": "GET", "url": video_query_url(DEFAULT_BASE_URL, args.video_id, args.model)}
     return {
         "mode": "dry_run",
         "provider_calls": False,
         "secrets_read": False,
-        "request": {"method": "POST", "url": DEFAULT_BASE_URL + endpoint, "payload": payload},
+        "request": request,
     }
 
 
 def preserve_result(
-    media: str, initial: dict[str, Any], result: dict[str, Any], output: OutputTarget
+    media: str, initial: dict[str, Any], result: dict[str, Any], output: OutputTarget,
+    *, model: str | None = None, mode: str | None = None,
 ) -> dict[str, Any]:
     """Keep only recovery fields in a private, exclusive, same-parent receipt."""
     retained: dict[str, Any] = {}
@@ -528,6 +645,10 @@ def preserve_result(
             for name in ("video_id", "task_id", "id", "status"):
                 if isinstance(response.get(name), (str, int)):
                     retained[name] = response[name]
+        if model in VIDEO_MODELS:
+            retained["model"] = model
+        if mode in ("text", "keyframe", "reference"):
+            retained["mode"] = mode
         url = video_result_url(result)
         if url:
             retained["metadata"] = {"url": url}
@@ -560,15 +681,30 @@ def execute(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]
         base_url, key = execution_config(args)
         if output is not None:
             output.check_parent()
-        endpoint = "/v1/images/generations" if args.media == "image" else "/v1/videos"
-        provider_calls = True
-        result = request_json("POST", base_url + endpoint, key, payload=payload, timeout=args.timeout)
-        initial = result
+        base_url = service_root(base_url)
+        initial: dict[str, Any] = {}
+        result: dict[str, Any] = {}
         try:
+            if args.media == "video-status":
+                initial = {"video_id": args.video_id, "model": args.model, "status": "queued"}
+                result = initial
+                if not args.wait:
+                    provider_calls = True
+                    result = request_json("GET", video_query_url(base_url, args.video_id, args.model), key, timeout=args.timeout)
+                    validate_video_response(result, model=args.model, video_id=args.video_id)
+            else:
+                endpoint = "/v1/images/generations" if args.media == "image" else "/v1/videos"
+                provider_calls = True
+                result = request_json("POST", base_url + endpoint, key, payload=payload, timeout=args.timeout)
+                initial = result
+                if args.media == "video":
+                    # Check the creation ID before reporting success or starting a wait.
+                    video_query_url(base_url, result.get("video_id"), args.model)
             if args.media == "image":
                 if output is not None:
                     save_image_result(result, output, timeout=args.timeout)
             elif args.wait:
+                provider_calls = True
                 result = poll_video(
                     result,
                     base_url=base_url,
@@ -576,12 +712,18 @@ def execute(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]
                     timeout=args.timeout,
                     poll_interval=args.poll_interval,
                     max_wait=args.max_wait,
+                    model=args.model,
                 )
                 if output is not None:
                     download(video_result_url(result) or "", output, timeout=args.timeout)
+            else:
+                validate_video_response(result, model=args.model)
         except AgnesError as exc:
-            if output is not None:
-                exc.recovery = preserve_result(args.media, initial, result, output)
+            if output is not None and (initial or result):
+                exc.recovery = preserve_result(
+                    "image" if args.media == "image" else "video", initial, result, output,
+                    model=args.model, mode=getattr(args, "mode", None),
+                )
             raise
         return result
     except AgnesError as exc:
@@ -601,7 +743,7 @@ def main(argv: list[str] | None = None) -> int:
         payload = (
             build_image_payload(args, execute=args.execute)
             if args.media == "image"
-            else build_video_payload(args)
+            else build_video_payload(args) if args.media == "video" else {}
         )
         if not args.execute:
             report = dry_run(args, payload)
@@ -610,6 +752,7 @@ def main(argv: list[str] | None = None) -> int:
                 "mode": "execute",
                 "provider_calls": True,
                 "secrets_read": True,
+                "request_context": {"model": args.model, "mode": getattr(args, "mode", None)},
                 "result": execute(args, payload),
             }
         print(json.dumps(report, ensure_ascii=False, indent=2))

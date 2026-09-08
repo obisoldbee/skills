@@ -1,5 +1,40 @@
 # obisoldbee Skills
 
+面向 AI Agent 的开源技能集合，覆盖项目治理、多 Agent 协作、研究资料获取、媒体理解与生成，以及文档工作流。每个 Skill 都有独立的入口、参考文档和验证方式，可按需要选用。
+
+本仓库保存可分发的技能真源；本地项目记录、运行缓存和凭据应保存在仓库之外。不同 Agent 能否直接使用某个 Skill，取决于其技能加载方式、工具支持和该 Skill 的运行前提。
+
+## 中文介绍
+
+### 包含哪些能力
+
+| Skill / 包 | 用途 |
+|---|---|
+| [project-conventions](project-conventions/) | 统一项目目录与治理入口；支持文件／目录范围写入准入、只读并发和独立 Git worktree 协作 |
+| [project-handoff](project-handoff/) | 任务交接、多 Agent 调度、模型路由与执行回执；包含 Spark CLI 使用规范 |
+| [document-workspace](document-workspace/) | 基于文件的文档组织、工作区治理与资料管理 |
+| [web-bookmark-intelligence](web-bookmark-intelligence/) | 网页与书签内容采集、整理和研究输入处理 |
+| [research-qa-plugin](research-qa-plugin/) | 研究问答编排与配套研究视角，按插件内的说明使用 |
+| [paper-downloader](paper-downloader/) | 学术论文与 PDF 获取、下载验证和结果记录 |
+| [media-understanding](media-understanding/) | 按宿主能力和任务需求选择图像等媒体理解路径 |
+| [media-creator](media-creator/) | 跨 Agent 的媒体生成路由；包含 Agnes 图像／视频生成及参数校验 |
+| [minimax-h3-prompt](minimax-h3-prompt/) | MiniMax H3 视频提示词与素材组织规范 |
+| [buddy-travelling](buddy-travelling/) | Buddy 旅行任务的状态判断、交互流程和停止条件 |
+| [others-manager](others-manager/) | 第三方开源仓库的获取、来源核对和本地维护 |
+
+### 如何开始
+
+1. 将仓库克隆到自己选定的位置，每台设备保留一个真源 checkout。
+2. 打开目标包的 `SKILL.md` 或 `README.md`，确认适用任务、依赖、工具及设备／网络要求。
+3. 根据所用 Agent 的加载方式，连接或安装需要的技能。仓库的共享链接脚本只处理明确允许的目标；Windows 消费者脚本目前仅支持扫描与计划，不支持 apply。
+4. 使用前配置所需服务的凭据，避免将密钥、Cookie 或私人材料提交到 Git。修改技能后运行对应包的验证脚本。
+
+项目并发采用协作式准入：同一目录下的不同输出文件可以并行写入，只读任务可以与写入并存；代码修改优先采用独立分支和 worktree。它依赖各 Agent 遵守项目入口规则，不是操作系统文件锁。已有项目若使用旧版本地准入助手，需要按 `project-conventions` 的升级说明单独更新。
+
+下方保留英文目录布局、初始化、更新和验证说明，便于跨工具、跨设备复用。
+
+---
+
 Portable Git source for published Skill packages.
 
 ## Recommended local layout

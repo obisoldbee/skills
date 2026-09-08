@@ -101,6 +101,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
             ".project-conventions/project_access.py",
             "project-local helper",
             "read-only",
+            "scoped-writer",
             "isolated-writer",
             "blocked or failed configured admission means no write",
             "不得自动接入",
@@ -138,8 +139,9 @@ class LifecycleWorkflowTests(unittest.TestCase):
         self.assertIn("project-local reader/writer admission", self.metadata)
         self.assertIn("`src/<skill-name>/SKILL.md`", self.skill)
         self.assertIn("`docs/<skill-name>/SKILL.md` are invalid", self.skill)
-        self.assertIn("one local member `enter` automatically uses the same collection-wide", self.shared)
-        self.assertIn("no dual manual lock sequence", self.shared)
+        self.assertIn("every member helper stores claims in the collection-control runtime", self.shared)
+        self.assertIn("Scoped report/record claims compare physical paths", self.shared)
+        self.assertIn("no dual manual lock sequence", self.shared.lower())
         for required_file in (
             "initialize_project_root.py",
             "project_access.py",
@@ -191,6 +193,10 @@ class LifecycleWorkflowTests(unittest.TestCase):
                 str(PACKAGE_ROOT / "scripts" / "test_project_root_workflows.py"),
             ]
         )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_scoped_access_suite_passes(self) -> None:
+        result = self.run_command([sys.executable, "-B", str(PACKAGE_ROOT / "scripts" / "test_scoped_access.py")])
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
     def run_command(

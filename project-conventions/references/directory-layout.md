@@ -74,7 +74,7 @@ project-root/
 
 **Purpose**: Agent entry point — the first file an agent reads when entering a workspace. Most agent tools auto-detect and load it into the system prompt. It is an **index**, not a reference manual.
 
-**Content** (keep under ~60 lines):
+**Content** (use the length guidance below, not a fixed line limit):
 - **Project**: one-line description
 - **Mandatory Rules**: reference to `project-conventions` skill + 3-5 key rules (one line each)
 - **Directory Index**: table of path → one-line description → link to details
@@ -125,11 +125,11 @@ project-root/
   - `05-brand-and-naming.md`
 
 **Numbering rule**:
-- Under an active exclusive `writer` claim, scan the directory and use the next available number. If `05-*.md` is the highest, the next file is `06-*.md`.
-- A read-only or isolated-worktree claim cannot allocate canonical conversation numbers. Finish isolated work first; the next exclusive writer serially records the integrated decision.
+- Briefly hold `scoped-writer --write-dir conversation`, scan the directory and use the next available number. If `05-*.md` is the highest, the next file is `06-*.md`. Create without clobbering and release after the batch.
+- A read-only or isolated-worktree claim cannot allocate canonical conversation numbers. Finish isolated work first, then obtain the short directory claim in the owning Project Root.
 - Never renumber existing files (breaks references).
 
-**Maintained by**: The Agent holding the exclusive project-local writer claim. One file per major topic or phase.
+**Maintained by**: The Agent holding the claim covering the record or number allocation. One file per major topic or phase.
 
 **Format**: See `conversation-format.md` for the full template.
 
@@ -291,7 +291,7 @@ This mapping prevents future agents from confusing wrapper files with repository
 
 “Append-only” is a history rule, not a concurrency primitive. Multiple Agents must not perform independent read-modify-write updates to the same daily file.
 
-An Agent may update canonical project memory only while holding the exclusive project-local `writer` claim. Read-only and isolated-worktree Agents return response-only findings or Git commits; after they finish, the next exclusive writer reconciles results into the daily log, `MEMORY.md`, conversation record, and indexes.
+In an adopted project, use a short `scoped-writer --write-file memory/YYYY-MM-DD.md` claim for the daily log (and separately declare MEMORY.md only if changing it). Reread after admission, preserve concurrent additions, save and release. Do not hold the record claim during research. Read-only tasks create no records; isolated-worktree Agents release their worktree claim before updating the canonical record in its owning Project Root. A substantive work log does not require rewriting `MEMORY.md`, conversation, or every index: update each only when its own facts or decision history changed. Legacy projects follow their existing write rules; missing governance is not installation authority.
 
 **When to write**:
 - After completing substantive work (building, fixing, refactoring, generating a deliverable).
@@ -299,6 +299,7 @@ An Agent may update canonical project memory only while holding the exclusive pr
 
 **When to skip**:
 - Trivial exchanges (greetings, simple lookups, short Q&A).
+- Response-only or explicitly no-write requests, repeated unchanged status, and work whose lifecycle forbids records (such as update-only).
 
 **What goes in daily log**:
 - What was done today
@@ -344,14 +345,14 @@ Follow the Document row in **Project Types**: require `AGENTS.md`, `README.md`, 
 
 ### What if multiple agents are working concurrently?
 
-- Every Agent uses the project-local `.project-conventions/project_access.py` before substantive work. The SQLite transaction—not a role name or self-assessment—decides whether access is granted.
-- Multiple response-only reviewers may hold `read-only` claims. If a reviewer becomes a fixer, it finishes the reader claim and enters again as a writer before any edit.
-- A normal `writer` is exclusive against all readers and writers. Non-Git, binary-document, cache, database, service, and canonical-record work uses this mode.
-- Git-backed code writers may use `isolated-writer` only from different clean linked worktrees with declared, non-overlapping logical paths. This mode cannot write `.project-conventions/`, `conversation/`, `memory/`, indexes, controller state, or member catalogs.
-- A worktree protects physical files only. Overlapping logical paths, lockfiles, generated trees, databases, ports, devices, and services still require the exclusive writer.
-- Merge/integration and canonical conversation, memory, index, and final review updates occur only under the exclusive writer after isolated writers finish.
+- In a project whose current `AGENTS.md` adopts the managed access block, every Agent uses the project-local `.project-conventions/project_access.py` before substantive work. The SQLite transaction—not a role name or self-assessment—decides whether access is granted. An unrelated legacy task does not require governance installation; follow its actual rules and observed conflicts.
+- Multiple response-only reviewers may hold `read-only` claims alongside every writer. Use a fixed snapshot or recheck input hashes when reviewing changing files. A reader becoming an editor obtains a writing claim first.
+- Use `scoped-writer --write-file <file>` for reports or bounded file edits, and `--write-dir <dedicated-subtree>` for multiple outputs. Different files in the same folder may coexist. A directory reserves its descendants; a file never reserves its parent. Use the exclusive `writer` only for unbounded/shared maintenance; it excludes writers, not readers.
+- Prefer task-specific branches and different clean linked worktrees for code. `isolated-writer` permits overlapping logical paths across worktrees, but only one writer per physical worktree. Canonical records use short scoped claims in the owning Project Root after releasing the worktree claim.
+- A worktree isolates physical files; reconcile logical overlap at integration. Isolate generated outputs, databases, ports, devices and services separately or use the exclusive writer for their shared effects.
+- Shared Git maintenance and merge/integration use a short exclusive writer claim after isolated writers finish. Reports and record files use scoped claims; conversation sequence allocation briefly reserves `conversation/`.
 - Do not initialize fixed role folders or a permanent `work/lanes/` tree. Roles do not determine isolation; actual effects and the access receipt do.
-- A blocked Agent writes nothing. Stale claims never expire automatically and require explicit user-authorized dry-run/apply recovery.
+- A blocked Agent writes nothing under the denied claim; reading or a fresh claim for independent authorized outputs may continue. Stale claims never expire automatically and require explicit user-authorized dry-run/apply recovery.
 - Harness-owned hidden directories remain opaque. Separate Agent conversations do not imply separate filesystems. The protocol needs no Agent messaging or other Skill.
 
 Read `project-access.md` for commands, receipts, recovery, worktree rules, and the guarantee boundary.
@@ -378,7 +379,7 @@ Every file in the project should focus on a **single topic or responsibility**. 
 - A file exceeds ~500 lines and covers multiple distinct topics → split by topic.
 - A conversation file spans multiple unrelated decisions → split into separate numbered files.
 - A spec covers multiple independent modules → split into separate spec files per module.
-- AGENTS.md grows beyond ~60 lines → you're inlining details; move them to referenced files.
+- AGENTS.md grows beyond ~60 lines → check for repeated or conditional detail that belongs in references. Preserve project facts, domain knowledge, quality standards, and necessary authority/safety boundaries; do not shorten solely to meet a line count.
 
 ### When NOT to Split
 

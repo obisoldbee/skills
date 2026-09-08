@@ -91,6 +91,8 @@ class AgnesOutputTests(unittest.TestCase):
     def test_existing_entries_stop_before_credentials_and_submission(self) -> None:
         for route in ("url", "b64", "video"):
             for kind in ("file", "symlink", "dangling", "hardlink", "same-input", "normalized", "directory"):
+                if route == "video" and kind == "same-input":
+                    continue  # Video 2.5 rejects local input paths before execution.
                 with self.subTest(route=route, kind=kind):
                     directory = self.root / f"{route}-{kind}"
                     directory.mkdir()
@@ -227,7 +229,10 @@ class AgnesOutputTests(unittest.TestCase):
                         self.assertEqual(output.stat().st_ino, source.stat().st_ino)
                     else:
                         self.assertTrue(output.is_dir())
-                    self.assertEqual(recovery["result"], {k: v for k, v in self.response(route).items() if k != "debug"})
+                        expected = {k: v for k, v in self.response(route).items() if k != "debug"}
+                        if route == "video":
+                            expected.update(model="agnes-video-2.5-flash", mode="text")
+                        self.assertEqual(recovery["result"], expected)
                     self.request.reset_mock()
                     self.config.reset_mock()
 
@@ -345,6 +350,8 @@ class AgnesOutputTests(unittest.TestCase):
         recovery = self.assert_recovery(report, output)
         self.assertEqual(recovery["result"]["video_id"], "video-123")
         self.assertEqual(recovery["result"]["task_id"], "task-123")
+        self.assertEqual(recovery["result"]["model"], "agnes-video-2.5-flash")
+        self.assertEqual(recovery["result"]["mode"], "text")
 
     def test_recovery_write_failure_is_explicit_without_leaking_or_resubmitting(self) -> None:
         output = self.root / "result"

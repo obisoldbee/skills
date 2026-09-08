@@ -24,13 +24,13 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 
 ## Visible-task exclusivity
 
-- For Sol, Terra, and Luna initial dispatch, call the live tool whose leaf name is `create_thread`.
+- For Astra, Sol, Terra, and Luna initial dispatch, call the live tool whose leaf name is `create_thread`.
 - Never call `spawn_agent`, `collaboration.spawn_agent`, or another hidden-subagent API for a `visible_thread` route. Never treat `subAgentActivity`, `/root/<agent>`, `agentPath`, or `agentThreadId` as task creation evidence.
 - Do not apply a hidden-subagent concurrency-slot limit to visible tasks. Use only the live visible-task capacity and the user's cap.
 - Put the exact planned tool name in the route attempt before calling it and retain the route validator's `attempt_sha256`. After the call, put the exact actual tool name, actual route-sensitive arguments, and attempt hash in a normalized receipt, then run `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT`.
 - If either guard fails, set the lane to `failed` with classification `invalid_visible_task_evidence`, record the exact evidence, and stop that dispatch. Do not use `created_confirmed`, `created_unconfirmed`, or `queued`.
 
-Visible-task authority and field authority are separate. A user who only invokes `$project-handoff`, triggers it implicitly, or says “创建任务” authorizes no model/reasoning override. Validate `requested_route=platform-default`, then omit both `model` and `thinking`. A raw explicit value controls only its axis and is retained in `requested_model` or `requested_reasoning`; an explicit alias binds both documented axes; explicit `auto` authorizes classification only on the named axis.
+Visible-task authority and field authority are separate. A user who only invokes `$project-handoff`, triggers it implicitly, or says “创建任务” authorizes no model/reasoning override. Validate `requested_route=platform-default`, then omit both `model` and `thinking`. A raw explicit value controls only its axis and is retained in `requested_model` or `requested_reasoning`; the documented model-only names Astra/GPT6 resolve to `gpt-6-astra` without selecting reasoning; an explicit alias binds both documented axes; explicit `auto` authorizes classification only on the named axis.
 
 ## `create_thread`
 
@@ -82,6 +82,7 @@ Visible-task authority and field authority are separate. A user who only invokes
 - **Do not use when**: Creating the initial task.
 - **Failure handling**: Do not duplicate the same follow-up after an uncertain send without checking the task.
 - **Route rule**: Preserve the task's effective model/reasoning route. Do not pass a new model or `thinking` value unless the user explicitly requested that route change; in particular, keep `luna-max` at `max`.
+- **Retired automatic route**: For an existing task originally routed automatically to Terra, verify the task id and original effective route from readback and its historical receipt before declaring `route_changed=false`. The offline guard's compatibility allowance validates that declaration only; it does not establish task existence or original routing. This exception never authorizes new automatic Terra creation.
 
 ## `set_thread_archived`
 
@@ -106,6 +107,8 @@ Visible-task authority and field authority are separate. A user who only invokes
 8. Confirm delivery from the receipt or read back once.
 9. Return task receipt.
 
+Before closing dispatch-only, also satisfy any initial progress wait/readback required by the live host. This ends the dispatch request, not the worker's substantive work. If the user requested completion, monitoring, or integration, continue bounded waits and verify the lane's declared outputs and checks before reporting that result complete.
+
 ## Multi-lane lifecycle
 
 1. Build and validate the dependency graph, scopes, conflict declarations, routes, and integration owner.
@@ -115,7 +118,7 @@ Visible-task authority and field authority are separate. A user who only invokes
 5. Reconcile final task state, direct user-to-worker changes, output artifacts, and lane validation.
 6. Mark a passed lane `succeeded_pending_integration`; keep missing or failed gates in `needs_fix`, `blocked`, `failed`, or `aborted`.
 7. Create each dependent lane just in time from freshly verified upstream artifacts.
-8. Let only the integration owner reconcile cross-lane changes, run full validation, and mark work `integrated`.
+8. Let only the integration owner reconcile cross-lane changes, run all declared integration checks applicable to the final deliverable, and mark work `integrated`.
 9. Archive only under the explicit lifecycle rule above.
 
 ## Failure and replacement rules
@@ -140,7 +143,7 @@ Required creation-receipt fields:
 actual_tool: codex_app__create_thread
 status: created_confirmed | created_unconfirmed | queued | failed
 surface: visible_thread
-requested_route: sol-max | terra-max | luna-max | <supported visible route>
+requested_route: astra-max | astra-ultra | sol-max | terra-max | luna-max | <supported visible route>
 dispatch_attempt_sha256: <64 lowercase hex from the route validator>
 actual_create_thread_arguments: <exact arguments actually passed; may be {}>
 task_kind: codex

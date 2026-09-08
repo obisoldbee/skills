@@ -25,6 +25,11 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
+from initialize_project_root import (
+    render_access_block as render_root_access_block,
+    render_access_readme,
+)
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -91,16 +96,7 @@ class ControlInitializationError(RuntimeError):
 
 
 def render_access_block() -> str:
-    return """<!-- project-conventions:access:start -->
-## Mandatory Agent Entry
-
-- Before substantive work, run `python3 -B .project-conventions/project_access.py status`.
-- Response-only inspection enters `read-only`; any possible side effect enters `writer`. Do not write until the JSON receipt says `status: entered`.
-- Save the returned `session_id` and `token`, re-read current state, run `check` before write batches, and finish project records before `finish`.
-- A blocked Agent writes nothing. Never auto-clear another claim; recovery requires explicit user authorization, a reason, dry-run, then `--apply --token <recovery-token>` with the same reason.
-- The entry is project-local and works from any cooperating Harness; no dispatcher or Agent messaging is required.
-<!-- project-conventions:access:end -->
-"""
+    return render_root_access_block("standard", None) + "\n"
 
 
 def render_access_files(
@@ -114,14 +110,7 @@ def render_access_files(
     validate_source_file(helper_path, "project access helper")
     helper = helper_path.read_text(encoding="utf-8")
     access_block = render_access_block().rstrip("\n")
-    access_readme = (
-        "# Project Access\n\n"
-        "Use `project_access.py status`, then obtain `read-only` or exclusive `writer` "
-        "admission before substantive work. Save the returned session and token. "
-        "Claims never expire automatically. Recovery requires explicit user authorization: "
-        "run a dry-run with the reason, then repeat with `--apply`, the same reason, and "
-        "the returned one-time `--token`.\n"
-    )
+    access_readme = render_access_readme()
     config = {
         "access_readme_sha256": hashlib.sha256(access_readme.encode("utf-8")).hexdigest(),
         "agents_block_sha256": hashlib.sha256(access_block.encode("utf-8")).hexdigest(),
@@ -471,6 +460,9 @@ def render_control_files(
 - Link sources come only from `src/config/skill-exports.tsv` and point directly into `{repository_project}/`, never through a member projection.
 - Link scripts require an explicit Agent/target and Skill for apply, never create target parents, and never replace conflicts.
 - Updating `{member_project}` means running its update-only helper against `{repository_project}/{package_subpath}` and stopping after validation. Do not regenerate indexes or links.
+- Read the projected repository `AGENTS.md` and references needed for the selected task; reuse complete current readings. Run checks for the changed contract or behavior and preserve required acceptance gates.
+- Complete authorized edits, local corrections, and affected checks without per-step approval. Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records.
+- Windows consumer scripts are plan/scan-only and reject every `-Apply` before repository update or consumer writes. Do not bypass `safe-consumer-create-unsupported` with another link or Git command.
 - Do not clone, pull, push, publish, or apply links without authorization for that exact action.
 
 ## Directory Index
@@ -501,6 +493,8 @@ src/scripts   -> ../../{repository_project}/scripts
 Do not replace this bounded view with `src/skills -> ../../{repository_project}`, add package projections, or copy repository files into `src/`.
 
 Initialization creates no Agent links. Linking is a later, separately authorized action using one exact Agent/target and Skill.
+
+The repository Windows consumer script is plan/scan-only: every `-Apply`, including Device refresh, returns `safe-consumer-create-unsupported` before repository update or consumer writes. Windows initializer junction support does not establish consumer apply support.
 
 ## Navigation
 
@@ -556,12 +550,15 @@ This wrapper owns project documents, conversation, and memory. Its loadable Skil
 ## Mandatory Rules
 
 - This member's local helper stores claims in `../{control_project}/.project-conventions/runtime`, so one local `enter` automatically shares the collection-wide gate used by every member and the control project. Do not bypass it by entering `../{repository_project}` directly.
+- Before package maintenance, read this entry, `../{repository_project}/AGENTS.md`, the package `SKILL.md`, and only its references required for the selected task. Reuse complete current readings until rules or relevant state change.
 - Edit Skill content through `src/{member_project}` or directly at `../{repository_project}/{package_subpath}`; both resolve to the same bytes.
 - `SKILL.md` is package source even though it is Markdown; never move the package under this wrapper's `docs/` or into an Agent consumer directory.
 - Run Git only at `../{repository_project}` after verifying the worktree root, remote, branch, and status.
 - An update request runs `src/{member_project}/scripts/update_shared_checkout.py`, validates the named package, reports the before/after commit, and stops.
 - Update-only never rewrites this wrapper, collection indexes, other members, or Agent links.
 - Put project records under `docs/`, collaboration under `conversation/`, and local continuity under `memory/`.
+- Run package validation and checks for the changed contract or behavior; preserve required acceptance gates without unrelated suites. Complete authorized edits, local corrections, and affected checks without per-step approval.
+- Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records. Finish when the requested deliverable and applicable checks are satisfied, or report the exact unresolved blocker.
 
 ## Source Mapping
 
@@ -632,6 +629,7 @@ def render_root_files(
 ## Mandatory Rules
 
 - This directory is a Project Collection, not a Git repository or monorepo.
+- Route into the named control/member Project Root and read its `AGENTS.md` before editing; do not initialize another member or its access helper merely because it is present.
 - `{repository_project}/` is the single shared Repository Root for `{remote_identity}`; it is infrastructure, not a Project Root.
 - `{control_project}/` owns repository-level records and manages the public root through exactly four independent projections: `src/AGENTS.md`, `src/README.md`, `src/config`, and `src/scripts` to the matching `{repository_project}/` entries.
 - `{control_project}/src` must not contain a whole-repository `src/skills` projection, Skill package projections, copied repository files, or any additional source entry.

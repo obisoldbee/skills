@@ -1,121 +1,92 @@
 # Project Access — Harness-Neutral Concurrency Contract
 
-Use this contract whenever two Agent tasks may overlap in time. It is part of an initialized Project Root and does not depend on Codex, another Skill, a fixed role list, or Agent-to-Agent messaging.
+Use this contract in a Project Root whose current AGENTS.md adopts the local helper. A missing helper in an unrelated legacy project does not authorize adoption or block its original task. This is cooperative coordination for every Harness, not a Codex-only filesystem lock.
 
-## What initialization installs
+The task is to admit independent work while excluding actual write collisions. Before entering, bind the input Project Root from the current AGENTS.md and the exact output files or task-owned directory from the user's requested deliverable. If a new output name was not specified, choose a unique task name within the authorized location. Keep inputs read-only unless editing them is part of the task. Do not broaden a directory claim to avoid deciding the output boundary.
 
-```text
-<project-root>/
-├── AGENTS.md
-└── .project-conventions/
-    ├── .gitignore
-    ├── ACCESS.md
-    ├── project.json
-    └── project_access.py
+Completion means the authorized outputs were written and checked, required record batches were finished, and every claim owned by this task was released. Reply in the user's language with the resulting paths, verification and any remaining conflict. A response-only task returns its findings directly without inventing an output file; runtime JSON field names remain unchanged.
+
+## Choose the scope
+
+Check the local status protocol_version first. The commands below require version 2. If the copied helper is version 1, follow its current contract and use the reviewed upgrade workflow only for an authorized named target; retrying version-2 flags cannot repair an old copy.
+
+Every cooperating Agent uses the same local helper. Select the smallest scope covering the actual task effects:
+
+| Task | Admission | Concurrency |
+|---|---|---|
+| Response-only reading | read-only | Coexists with every writer; does not freeze inputs |
+| One report or bounded file edits | scoped-writer + --write-file | Different files in one directory can run together |
+| A task-owned output subtree | scoped-writer + --write-dir | Reserves the directory and everything below it |
+| Code implementation | isolated-writer in a linked worktree | Separate branches/worktrees; same logical filenames allowed |
+| Unbounded/shared maintenance or integration | writer | Excludes other writers, not readers |
+
+```bash
+python3 -B .project-conventions/project_access.py status
+python3 -B .project-conventions/project_access.py enter --mode read-only --actor <label>
+python3 -B .project-conventions/project_access.py enter --mode scoped-writer --actor reviewer-a --write-file docs/reviews/a.md
+python3 -B .project-conventions/project_access.py enter --mode scoped-writer --actor reviewer-b --write-file docs/reviews/b.md
+python3 -B .project-conventions/project_access.py enter --mode scoped-writer --actor researcher --write-dir docs/research/task-c
+python3 -B .project-conventions/project_access.py enter --mode isolated-writer --actor <label> --workspace <linked-worktree> --write-path <repo-relative-path>
+python3 -B .project-conventions/project_access.py enter --mode writer --actor <maintenance-label>
+python3 -B .project-conventions/project_access.py check --session <id> --token <token>
+python3 -B .project-conventions/project_access.py finish --session <id> --token <token> --outcome <success|failed|aborted>
 ```
 
-The helper is copied into the Project Root so a newly opened Harness can use it even when that Harness has not installed this Skill. Runtime claims are local and ignored by Git. Initialization records one stable runtime backend: an already-existing Git-root project uses one database under the Git common directory so linked worktrees share it; a non-Git or wrapper project uses `.project-conventions/runtime/`. The backend never switches merely because Git is initialized later—changing that boundary is separate governance maintenance performed only with no active claims.
+In the examples, a.md and b.md can be written concurrently. A second claim for a.md, or a directory claim for docs/reviews, conflicts with a.md. Paths are project-relative, literal, normalized and contain no wildcards; use forward slashes, including on Windows. Repeat --write-file and/or --write-dir to cover every output. File claims do not reserve the parent: creating missing parent directories with mkdir(exist_ok=True) is allowed, but renaming/deleting the parent or changing siblings is not. File versus directory is explicit even before the target exists. Case/Unicode aliases are compared conservatively; symlink/junction paths and hard-linked file targets are rejected. Within a claimed directory, do not follow links or mutate reserved Git, protocol or Harness metadata.
 
-## Mandatory entry sequence
+Save the returned session_id and token privately. Re-read current state after entering; run check before each write batch and finish afterward. New reports use no-clobber creation (for example Python open(path, 'x')); an existing filename is a conflict, not permission to overwrite. On collision, select a new authorized name and obtain a claim covering it before writing. A denied write claim does not prohibit read-only entry or a fresh nonconflicting claim. A reader becoming an editor obtains a writing claim first; never silently upgrade its reader claim.
 
-Every cooperating Agent follows this sequence before substantive work:
+Read-only admission does not freeze files. For a consistent review, use a fixed commit/snapshot or compare input hashes before and after and reread changed inputs. The helper coordinates cooperating Harnesses; it is not a filesystem lock and does not intercept writes from Agents that ignore the protocol.
 
-1. Read the nearest `AGENTS.md`.
-2. Run:
+For code, prefer an existing clean linked Git worktree on a task-specific branch. Only one writer uses a physical worktree; different worktrees may change the same logical path and must resolve merge conflicts later. The helper validates but never creates worktrees. An isolated writer may edit/test its declared paths and commit on its admitted branch. Canonical records are updated in their owning Project Root under a short scoped claim after releasing the worktree claim. Git common-state maintenance, fetch, worktree add/remove and final integration use writer. Databases, ports, devices, services and build outputs need actual isolation; a file claim cannot reserve an external service. Use writer for shared effects not covered by a proven independent boundary.
 
-   ```bash
-   python3 -B .project-conventions/project_access.py status
-   ```
+Record significant decisions and substantive work only when they add useful continuity; update indexes only when their represented facts change. Claim exact record files for the short write batch, reread and merge concurrent additions before saving, then release. For allocating conversation/NN-topic.md, briefly claim conversation/ so numbering is unique. Do not hold a record claim throughout research. Response-only tasks create no project records; the helper's own admission/release metadata remains part of this adopted protocol. Reuse existing exact work authorization rather than asking at every check or finish step.
 
-3. Classify the actual effects:
-   - `read-only`: response-only inspection with no project, Git, cache, database, service, screenshot, report, conversation, memory, or index write;
-   - `writer`: any possible side effect in the shared Project Root;
-   - `isolated-writer`: code changes inside a clean linked Git worktree, with exact repository-relative `--write-path` values and no canonical shared record.
-4. Enter with a Harness/task label:
 
-   ```bash
-   python3 -B .project-conventions/project_access.py enter \
-     --mode read-only --actor <harness-or-task-label>
+## Runtime and worktree boundary
 
-   python3 -B .project-conventions/project_access.py enter \
-     --mode writer --actor <harness-or-task-label>
+Initialization copies AGENTS.md's managed block, .project-conventions/ACCESS.md, project.json and project_access.py into the target. Updating the Skill alone cannot update these copies.
 
-   python3 -B .project-conventions/project_access.py enter \
-     --mode isolated-writer --actor <harness-or-task-label> \
-     --workspace <linked-worktree-path> \
-     --write-path src/component-a
-   ```
+The backend is fixed at adoption: an existing Git root (or explicitly configured nested repository) can use git-common-dir; ordinary non-Git projects use project-local; shared Skills wrappers use their configured collection-control registry. Later Git initialization does not switch backends. Use the same owning helper/backend for tasks sharing resources. An unconfigured non-Git root does not become Git-backed merely because its src/ children contain repositories. Independent reports need no Git initialization or worktree.
 
-5. Proceed only when the JSON receipt says `status: entered`. Preserve its `session_id` and `token`, then re-read current disk and Git state; pre-entry observations are stale.
-6. Before each write batch, verify the claim:
+An isolated-writer must use a real clean linked worktree, an attached branch and the same Git common directory as the configured backend. The helper rejects a normal directory, another repository, active Git operations and linked write-path components. Different clean linked worktrees may declare overlapping logical paths. They still need merge review; Git common refs/config and external services remain shared. An isolated-writer cannot claim canonical conversation/, memory/, INDEX.md, MEMBERS.md, controller/ or docs/indexes/: release it, then claim the actual record in its owning Project Root. Scoped writers cannot claim Git, protocol or Harness metadata. An actor label is diagnostic, never a lock boundary.
 
-   ```bash
-   python3 -B .project-conventions/project_access.py check \
-     --session <id> --token <token>
-   ```
+A file claim covers only that file. A directory claim covers its subtree, even when it does not exist yet. Claims compare normalized physical paths, not just relative spelling or parent folders. An isolated-writer reserves its whole physical worktree against another writer there, including a scoped writer, while its declared paths remain its permitted task scope. A global writer excludes every other writer in that registry.
 
-7. Finish project-owned conversation/memory records while the writer claim is still active, then release it:
+## Entry and denied claims
 
-   ```bash
-   python3 -B .project-conventions/project_access.py finish \
-     --session <id> --token <token> --outcome success
-   ```
+Read the current AGENTS.md, run status, select the task's actual effects, then enter. Only a status: entered receipt permits writes in the declared scope. Store its session_id/token privately; use check before each write batch and finish after completion. Tokens authorize release of that exact claim and must not appear in reports. A blocked Agent writes nothing under that denied claim. It may still enter read-only, choose an independently authorized nonconflicting output and enter afresh, or wait for the actual conflict. Other Agents being active is not enough reason to wait.
 
-A read-only task that becomes a fixer must finish its reader claim and enter again as a writer. It cannot upgrade in place.
+If a reader becomes an editor, finish its reader claim and obtain a write claim. Do not acquire additional overlapping writer claims while holding one: release, then reacquire the complete write set. This avoids hold-and-wait deadlocks. For a sequence-number allocation, briefly reserve conversation/ and rescan after admission; for a daily log, claim only memory/YYYY-MM-DD.md and reread before saving.
 
-## Conflict rules
+Read-only tasks produce no report, screenshot, cache, Git, database, service or record writes. The helper itself writes local admission metadata. If even coordination writes are explicitly forbidden, do not enter or silently mutate the registry; follow the live project's read-only fallback and report the limitation. A failing configured helper means no task writes, but does not imply that the physical files cannot be read. Admission is concurrency permission within existing task authorization; it does not authorize expanding the task.
 
-- Multiple `read-only` claims may coexist.
-- A shared `writer` claim is exclusive against every reader and writer.
-- Multiple `isolated-writer` claims may coexist only in different clean linked worktrees and only for non-overlapping logical paths.
-- `isolated-writer` may not claim `.git/`, `.project-conventions/`, `conversation/`, `memory/`, `INDEX.md`, `MEMBERS.md`, `controller/`, or `docs/indexes/`. Git common metadata and canonical shared records require the exclusive shared writer.
-- A main/shared writer cannot start until all isolated writers finish. Merge/integration therefore happens under one shared writer claim.
-- Mutable resources outside Git—lockfiles, generated output trees, databases, ports, devices, services, and binary documents—remain shared effects. Use the exclusive `writer` mode unless an independent boundary is proven.
-- A blocked Agent writes nothing, including a “blocked” review or memory entry. It reports the receipt in its response and stops or waits.
+## Upgrade an already adopted project
 
-These rules are based on actual effects, not roles. Two reviewers can be readers; two reviewers who both fix findings are writers.
+This is scoped governance maintenance, not reinitialization or global installation. Only upgrade a named authorized project:
 
-## Worktree boundary
+```bash
+python3 -B scripts/upgrade_project_access.py <project-root>
+python3 -B scripts/upgrade_project_access.py <project-root> --apply --plan-sha256 <reviewed-plan-sha256>
+```
 
-The access helper validates an existing linked worktree but does not create one silently. `--workspace` may identify the current Git-root Project Root or a linked worktree of the Project Root's configured nested Repository Root; the helper rejects another repository, a normal directory, a dirty worktree, a linked write-path component, or a worktree using a different Git common directory. Creating a branch and a sibling worktree changes Git and the filesystem, so the exact path/base/branch must be authorized first. An isolated lane may edit/test its declared paths and commit on its admitted branch. Fetch, ref/config changes, worktree add/remove, gc, merge/integration, and other common-Git mutations require the exclusive shared writer. No orchestration Skill is required.
+The dry-run verifies current contract hashes without executing the old helper or changing the registry. Review the exact four-file plan. Apply rechecks the plan, acquires the existing helper's maintenance writer, backs up the original files, replaces the helper/ACCESS/managed AGENTS block and updates their hashes. Only recognized obsolete generated record/worktree lines outside the block are migrated; custom surrounding text is preserved. Active conflicting claims stop the upgrade without clearing them. The protocol-1 database is migrated transactionally to protocol 2, preserving sessions, token hashes, history and recovery plans. The configuration schema stays at version 1. Validate and release the maintenance claim; retain the backup and receipt.
 
-A worktree isolates physical files. It does not resolve logical merge conflicts. The helper therefore also rejects overlapping declared paths and reserves canonical records for the shared writer.
+All copies using one registry must be upgraded before resuming their work. An older helper will reject the protocol-2 registry, not silently continue with protocol-1 rules. The upgrader can admit the next explicitly named copy using its trusted current maintenance implementation against that version-2 registry. Do not scan or update unnamed projects automatically. Before registry activation, a failed upgrade restores only bytes still owned by that attempt, preserving concurrent replacements. After activation, a release/receipt failure retains the valid version-2 control files and private recovery material rather than restoring an incompatible version-1 helper. The error identifies the backup and remaining repair boundary.
 
 ## Crash and recovery
 
-Claims do not expire automatically. A long-running task must never lose its write authority merely because a timer elapsed.
+Claims never expire automatically. Verify that the old task has stopped, obtain authorization to clear that exact claim, then run:
 
-If a task crashed or was abandoned:
+```bash
+python3 -B .project-conventions/project_access.py recover --session <id> --reason "<verified reason>"
+python3 -B .project-conventions/project_access.py recover --session <id> --reason "<same verified reason>" --apply --token <recovery-token>
+```
 
-1. Inspect `status` and verify outside the old task that it has stopped.
-2. Obtain explicit user authorization to clear that exact claim.
-3. Dry-run recovery with a meaningful reason:
+Recovery requires the matching one-time dry-run token and unchanged claim/reason; it is recorded in SQLite history. Never delete the database, edit claim rows or clear somebody's claim merely because it is old.
 
-   ```bash
-   python3 -B .project-conventions/project_access.py recover \
-     --session <id> --reason "<verified reason>"
-   ```
+## Guarantee and verification
 
-4. Repeat with `--apply` only after reviewing the receipt.
+SQLite transactions make claims atomic for cooperating processes sharing the same registry. This is not enforcement against arbitrary writes: check validates claim/path/Git identity, not every changed byte or build side effect. Inside directory scopes, the Agent must preserve unrelated content, avoid links and keep generated effects within scope. Independent devices/clones, external databases/services and Agents ignoring the helper require separate coordination.
 
-   ```bash
-   python3 -B .project-conventions/project_access.py recover \
-     --session <id> --reason "<same verified reason>" \
-     --apply --token <recovery-token-from-dry-run>
-   ```
-
-The apply step is rejected without the matching one-time dry-run token and unchanged claim/reason. Recovery is recorded in the local SQLite history. Never delete the database, edit its rows, or auto-clear a claim. If the database is corrupt or the helper fails, fail closed and remain read-only until the user authorizes repair.
-
-## Guarantee boundary
-
-SQLite transactions make admission atomic for cooperating processes that share the same physical Project Root or Git common directory. This prevents two compliant Harnesses from both believing they own the shared writer slot.
-
-It cannot:
-
-- stop a process that ignores `AGENTS.md` and writes directly;
-- coordinate independent clones on different devices;
-- replace Git merge/rebase/push conflict handling;
-- provide Agent messaging or task dispatch;
-- prove that a read-only Agent made no external provider call.
-
-Those facts must be reported separately. A local claim is access evidence, not deployment, publication, or acceptance authority.
+Validate admission behavior with real concurrent helper processes and temporary Git worktrees. Package/static tests are not proof that a specific Harness obeys AGENTS.md or that a Windows host has been tested. Report those boundaries honestly.

@@ -25,6 +25,9 @@ class ProjectHandoffContractTests(unittest.TestCase):
         frontmatter = text.split("---", 2)[1]
         self.assertIn("name: project-handoff", frontmatter)
         for required in (
+            "astra-ultra",
+            "astra-max",
+            "gpt6-max",
             "sol-ultra",
             "sol-max",
             "terra-max",
@@ -77,15 +80,15 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertEqual("validated", result["status"])
         self.assertEqual("project-handoff", result["package"])
 
-    def test_sixteen_natural_language_routing_cases_preserve_field_authority(self):
+    def test_natural_language_routing_cases_preserve_field_authority(self):
         cases = json.loads(
             (TEST_ROOT / "routing-cases.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(16, len(cases))
+        self.assertEqual(len(cases), len({case["id"] for case in cases}))
 
         allowed = {
+            ("gpt-6-astra", "max", "visible_thread"),
             ("gpt-5.6-sol", "max", "visible_thread"),
-            ("gpt-5.6-terra", "max", "visible_thread"),
             ("gpt-5.6-luna", "max", "visible_thread"),
             ("gpt-5.3-codex-spark", "xhigh", "bundled_cli"),
         }
@@ -107,8 +110,8 @@ class ProjectHandoffContractTests(unittest.TestCase):
                 self.assertEqual("explicit_auto", actual["reasoning_basis"])
                 self.assertEqual(
                     [
+                        {"model": "gpt-6-astra", "reasoning": "max"},
                         {"model": "gpt-5.6-sol", "reasoning": "max"},
-                        {"model": "gpt-5.6-terra", "reasoning": "max"},
                     ],
                     actual["sequence"],
                 )
@@ -169,11 +172,50 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertEqual("explicit_auto", auto_case["model_basis"])
         self.assertEqual("explicit_auto", auto_case["reasoning_basis"])
 
+        for case in cases:
+            actual = resolve_request_case(case["request"], case.get("context"))
+            if actual.get("model_basis") == "explicit_auto":
+                self.assertNotEqual("gpt-5.6-terra", actual.get("model"), case["id"])
+                for step in actual.get("sequence", []):
+                    self.assertNotEqual("gpt-5.6-terra", step["model"], case["id"])
+
+    def test_partial_auto_and_model_names_do_not_invent_axis_authority(self):
+        for name in ("Astra", "GPT6"):
+            for request in (
+                f"创建任务，模型用 {name}，其他用平台默认。",
+                f"用 {name} 创建任务。",
+                f"使用 {name} 创建任务。",
+                f"{name} 创建任务。",
+                f"use {name} to create a task.",
+            ):
+                actual = resolve_request_case(request)
+                self.assertEqual({"model": "gpt-6-astra"}, actual["create_thread_arguments"], request)
+                self.assertEqual(name.lower(), actual["requested_axes"]["model"]["requested"])
+                self.assertEqual(["thinking"], actual["omitted_create_thread_fields"])
+
+        with self.assertRaisesRegex(ValueError, "Spark model requires reasoning=xhigh"):
+            resolve_request_case("创建任务，模型自动选，只读检查 manifest 的 SHA。")
+        with self.assertRaisesRegex(ValueError, "conflicting explicit and auto"):
+            resolve_request_case("创建任务，模型用 gpt-5.6-sol，模型自动选。")
+        with self.assertRaisesRegex(ValueError, "conflicting explicit and auto"):
+            resolve_request_case("创建任务，推理用 high，推理自动选。")
+        for unsupported_name in ("Astra2", "Astra-ultra", "GPT6-next"):
+            with self.assertRaisesRegex(ValueError, "unrecognized explicit model"):
+                resolve_request_case(f"创建任务，模型用 {unsupported_name}。")
+        with self.assertRaisesRegex(ValueError, "alias plus separate axis selection"):
+            resolve_request_case("用 astra-max 创建任务，推理用 low。")
+        with self.assertRaisesRegex(ValueError, "alias plus separate axis selection"):
+            resolve_request_case("用 astra-max 创建任务，模型和推理都自动选。")
+        with self.assertRaisesRegex(ValueError, "unrecognized explicit reasoning"):
+            resolve_request_case("创建任务，推理用 highness。")
+        with self.assertRaisesRegex(ValueError, "multiple explicit selections"):
+            resolve_request_case("创建任务，模型用 Astra，模型用 gpt-5.6-sol。")
+
     def test_orchestration_cases_and_validator(self):
         cases = json.loads(
             (TEST_ROOT / "orchestration-cases.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(7, len(cases))
+        self.assertEqual(len(cases), len({case["id"] for case in cases}))
 
         script = SKILL_ROOT / "scripts" / "validate_orchestration_plan.py"
         self.assertTrue(os.access(script, os.X_OK))
@@ -218,7 +260,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
         cases = json.loads(
             (TEST_ROOT / "dispatch-route-cases.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(34, len(cases))
+        self.assertEqual(len(cases), len({case["id"] for case in cases}))
 
         script = SKILL_ROOT / "scripts" / "validate_dispatch_route.py"
         self.assertTrue(os.access(script, os.X_OK))
@@ -290,8 +332,9 @@ class ProjectHandoffContractTests(unittest.TestCase):
         )
         attempts = fixture["attempts"]
         cases = fixture["cases"]
-        self.assertEqual(5, len(attempts))
-        self.assertEqual(12, len(cases))
+        self.assertIn("astra-max", attempts)
+        self.assertIn("gpt6-model-only", attempts)
+        self.assertEqual(len(cases), len({case["id"] for case in cases}))
 
         script = SKILL_ROOT / "scripts" / "validate_visible_task_receipt.py"
         self.assertTrue(os.access(script, os.X_OK))
@@ -550,6 +593,8 @@ class ProjectHandoffContractTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
+            source_home = temp / "source-home"
+            source_home.mkdir()
             runtime_home_receipt = temp / "runtime-home.txt"
             fake_codex = temp / "codex"
             fake_codex.write_text(
@@ -563,6 +608,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
             prompt.write_text("Reply exactly OK.\n", encoding="utf-8")
             env = os.environ.copy()
             env["PATH"] = f"{temp_dir}:{env['PATH']}"
+            env["CODEX_HOME"] = str(source_home)
             env["TMPDIR"] = temp_dir
             env["RUNTIME_HOME_RECEIPT"] = str(runtime_home_receipt)
             proc = subprocess.run(

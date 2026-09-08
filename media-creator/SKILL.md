@@ -48,7 +48,7 @@ ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行�
 
 - 非 Codex 文生图：在 eligible macOS、ego-browser 可用且 ChatGPT 登录态可复用时优先 ChatGPT Web，并按上面的分轴授权/最终 payload 合同执行；只有在选定浏览器路线之前就确认所需 browser capability 根本不存在时，才可按未指定 provider 的预提交 fallback 使用 MMX；已选定浏览器路线但缺少可见任务授权时返回 `needs_visible_task_authority`。
 - 非 Codex 通用图生图、编辑或多图合成：ChatGPT Web 当前只观察到可用的多文件上传控件，端到端编辑尚未验证；先做运行时验证。不可用或验证失败时询问是否改用 Agnes。MMX 当前不是通用图生图 fallback。
-- Agnes 图片：仅在用户显式指定，或能力不匹配后用户确认切换时使用。
+- Agnes 图片：使用 `agnes-image-2.5-flash`，仅在用户显式指定，或能力不匹配后用户确认切换时使用。按图片用途明确需要改变和保留的元素，多图逐一绑定角色；参数、尺寸和 Base64 用法见图片 reference。
 - MMX 图片：仅承诺文生图和单主体参考，不承诺 mask、通用编辑或多图合成。
 
 执行 ChatGPT Web 前读取 [chatgpt-web-image.md](references/chatgpt-web-image.md)。执行 MMX 或 Agnes 图片前分别读取 [mmx.md](references/mmx.md) 或 [agnes-image.md](references/agnes-image.md)。
@@ -67,7 +67,9 @@ mmx quota show --output json --quiet --non-interactive
 - `known_exhausted`：明确耗尽，询问“继续 MMX 付费路径，还是切换 Agnes”；
 - `unknown`：查询失败、缺少对应模型、字段歧义或 H3 Pay-as-you-go 路线，不能当成零次，也必须询问。
 
-MMX H3 的参考视频是参考条件生成，不等于确定性的原视频编辑、逐帧变换或保真 video-to-video。Agnes 当前只承诺文生视频、单图生视频和图片关键帧动画，不承诺视频输入。
+MMX H3 的参考视频是参考条件生成，不等于确定性的原视频编辑、逐帧变换或保真 video-to-video。Agnes 默认使用 `agnes-video-2.5-flash`：支持文生视频、首帧/尾帧控制，以及最多 5 张图片、3 段音频的参考生成；固定 720P，时长 4–12 秒，不支持参考视频。用户显式选择同代标准版 `agnes-video-2.5` 后，可使用更高分辨率、最多 8 张参考图和 1 段参考视频。标准版单独按其价格与参数判断，不自动切换；两者都不承诺精确原视频编辑。
+
+Agnes 2.5 使用 `mode=text|keyframe|reference`、`seconds`、`size`、`aspect_ratio` 等新参数。旧版任意关键帧数组和帧数参数不得默默转义或丢弃；参数冲突在提交前修正。查询和恢复必须保留原始 `video_id` 与模型，使用 `video-status` 查询同一任务。
 
 执行前读取 [mmx.md](references/mmx.md) 或 [agnes-video.md](references/agnes-video.md)。
 
@@ -90,13 +92,14 @@ MMX H3 的参考视频是参考条件生成，不等于确定性的原视频编�
 
 ## 本地检查与 Agnes 适配器
 
-先运行纯本地检查：
+以下 `scripts/...` 均相对于当前 Skill 的真实目录；在该目录运行，或使用解析后的脚本绝对路径。产物仍写入调用方授权的精确目标，不把 Skill 源目录当作默认输出位置。先运行纯本地检查：
 
 ```bash
 python3 -B scripts/check_routes.py
 python3 -B scripts/validate_skill.py
-python3 -B scripts/validate_browser_envelope.py <envelope.json>
 ```
+
+仅浏览器路线额外运行 `python3 -B scripts/validate_browser_envelope.py <envelope.json>`，其中占位符绑定到主任务已经准备的完整 envelope 文件。Agnes API 路线不需要浏览器 envelope。
 
 这些验证命令不得调用供应商或读取密钥值。只有明确执行 Agnes 时才使用：
 
@@ -108,6 +111,7 @@ python3 -B scripts/agnes_media.py <subcommand> ... --execute
 
 ## 状态与安全
 
+- 使用用户要求的语言交付文件链接、已验证结果和剩余限制；文档参数和静态验证不证明本次生成成功。
 - 区分 `documented`、`configured_not_called`、`submitted`、`completed` 和 `verified_artifact`。
 - 安装、健康链接、登录页或 masked auth 不证明供应商调用成功。
 - 不输出、复制或提交 API Key、cookie、账号标识或浏览器私有历史。

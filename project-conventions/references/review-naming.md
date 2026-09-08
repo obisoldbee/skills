@@ -74,7 +74,7 @@ The second-precision timestamp reduces accidental collisions; it is not a concur
 
 ## Collision Handling Procedure
 
-Even with second-precision timestamps, two agents could start reviews in the same second, or an agent could resume work after a delay and reuse a timestamp. Follow this procedure only while holding the exclusive writer claim or an `isolated-writer` claim that names the exact review path:
+Even with second-precision timestamps, two agents could start reviews in the same second, or an agent could resume work after a delay and reuse a timestamp. Choose the name while reading, then obtain `scoped-writer --write-file <exact-review-path>` before creating it. An isolated-worktree review may instead use its admitted worktree scope. Do not reserve the entire reviews directory for one report:
 
 ### Step 1: Generate the Planned Name
 
@@ -95,7 +95,7 @@ List all files in `docs/reviews/` and check for any file matching the planned na
 
 ### Step 4: Create Without Clobbering
 
-Create the selected filename with no-clobber semantics (`O_CREAT|O_EXCL` or an equivalent tool). If creation reports that the name now exists, do not overwrite it; rescan, choose the next suffix, and retry while the same valid claim is active. A response-only reviewer writes no project file and returns findings to the active writer instead.
+Create the selected filename with no-clobber semantics (`O_CREAT|O_EXCL` or an equivalent tool). If creation reports that the name now exists, do not overwrite it; rescan, choose the next suffix, obtain a claim covering the new exact filename, and retry. A claim for the old filename does not cover the new one. A response-only reviewer returns findings directly without producing a file.
 
 ## Reviewing Agent Checklist
 

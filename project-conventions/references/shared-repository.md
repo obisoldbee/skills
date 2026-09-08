@@ -80,11 +80,11 @@ For a new or explicitly cleared collection, the allowed initial write order is:
 
 The clone path is final from the start. Do not clone beneath a temporary member `src/` and then ask the initializer to discover or move it.
 
-The generated control and member Project Roots each contain a Harness-neutral access helper, but every member helper stores its claims in the collection-control runtime. Therefore one local member `enter` automatically uses the same collection-wide reader/writer gate as the control project and every other member. This prevents two wrappers from independently obtaining permission to mutate the same physical Git index/HEAD; no dual manual lock sequence, Agent messaging, or orchestration Skill is required. A member wrapper with a missing/wrong `coordination_root` is invalid and must fail closed.
+The generated control and member Project Roots each contain a Harness-neutral access helper, and every member helper stores claims in the collection-control runtime. Readers coexist with writers. Scoped report/record claims compare physical paths, so distinct wrapper outputs may run together. The exclusive writer remains collection-wide for shared Git index/HEAD maintenance; do not use a scoped report claim to mutate Git through a source projection. A member wrapper with a missing/wrong `coordination_root` is invalid and must fail closed. Worktree admission requires an explicitly configured Git-common backend; this collection-control binding does not silently change to one. No dual manual lock sequence, Agent messaging, or orchestration Skill is required.
 
 ## Git safety gate
 
-Before clone into an absent destination, verify only the exact destination and parent. Before using an existing `GitHub` path, require:
+Before clone into an absent destination, verify only the exact destination and parent. For bootstrap into an existing checkout or update-only, require:
 
 - real directory, not symlink/junction;
 - `git rev-parse --show-toplevel` equals that path;
@@ -97,6 +97,8 @@ Before clone into an absent destination, verify only the exact destination and p
 - fast-forward reachability when behind.
 
 Stop on a real-directory snapshot, wrong repository, dirty/ahead/diverged/detached checkout, or target collision. Do not delete, merge, reset, rebase, stash, or silently rename it.
+
+For authorized package or repository-root maintenance, verify the exact worktree identity, remote, branch, upstream, status, and managed scope, then preserve unrelated changes. The clean/ahead-zero refresh gate is not a ban on maintaining an already modified worktree. An active Git operation, conflicting edit, or unclear ownership still blocks the affected write. Device refresh follows its own trusted root-level gate; maintenance never implies permission to fetch or move refs.
 
 ## Member projection
 
@@ -127,6 +129,8 @@ Consumers link directly to the true package source:
 ```
 
 Do not create a link chain through the member projection. Do not create missing Agent parents. For existing conflicts, record the raw link target or preserve the full real directory in a collision-free backup before any explicitly authorized replacement.
+
+The current repository `link-windows.ps1` supports scan/plan only. Every `-Apply`, including Device refresh, returns `safe-consumer-create-unsupported` before any repository update or consumer write. Do not infer consumer-creation support from the initializer's Windows junction support, or bypass the guard with another command. See `lifecycle-workflows.md` for the Windows implementation and validation boundary.
 
 ## Existing-layout migration
 

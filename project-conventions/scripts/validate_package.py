@@ -24,6 +24,8 @@ REQUIRED_FILES = {
     "scripts/test_inspect_projects_workspace.py",
     "scripts/test_lifecycle_workflows.py",
     "scripts/test_project_root_workflows.py",
+    "scripts/test_scoped_access.py",
+    "scripts/upgrade_project_access.py",
     "scripts/update_shared_checkout.py",
     "scripts/validate_package.py",
     "scripts/validate_project_root.py",

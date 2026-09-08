@@ -373,6 +373,40 @@ class RoutingContractTests(unittest.TestCase):
         agnes = route_by_id(self.registry, "agnes-video")["capabilities"]["video"]
         self.assertFalse(agnes["video_to_video"])
 
+    def test_agnes_registry_rejects_model_and_parameter_drift(self) -> None:
+        errors = []
+        route_validator.validate_agnes_contract(self.registry, errors)
+        self.assertEqual(errors, [])
+        mutations = (
+            ("image", "model", "agnes-image-2.1-flash"),
+            ("video", "model", "agnes-video-v2.0"),
+            ("contract", "automatic_model_switch", True),
+            ("contract", "modes", ["text", "keyframes", "reference"]),
+            ("contract", "seconds", list(range(4, 13))),
+            ("contract", "query_keys", ["task_id", "model_name"]),
+            ("contract", "n", 2),
+            ("contract", "aspect_ratios", ["2:3"]),
+            ("flash", "sizes", ["720P", "1080P"]),
+            ("flash", "max_reference_images", 8),
+            ("flash", "max_reference_videos", 1),
+            ("standard", "selection", "automatic_fallback"),
+            ("standard", "max_reference_audios", 4),
+            ("capabilities", "reference_video", True),
+            ("video", "model_variants", []),
+            ("video", "request_contract", None),
+        )
+        for section, key, value in mutations:
+            with self.subTest(section=section, key=key):
+                registry = copy.deepcopy(self.registry)
+                video = route_by_id(registry, "agnes-video")
+                targets = {"image": route_by_id(registry, "agnes-image"), "video": video,
+                           "contract": video["request_contract"], "flash": video["model_variants"]["agnes-video-2.5-flash"],
+                           "standard": video["model_variants"]["agnes-video-2.5"], "capabilities": video["capabilities"]["video"]}
+                targets[section][key] = value
+                errors = []
+                route_validator.validate_agnes_contract(registry, errors)
+                self.assertTrue(errors)
+
     def test_video_quota_has_three_states_and_h3_is_not_authoritative(self) -> None:
         policy = self.registry["policies"]["minimax_video_quota"]
         self.assertEqual(

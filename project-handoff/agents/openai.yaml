@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Handoff Controller"
   short_description: "Create verified visible-task and portable handoffs"
-  default_prompt: "Use $project-handoff to create a complete portable handoff or dispatch visible Codex tasks with validated receipts. Preserve explicit routes, omit unselected create_thread model/thinking fields, never substitute subagents, keep Spark on its isolated bundled read-only CLI route, and stop its lane on any CLI failure."
+  default_prompt: "Use $project-handoff to create a complete portable handoff or dispatch visible Codex tasks with validated receipts. Preserve explicit routes, omit unselected create_thread model/thinking fields, never substitute subagents for requested visible Codex tasks, keep Spark on its isolated bundled read-only CLI route, and stop its lane on any CLI failure."

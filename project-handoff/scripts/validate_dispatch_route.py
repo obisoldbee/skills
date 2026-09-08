@@ -53,7 +53,14 @@ FAILURE_CLASSES = {
 
 SPARK_MODEL = "gpt-5.3-codex-spark"
 SPARK_ROUTE = (SPARK_MODEL, "xhigh", "bundled_cli")
+ASTRA_MODEL = "gpt-6-astra"
+MODEL_NAMES = {"astra": ASTRA_MODEL, "gpt6": ASTRA_MODEL}
+AUTO_MODELS = {ASTRA_MODEL, "gpt-5.6-sol", "gpt-5.6-luna", SPARK_MODEL}
 ALIASES = {
+    "astra-ultra": (ASTRA_MODEL, "ultra", "visible_thread"),
+    "gpt6-ultra": (ASTRA_MODEL, "ultra", "visible_thread"),
+    "astra-max": (ASTRA_MODEL, "max", "visible_thread"),
+    "gpt6-max": (ASTRA_MODEL, "max", "visible_thread"),
     "sol-ultra": ("gpt-5.6-sol", "ultra", "visible_thread"),
     "sol-max": ("gpt-5.6-sol", "max", "visible_thread"),
     "terra-max": ("gpt-5.6-terra", "max", "visible_thread"),
@@ -121,7 +128,7 @@ def validate_tool(action, tool, errors):
         )
 
 
-def validate_route(route, field="route"):
+def validate_route(route, field="route", allow_retired_auto=False):
     """Validate a route receipt and return its normalized fields plus errors."""
     errors = []
     if not isinstance(route, dict):
@@ -198,11 +205,15 @@ def validate_route(route, field="route"):
                 normalized_requested = None
             else:
                 normalized_requested = requested
-                if value != requested:
+                expected_value = (
+                    MODEL_NAMES.get(requested.lower(), requested)
+                    if axis == "model" else requested
+                )
+                if value != expected_value:
                     add_error(
                         errors,
                         f"axis_authority_mismatch: {field}.{axis} must equal "
-                        f"{field}.{requested_field}",
+                        f"{field}.{requested_field} (or its documented model name)",
                     )
         elif basis == "explicit_skill_route":
             normalized_requested = requested_route or None
@@ -312,6 +323,14 @@ def validate_route(route, field="route"):
             f"{field} explicit_auto requires requested_route=auto",
         )
 
+    retired_continuation = allow_retired_auto and model == "gpt-5.6-terra"
+    if model_basis == "explicit_auto" and model not in AUTO_MODELS and not retired_continuation:
+        add_error(
+            errors,
+            f"automatic_model_not_allowed: {field}.model must be one of: "
+            + ", ".join(sorted(AUTO_MODELS)),
+        )
+
     if model == SPARK_MODEL and actual != SPARK_ROUTE:
         add_error(
             errors,
@@ -374,7 +393,9 @@ def resolve_request_case(request, context=None):
     ):
         return {"surface": "portable_prompt_or_file", "mode": "complete_handoff"}
 
-    alias_names = r"(sol-ultra|sol-max|terra-max|luna-max|spark(?:-xhigh)?)"
+    alias_names = "(" + "|".join(
+        re.escape(alias) for alias in sorted(ALIASES, key=len, reverse=True)
+    ) + ")"
     alias_match = re.search(
         r"(?:用|使用)\s*" + alias_names + r"\s*(?:创建|派发|dispatch|create)",
         lowered,
@@ -386,6 +407,11 @@ def resolve_request_case(request, context=None):
         lowered,
     )
     if alias_match:
+        if re.search(
+            r"模型用|推理(?:档位)?用|模型自动|推理(?:档位)?自动|模型和推理都自动选",
+            lowered,
+        ):
+            raise ValueError("alias plus separate axis selection requires a resolved route")
         alias = alias_match.group(1)
         model, reasoning, surface = ALIASES[alias]
         return _decision_from_route(
@@ -399,94 +425,104 @@ def resolve_request_case(request, context=None):
             }
         )
 
-    model_match = re.search(r"模型用\s*(gpt-[a-z0-9.-]+)", lowered)
-    reasoning_match = re.search(
-        r"推理(?:档位)?用\s*(" + "|".join(REASONING_TIERS) + r")",
+    model_matches = list(re.finditer(
+        r"模型用\s*(gpt-[a-z0-9.-]+|astra(?![a-z0-9.-])|gpt6(?![a-z0-9.-]))",
+        lowered,
+    ))
+    model_name_pattern = r"(astra|gpt6)(?![a-z0-9.-])"
+    name_match = re.search(
+        r"(?:用|使用)\s*" + model_name_pattern + r"\s*(?:创建|派发|dispatch|create)",
+        lowered,
+    ) or re.search(
+        r"(?:^|\s)use\s+" + model_name_pattern + r"(?:\s+to)?\s+(?:创建|派发|dispatch|create)",
+        lowered,
+    ) or re.search(
+        r"^(?:\$project-handoff\s+)?" + model_name_pattern + r"\s+(?:创建|派发|dispatch|create)",
         lowered,
     )
-    if model_match and reasoning_match:
-        model = model_match.group(1)
-        reasoning = reasoning_match.group(1)
-        return _decision_from_route(
-            {
-                "requested_route": model,
-                "requested_model": model,
-                "requested_reasoning": reasoning,
-                "model": model,
-                "reasoning": reasoning,
-                "surface": "visible_thread",
-                "model_basis": "explicit_user",
-                "reasoning_basis": "explicit_user",
-            }
-        )
-    if model_match and not reasoning_match:
-        model = model_match.group(1)
-        return _decision_from_route(
-            {
-                "requested_route": model,
-                "requested_model": model,
-                "model": model,
-                "reasoning": None,
-                "surface": "visible_thread",
-                "model_basis": "explicit_user",
-                "reasoning_basis": "platform_default",
-            }
-        )
-    if reasoning_match and not model_match:
-        reasoning = reasoning_match.group(1)
-        return _decision_from_route(
-            {
-                "requested_route": "reasoning-only",
-                "requested_reasoning": reasoning,
-                "model": None,
-                "reasoning": reasoning,
-                "surface": "visible_thread",
-                "model_basis": "platform_default",
-                "reasoning_basis": "explicit_user",
-            }
-        )
+    if name_match and all(match.span(1) != name_match.span(1) for match in model_matches):
+        model_matches.append(name_match)
+    reasoning_matches = list(re.finditer(
+        r"推理(?:档位)?用\s*(" + "|".join(REASONING_TIERS) + r")(?![a-z0-9.-])",
+        lowered,
+    ))
+    if len(model_matches) > 1 or len(reasoning_matches) > 1:
+        raise ValueError("multiple explicit selections require a resolved axis")
+    model_match = model_matches[0] if model_matches else None
+    reasoning_match = reasoning_matches[0] if reasoning_matches else None
 
-    auto_both = "自动" in text and "模型" in text and "推理" in text
-    if auto_both:
-        if "先设计" in text and "验收后" in text:
+    auto_both = "模型和推理都自动选" in text
+    model_auto = auto_both or bool(
+        re.search(r"模型(?:用)?\s*(?:自动选?|auto)\b", lowered)
+    )
+    reasoning_auto = auto_both or bool(
+        re.search(r"推理(?:档位)?(?:用)?\s*(?:自动选?|auto)\b", lowered)
+    )
+    if "模型用" in lowered and not (model_match or model_auto) and not re.search(
+        r"模型用\s*平台默认", lowered
+    ):
+        raise ValueError("unrecognized explicit model selection")
+    if re.search(r"推理(?:档位)?用", lowered) and not (reasoning_match or reasoning_auto) and not re.search(
+        r"推理(?:档位)?用\s*平台默认", lowered
+    ):
+        raise ValueError("unrecognized explicit reasoning selection")
+    if (model_match and model_auto) or (reasoning_match and reasoning_auto):
+        raise ValueError("conflicting explicit and auto values require a resolved axis")
+    if model_match or reasoning_match or model_auto or reasoning_auto:
+        if model_auto and reasoning_auto and "先设计" in text and "验收后" in text:
             return {
                 "surface": "visible_thread_pipeline",
                 "requested_route": "auto",
                 "model_basis": "explicit_auto",
                 "reasoning_basis": "explicit_auto",
                 "sequence": [
+                    {"model": ASTRA_MODEL, "reasoning": "max"},
                     {"model": "gpt-5.6-sol", "reasoning": "max"},
-                    {"model": "gpt-5.6-terra", "reasoning": "max"},
                 ],
             }
 
-        if (
-            context.get("controller_model") == "gpt-5.6-sol"
-            and context.get("controller_reasoning") == "ultra"
-            and context.get("project_scale") in {"large", "super-large"}
-        ):
-            model, reasoning, surface = "gpt-5.6-sol", "max", "visible_thread"
-        elif any(marker in text for marker in ("manifest", "YAML", "SHA")) and any(
+        if any(marker in text for marker in ("manifest", "YAML", "SHA")) and any(
             marker in text for marker in ("只读", "不判断")
         ):
-            model, reasoning, surface = SPARK_ROUTE
+            classified_model, _, _ = SPARK_ROUTE
+        elif context.get("lane_difficulty") == "high" or (
+            context.get("lane_difficulty") != "bounded"
+            and context.get("project_scale") in {"large", "super-large"}
+        ):
+            classified_model = ASTRA_MODEL
         elif any(marker in text for marker in ("核验", "审核", "风险优先级")):
-            model, reasoning, surface = "gpt-5.6-luna", "max", "visible_thread"
+            classified_model = "gpt-5.6-luna"
         elif any(marker in text for marker in ("设计", "架构", "迁移方案")):
-            model, reasoning, surface = "gpt-5.6-sol", "max", "visible_thread"
+            classified_model = ASTRA_MODEL
         else:
-            model, reasoning, surface = "gpt-5.6-terra", "max", "visible_thread"
+            classified_model = "gpt-5.6-sol"
 
-        return _decision_from_route(
-            {
-                "requested_route": "auto",
-                "model": model,
-                "reasoning": reasoning,
-                "surface": surface,
-                "model_basis": "explicit_auto",
-                "reasoning_basis": "explicit_auto",
-            }
+        requested_model = model_match.group(1) if model_match else None
+        model = (
+            MODEL_NAMES.get(requested_model, requested_model)
+            if model_match else classified_model if model_auto else None
         )
+        reasoning = (
+            reasoning_match.group(1) if reasoning_match
+            else ("xhigh" if model == SPARK_MODEL else "max") if reasoning_auto
+            else None
+        )
+        surface = "bundled_cli" if model == SPARK_MODEL else "visible_thread"
+        route = {
+            "requested_route": "auto" if model_auto or reasoning_auto
+            else requested_model if model_match else "reasoning-only",
+            "model": model,
+            "reasoning": reasoning,
+            "surface": surface,
+            "model_basis": "explicit_user" if model_match else "explicit_auto" if model_auto else "platform_default",
+            "reasoning_basis": "explicit_user" if reasoning_match else "explicit_auto" if reasoning_auto else "platform_default",
+        }
+        if model_match:
+            route["requested_model"] = requested_model
+        if reasoning_match:
+            route["requested_reasoning"] = reasoning_match.group(1)
+
+        return _decision_from_route(route)
 
     if any(marker in text for marker in ("创建一个新任务", "创建任务", "创建一个任务")):
         return _decision_from_route(
@@ -593,7 +629,13 @@ def validate_attempt(attempt):
             f"failure_class must be one of: {', '.join(sorted(FAILURE_CLASSES))}",
         )
 
-    route, route_errors = validate_route(attempt.get("route"))
+    route, route_errors = validate_route(
+        attempt.get("route"),
+        allow_retired_auto=(
+            operation in {"followup", "sync_retry", "failure_report"}
+            and not route_changed
+        ),
+    )
     for error in route_errors:
         add_error(errors, error)
 

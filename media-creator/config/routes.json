@@ -260,7 +260,9 @@
     {
       "id": "agnes-image",
       "provider": "agnes",
-      "model": "agnes-image-2.1-flash",
+      "model": "agnes-image-2.5-flash",
+      "documentation_verified_at": "2026-09-07",
+      "documentation": "https://agnes-ai.com/zh-Hans/docs/agnes-image-25-flash",
       "status": "active_if_configured",
       "selection": "explicit_or_user_confirmed",
       "credential_binding": {
@@ -306,7 +308,35 @@
     {
       "id": "agnes-video",
       "provider": "agnes",
-      "model": "agnes-video-v2.0",
+      "model": "agnes-video-2.5-flash",
+      "documentation_verified_at": "2026-09-07",
+      "documentation": "https://agnes-ai.com/zh-Hans/docs/agnes-video-25-flash",
+      "model_variants": {
+        "agnes-video-2.5-flash": {
+          "selection": "default_within_agnes",
+          "sizes": ["720P"],
+          "max_reference_images": 5,
+          "max_reference_audios": 3,
+          "max_reference_videos": 0
+        },
+        "agnes-video-2.5": {
+          "selection": "explicit_model_only",
+          "documentation": "https://agnes-ai.com/zh-Hans/docs/agnes-video-25",
+          "sizes": ["720P", "1080P", "1K", "2K"],
+          "max_reference_images": 8,
+          "max_reference_audios": 3,
+          "max_reference_videos": 1
+        }
+      },
+      "request_contract": {
+        "modes": ["text", "keyframe", "reference"],
+        "seconds": ["4", "5", "6", "7", "8", "9", "10", "11", "12"],
+        "aspect_ratios": ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+        "n": 1,
+        "query_keys": ["video_id", "model_name"],
+        "automatic_model_switch": false,
+        "metadata_constraints": "references/agnes-video.md"
+      },
       "status": "active_if_configured",
       "selection": "explicit_or_user_confirmed_or_mmx_quota_choice",
       "credential_binding": {
@@ -322,6 +352,10 @@
           "text_to_video": true,
           "image_to_video": true,
           "keyframes": true,
+          "first_last_frame": true,
+          "reference_image": true,
+          "reference_audio": true,
+          "reference_video": false,
           "video_to_video": false,
           "precise_video_edit": false
         }

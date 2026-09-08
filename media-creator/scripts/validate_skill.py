@@ -15,6 +15,8 @@ REQUIRED_FILES = {
     "SKILL.md",
     "agents/openai.yaml",
     "config/routes.json",
+    "references/agnes-image.md",
+    "references/agnes-video.md",
     "references/browser-handoff-envelope.md",
     "references/chatgpt-web-image.md",
     "references/local-skill-audit.md",
@@ -22,9 +24,12 @@ REQUIRED_FILES = {
     "references/mmx.md",
     "references/routing-policy.md",
     "scripts/check_routes.py",
+    "scripts/agnes_media.py",
     "scripts/validate_browser_envelope.py",
     "scripts/validate_skill.py",
     "tests/browser-envelope-cases.json",
+    "tests/test_agnes_media.py",
+    "tests/test_agnes_video_lifecycle.py",
 }
 TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".sh", ".txt"}
 SECRET_FILE_SUFFIXES = {".env", ".key", ".pem", ".p12", ".pfx"}
@@ -122,6 +127,7 @@ def validate_files(root: Path, errors: list[str]) -> None:
 
 
 def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
+    validate_agnes_contract(registry, errors)
     if registry.get("schema") != "media-creator-routes/v1":
         errors.append("route registry schema must be media-creator-routes/v1")
 
@@ -479,7 +485,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
     agnes_video = route_by_id(registry, "agnes-video")
     agnes_video_caps = agnes_video.get("capabilities", {}).get("video", {})
     if agnes_video_caps.get("video_to_video") is not False:
-        errors.append("Agnes must not claim video-to-video support")
+        errors.append("Agnes Flash must not claim video-to-video support")
 
     quota = policies.get("minimax_video_quota", {}) if isinstance(policies, dict) else {}
     states = quota.get("states", {})
@@ -503,6 +509,47 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
             or executor.get("vendored") is not False
         ):
             errors.append(f"MMX route must use the non-vendored external CLI: {route.get('id')}")
+
+
+def validate_agnes_contract(registry: dict[str, Any], errors: list[str]) -> None:
+    image = route_by_id(registry, "agnes-image")
+    video = route_by_id(registry, "agnes-video")
+    if image.get("model") != "agnes-image-2.5-flash":
+        errors.append("Agnes image default must be agnes-image-2.5-flash")
+    if video.get("model") != "agnes-video-2.5-flash":
+        errors.append("Agnes video default must be agnes-video-2.5-flash")
+    variants = video.get("model_variants")
+    expected = {
+        "agnes-video-2.5-flash": ("default_within_agnes", {"720P"}, 5, 3, 0),
+        "agnes-video-2.5": ("explicit_model_only", {"720P", "1080P", "1K", "2K"}, 8, 3, 1),
+    }
+    if not isinstance(variants, dict) or set(variants) != set(expected):
+        errors.append("Agnes video must declare the two supported 2.5 variants")
+    else:
+        for model, (selection, sizes, images, audios, videos) in expected.items():
+            variant = variants[model]
+            limits = {"max_reference_images": images, "max_reference_audios": audios, "max_reference_videos": videos}
+            if (not isinstance(variant, dict) or variant.get("selection") != selection
+                    or not is_exact_string_set(variant.get("sizes"), sizes)
+                    or any(type(variant.get(k)) is not int or variant[k] != v for k, v in limits.items())):
+                errors.append(f"Agnes model selection, sizes or reference limits are invalid: {model}")
+    contract = video.get("request_contract")
+    sets = {
+        "modes": {"text", "keyframe", "reference"},
+        "seconds": {str(n) for n in range(4, 13)},
+        "aspect_ratios": {"21:9", "16:9", "4:3", "1:1", "3:4", "9:16"},
+        "query_keys": {"video_id", "model_name"},
+    }
+    if (not isinstance(contract, dict)
+            or any(not is_exact_string_set(contract.get(k), v) for k, v in sets.items())
+            or type(contract.get("n")) is not int or contract["n"] != 1
+            or contract.get("automatic_model_switch") is not False
+            or contract.get("metadata_constraints") != "references/agnes-video.md"):
+        errors.append("Agnes Video 2.5 request/query contract is invalid")
+    capabilities = video.get("capabilities", {}).get("video", {})
+    if (not all(capabilities.get(k) is True for k in ("text_to_video", "first_last_frame", "reference_image", "reference_audio"))
+            or capabilities.get("reference_video") is not False or capabilities.get("precise_video_edit") is not False):
+        errors.append("Agnes default capabilities must describe Flash, not the optional standard model")
 
 
 def main() -> None:
