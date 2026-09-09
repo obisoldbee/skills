@@ -80,6 +80,10 @@ class FileInfo(c.Structure):
                 ("Links", w.DWORD), ("IndexHigh", w.DWORD), ("IndexLow", w.DWORD)]
 
 
+class FileIdInfo(c.Structure):
+    _fields_ = [("Volume", c.c_uint64), ("FileId", c.c_ubyte * 16)]
+
+
 def windows_api():
     kernel = c.WinDLL("kernel32", use_last_error=True)
     nt = c.WinDLL("ntdll")
@@ -87,6 +91,7 @@ def windows_api():
     kernel.CreateFileW.restype = w.HANDLE
     kernel.CloseHandle.argtypes = [w.HANDLE]
     kernel.GetFileInformationByHandle.argtypes = [w.HANDLE, c.POINTER(FileInfo)]
+    kernel.GetFileInformationByHandleEx.argtypes = [w.HANDLE, c.c_int, w.LPVOID, w.DWORD]
     kernel.DeviceIoControl.argtypes = [w.HANDLE, w.DWORD, w.LPVOID, w.DWORD, w.LPVOID, w.DWORD, c.POINTER(w.DWORD), w.LPVOID]
     kernel.SetFileInformationByHandle.argtypes = [w.HANDLE, c.c_int, w.LPVOID, w.DWORD]
     nt.NtCreateFile.argtypes = [c.POINTER(w.HANDLE), w.DWORD, c.POINTER(ObjectAttributes), c.POINTER(IoStatus), w.LPVOID, w.DWORD, w.DWORD, w.DWORD, w.DWORD, w.LPVOID, w.DWORD]
@@ -124,8 +129,14 @@ def create_junction(parent_path: Path, name: str, source: Path, expected_id, val
         info = FileInfo()
         if not kernel.GetFileInformationByHandle(parent, c.byref(info)):
             raise c.WinError(c.get_last_error())
-        if (info.Attributes & 0x400 or
-                (info.Volume, (info.IndexHigh << 32) | info.IndexLow) != tuple(expected_id)):
+        opened_id = (info.Volume, (info.IndexHigh << 32) | info.IndexLow)
+        # CPython 3.12+ stat uses the full 64-bit volume serial and 128-bit
+        # file ID when available; truncating either causes false race alarms.
+        if sys.version_info >= (3, 12):
+            extended = FileIdInfo()
+            if kernel.GetFileInformationByHandleEx(parent, 18, c.byref(extended), c.sizeof(extended)):
+                opened_id = (extended.Volume, int.from_bytes(bytes(extended.FileId), "little"))
+        if info.Attributes & 0x400 or opened_id != tuple(expected_id):
             raise ValueError("consumer-target-or-boundary-changed")
         validate()
         child = create_child(nt, parent, name)
