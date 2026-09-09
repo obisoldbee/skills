@@ -8,13 +8,15 @@ param(
     [switch]$SyncDevice
 )
 
-# Read-only Skill junction scan. Apply fails closed until a directory-handle-
-# bound, exclusive Windows creation primitive is implemented and verified.
+# Scoped, exclusive junction installation through the Python NT handle helper.
 
 $ErrorActionPreference = 'Stop'
 
-if ($Apply) {
-    throw 'safe-consumer-create-unsupported: Windows apply is disabled (including SyncDevice); no repository update or junction creation was attempted'
+if ($Apply -and $SyncDevice) {
+    throw 'safe-consumer-create-unsupported: combined SyncDevice apply is unavailable; update the authorized checkout separately, then use scoped -Agent/-Target -Apply'
+}
+if ($Apply -and $AllAgents) {
+    throw 'apply-requires-one-agent-or-target'
 }
 
 if ($Agent -and $Agent -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
@@ -212,7 +214,7 @@ if ($Skill -and $Skill -notin @($Exports.skill_name)) {
     throw "skill-not-exported: $Skill"
 }
 
-$Mode = 'scan'
+$Mode = if ($Apply) { 'apply' } else { 'scan' }
 Write-Host "mode=$Mode repository=$RepoRoot"
 
 $Checked = 0
@@ -232,6 +234,8 @@ foreach ($TargetEntry in $Targets) {
     $TargetRequested = [IO.Path]::GetFullPath($TargetPath)
     $TargetPath = Resolve-PhysicalPath $TargetRequested
     Assert-ConsumerTarget $TargetRequested
+    $ExpectedIdentity = & $Python -B $ConsumerPaths check --repository $RepoRoot --target $TargetRequested
+    if ($LASTEXITCODE -ne 0) { throw 'consumer-boundary-check-failed' }
 
     foreach ($Export in $Exports) {
         $SkillName = $Export.skill_name
@@ -304,8 +308,21 @@ foreach ($TargetEntry in $Targets) {
             continue
         }
 
-        Write-Host "would-link $Destination -> $Source"
-        $WouldLink++
+        if ($Apply) {
+            # Windows PowerShell 5.1 strips embedded native-argument quotes.
+            $env:SKILLS_CONSUMER_EXPECTED = $ExpectedIdentity
+            try {
+                & $Python -B $ConsumerPaths create --repository $RepoRoot --target $TargetRequested --name $SkillName --source $Source --expected-env
+                if ($LASTEXITCODE -ne 0) { throw "safe-consumer-create-failed: $Destination" }
+            } finally {
+                Remove-Item Env:SKILLS_CONSUMER_EXPECTED -ErrorAction SilentlyContinue
+            }
+            Write-Host "linked $Destination -> $Source"
+            $Linked++
+        } else {
+            Write-Host "would-link $Destination -> $Source"
+            $WouldLink++
+        }
     }
 }
 

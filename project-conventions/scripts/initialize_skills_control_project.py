@@ -462,7 +462,7 @@ def render_control_files(
 - Updating `{member_project}` means running its update-only helper against `{repository_project}/{package_subpath}` and stopping after validation. Do not regenerate indexes or links.
 - Read the projected repository `AGENTS.md` and references needed for the selected task; reuse complete current readings. Run checks for the changed contract or behavior and preserve required acceptance gates.
 - Complete authorized edits, local corrections, and affected checks without per-step approval. Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records.
-- Windows consumer scripts are plan/scan-only and reject every `-Apply` before repository update or consumer writes. Do not bypass `safe-consumer-create-unsupported` with another link or Git command.
+- Windows supports scoped Agent installation using the NT directory-handle helper. Combined `-SyncDevice -Apply` is unavailable; separately authorized checkout update and scoped installation are supported. Never bypass a safe-create failure with `New-Item` or `mklink`.
 - Do not clone, pull, push, publish, or apply links without authorization for that exact action.
 
 ## Directory Index
@@ -494,7 +494,7 @@ Do not replace this bounded view with `src/skills -> ../../{repository_project}`
 
 Initialization creates no Agent links. Linking is a later, separately authorized action using one exact Agent/target and Skill.
 
-The repository Windows consumer script is plan/scan-only: every `-Apply`, including Device refresh, returns `safe-consumer-create-unsupported` before repository update or consumer writes. Windows initializer junction support does not establish consumer apply support.
+The repository Windows consumer script supports scoped `-Agent`/`-Target` apply. Combined `-SyncDevice -Apply` is unavailable; update/validate the authorized checkout separately, then scan/apply the exact Agent. Windows initializer junction support does not establish consumer apply support.
 
 ## Navigation
 

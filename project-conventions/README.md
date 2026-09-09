@@ -8,7 +8,7 @@ Filesystem-governance Skill with strict lifecycle boundaries, deterministic ordi
 |---|---|
 | Full initialization | Clone once to the final shared Repository Root, materialize complete wrappers/control files, verify projections, then optionally install exact Agent consumers |
 | Update-only | Validate the named package from a frozen fetched candidate, safely fast-forward that exact commit, and stop |
-| Device refresh | Plan first; supported Unix apply may update the one checkout and add missing allowlisted links when authorized; Windows is plan/scan-only |
+| Device refresh | Plan first; supported Unix apply may update the one checkout and add missing allowlisted links when authorized; Windows combined refresh is plan-only; scoped Agent installation is supported |
 | Governance maintenance | Audit or migrate only exact authorized paths and mappings |
 | Bootstrap-only | Clone, validate, and stop |
 
@@ -61,7 +61,7 @@ The shared Skills initializer creates a complete `skills/` control project, four
 
 ## Validate
 
-The deterministic Python tools support Python 3.11 and newer. CI exercises the Windows initializer junction fallback on Python 3.11 and the native junction API on the latest Python. This is separate from consumer creation: the repository Windows link script rejects every `-Apply` with `safe-consumer-create-unsupported` before repository update or consumer writes. Do not infer Windows consumer apply support from initializer tests.
+The deterministic Python tools support Python 3.11 and newer. CI exercises the Windows initializer junction fallback on Python 3.11 and the native junction API on the latest Python. This is separate from consumer creation: the repository Windows link script supports scoped `-Agent`/`-Target` apply with the tested NT directory-handle helper; combined `-SyncDevice -Apply` is unavailable. Do not infer Windows consumer apply support from initializer tests.
 
 The following commands are a catalog. Run the package validator after package edits and select tests for the changed contract or behavior. Generator changes need the relevant initialization/idempotence regressions; inspector changes need inspector tests. The lifecycle suite already invokes the ordinary Project Root and scoped-access suites, so a full lifecycle run need not repeat them separately. Read-only inspection and wording edits do not require unrelated suites.
 

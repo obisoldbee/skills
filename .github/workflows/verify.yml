@@ -289,7 +289,7 @@ jobs:
           test "$conflict_status" -eq 4
           test "$(cat "$conflict/project-conventions/keep.txt")" = keep
 
-      - name: Exercise Windows junction scans and unsupported apply gate
+      - name: Exercise Windows junction scan and scoped apply
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -310,12 +310,7 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
           if ($LASTEXITCODE -ne 0) { throw "projected scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions -Apply
-          if ($LASTEXITCODE -eq 0) { throw 'unsupported Windows apply unexpectedly succeeded' }
-          if (Test-Path -LiteralPath (Join-Path $healthy 'project-conventions')) {
-            throw 'unsupported apply wrote a junction'
-          }
-          # Test fixture only: inspect an existing junction, not a product fallback.
-          New-Item -ItemType Junction -Path (Join-Path $healthy 'project-conventions') -Target (Join-Path $PWD 'project-conventions') | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Windows scoped apply failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill project-conventions
           if ($LASTEXITCODE -ne 0) { throw "readback scan failed: $LASTEXITCODE" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -Skill web-bookmark-intelligence
@@ -343,7 +338,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw 'unscoped invocation unexpectedly succeeded' }
 
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target $healthy -AllSkills -Apply
-          if ($LASTEXITCODE -eq 0) { throw 'broad Skill apply unexpectedly succeeded' }
+          if ($LASTEXITCODE -ne 0) { throw "single-target all-skills apply failed: $LASTEXITCODE" }
 
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Target (Join-Path $PWD 'config') -Skill project-conventions -Apply
           if ($LASTEXITCODE -eq 0) { throw 'in-repository apply unexpectedly succeeded' }
