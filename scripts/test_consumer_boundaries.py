@@ -55,7 +55,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
         (root / "example-skill/SKILL.md").write_text("fixture\n", encoding="utf-8")
         (root / "AGENTS.md").write_text("repository root\n", encoding="utf-8")
         (root / "README.md").write_text("repository\n", encoding="utf-8")
-        for name in ("link-macos.sh", "link-windows.ps1", "verify_release.py", "consumer_paths.py", "windows_junction.py"):
+        for name in ("link-macos.sh", "link-windows.ps1", "verify_release.py", "consumer_paths.py"):
             shutil.copyfile(SOURCE / "scripts" / name, root / "scripts" / name)
         (root / "config/skill-exports.tsv").write_text(
             "skill_name\tsource\tconsumers\nexample-skill\texample-skill\tall\n", encoding="utf-8"
@@ -297,7 +297,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
 
     @unittest.skipUnless(WINDOWS, "Windows NT handle syscall regressions")
     def test_windows_final_syscall_replacements_cannot_redirect_creation(self):
-        import windows_junction as junction
+        junction = consumers
         original = junction.create_child
         for kind in ("leaf-directory", "leaf-link", "parent-link"):
             with self.subTest(kind=kind):
