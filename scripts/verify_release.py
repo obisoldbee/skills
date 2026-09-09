@@ -41,6 +41,7 @@ REQUIRED_ROOT_FILES = {
     "scripts/test_repository_refresh.py",
     "scripts/test_consumer_boundaries.py",
     "scripts/consumer_paths.py",
+    "scripts/windows_junction.py",
 }
 MANIFEST_ROW = re.compile(r"^([0-9a-f]{64})  ([^\\]+)$")
 FORBIDDEN_NAMES = {".DS_Store", "__pycache__"}

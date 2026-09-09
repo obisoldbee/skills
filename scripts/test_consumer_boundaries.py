@@ -55,7 +55,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
         (root / "example-skill/SKILL.md").write_text("fixture\n", encoding="utf-8")
         (root / "AGENTS.md").write_text("repository root\n", encoding="utf-8")
         (root / "README.md").write_text("repository\n", encoding="utf-8")
-        for name in ("link-macos.sh", "link-windows.ps1", "verify_release.py", "consumer_paths.py"):
+        for name in ("link-macos.sh", "link-windows.ps1", "verify_release.py", "consumer_paths.py", "windows_junction.py"):
             shutil.copyfile(SOURCE / "scripts" / name, root / "scripts" / name)
         (root / "config/skill-exports.tsv").write_text(
             "skill_name\tsource\tconsumers\nexample-skill\texample-skill\tall\n", encoding="utf-8"
@@ -108,7 +108,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
                 result = self.invoke(target, apply=apply)
                 output = result.stdout + result.stderr
                 self.assertNotEqual(result.returncode, 0, output)
-                self.assertIn("safe-consumer-create-unsupported" if WINDOWS and apply else reason, output)
+                self.assertIn(reason, output)
                 self.assertNotIn("would-link", output)
                 self.assertFalse(os.path.lexists(Path(target) / "example-skill"))
                 self.assertEqual(self.projection_snapshot(), self.initial_projections)
@@ -150,7 +150,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
         for apply in (False, True):
             result = self.invoke(self.projections, repo=alias_repo, apply=apply)
             self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("safe-consumer-create-unsupported" if WINDOWS and apply else "target-inside-collection", result.stdout + result.stderr)
+            self.assertIn("target-inside-collection", result.stdout + result.stderr)
         self.assertEqual(self.projection_snapshot(), self.initial_projections)
 
     def test_case_sensitive_distinct_sibling_remains_external(self):
@@ -161,26 +161,18 @@ class ConsumerBoundaryTests(unittest.TestCase):
         result = self.invoke(target)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("would-link", result.stdout)
-        self.install_or_assert_unsupported(target)
+        self.install_and_verify(target)
 
-    def install_or_assert_unsupported(self, target, **options):
+    def install_and_verify(self, target, **options):
         result = self.invoke(target, apply=True, **options)
-        if WINDOWS:
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("safe-consumer-create-unsupported", result.stdout + result.stderr)
-            self.assertFalse(os.path.lexists(target / "example-skill"))
-        else:
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("linked ", result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("linked ", result.stdout)
 
     def test_external_consumer_and_projected_entry_are_healthy(self):
         result = self.invoke(self.external, projected=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("would-link", result.stdout)
-        self.install_or_assert_unsupported(self.external, projected=True)
-        if WINDOWS:
-            # Fixture setup only, not a production fallback for disabled apply.
-            self.link_directory(self.external / "example-skill", self.repo / "example-skill")
+        self.install_and_verify(self.external, projected=True)
         result = self.invoke(self.external, projected=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("healthy-link", result.stdout)
@@ -195,7 +187,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
         self.link_directory(alias, self.external)
         result = self.invoke(alias)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.install_or_assert_unsupported(alias)
+        self.install_and_verify(alias)
         if not WINDOWS:
             self.assertEqual((self.external / "example-skill").resolve(), self.repo / "example-skill")
 
@@ -207,7 +199,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
         target.mkdir()
         result = self.invoke(target, repo=repo)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.install_or_assert_unsupported(target, repo=repo)
+        self.install_and_verify(target, repo=repo)
         result = self.invoke(repo / "config", repo=repo)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("target-inside-repository", result.stdout + result.stderr)
@@ -217,7 +209,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
         target.mkdir()
         result = self.invoke(target)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.install_or_assert_unsupported(target)
+        self.install_and_verify(target)
 
     def test_existing_conflict_and_missing_parent_remain_unchanged(self):
         conflict = self.external / "example-skill"
@@ -227,14 +219,13 @@ class ConsumerBoundaryTests(unittest.TestCase):
         result = self.invoke(self.external)
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
         result = self.invoke(self.external, apply=True)
-        self.assertEqual(result.returncode, 1 if WINDOWS else 4, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
         self.assertEqual(keep.read_text(encoding="utf-8"), "user")
         missing = self.root / "missing"
         result = self.invoke(missing)
         self.assertEqual(result.returncode, 4)
         self.assertFalse(missing.exists())
 
-    @unittest.skipIf(WINDOWS, "Windows apply is explicitly unsupported")
     def test_target_replacement_at_apply_gate_is_rejected(self):
         token = consumers.inspect_target(self.repo, self.external)[1]
         self.external.rename(self.root / "saved-consumer")
@@ -245,6 +236,7 @@ class ConsumerBoundaryTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(self.root / "saved-consumer/example-skill"))
         self.assertEqual(self.projection_snapshot(), self.initial_projections)
 
+    @unittest.skipIf(WINDOWS, "Unix primitive availability")
     def test_missing_safe_primitive_stops_before_create_but_keeps_scan(self):
         token = consumers.inspect_target(self.repo, self.external)[1]
         with patch.object(os, "supports_dir_fd", set()):
@@ -254,7 +246,6 @@ class ConsumerBoundaryTests(unittest.TestCase):
         self.assertEqual(list(self.external.iterdir()), [])
         self.assertEqual(self.projection_snapshot(), self.initial_projections)
 
-    @unittest.skipIf(WINDOWS, "Windows apply is explicitly unsupported")
     def test_different_external_parent_cannot_reuse_scan_identity(self):
         token = consumers.inspect_target(self.repo, self.external)[1]
         saved = self.root / "saved-consumer"
@@ -304,7 +295,39 @@ class ConsumerBoundaryTests(unittest.TestCase):
                     # it must never enter the replacement path or claim success.
                     self.assertEqual((self.root / "saved-parent/example-skill").resolve(), self.repo / "example-skill")
 
-    @unittest.skipUnless(WINDOWS, "Windows safety downgrade contract")
+    @unittest.skipUnless(WINDOWS, "Windows NT handle syscall regressions")
+    def test_windows_final_syscall_replacements_cannot_redirect_creation(self):
+        import windows_junction as junction
+        original = junction.create_child
+        for kind in ("leaf-directory", "leaf-link", "parent-link"):
+            with self.subTest(kind=kind):
+                target = self.root / kind
+                target.mkdir()
+                token = consumers.inspect_target(self.repo, target)[1]
+
+                def inject(nt, parent, name):
+                    if kind == "leaf-directory":
+                        (target / name).mkdir()
+                        (target / name / "keep").write_text("user", encoding="utf-8")
+                    elif kind == "leaf-link":
+                        self.link_directory(target / name, self.projections)
+                    else:
+                        target.rename(self.root / "saved-parent")
+                        self.link_directory(target, self.projections)
+                    return original(nt, parent, name)
+
+                with patch.object(junction, "create_child", side_effect=inject) as syscall:
+                    with self.assertRaises((OSError, ValueError)):
+                        consumers.create_link(self.repo, target, "example-skill", self.repo / "example-skill", token)
+                self.assertEqual(syscall.call_count, 1)
+                self.assertFalse(os.path.lexists(self.projections / "example-skill"))
+                self.assertEqual(self.projection_snapshot(), self.initial_projections)
+                if kind == "leaf-directory":
+                    self.assertEqual((target / "example-skill/keep").read_text(), "user")
+                elif kind == "leaf-link":
+                    self.assertEqual((target / "example-skill").resolve(), self.projections)
+
+    @unittest.skipUnless(WINDOWS, "Windows combined refresh boundary")
     def test_windows_sync_apply_stops_before_repository_or_consumer_writes(self):
         result = self.powershell(
             "& $env:FIXTURE_SCRIPT -SyncDevice -Apply -Agent codex",

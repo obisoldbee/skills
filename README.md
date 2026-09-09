@@ -26,7 +26,7 @@
 
 1. 将仓库克隆到自己选定的位置，每台设备保留一个真源 checkout。
 2. 打开目标包的 `SKILL.md` 或 `README.md`，确认适用任务、依赖、工具及设备／网络要求。
-3. 根据所用 Agent 的加载方式，连接或安装需要的技能。仓库的共享链接脚本只处理明确允许的目标；Windows 消费者脚本目前仅支持扫描与计划，不支持 apply。
+3. 根据所用 Agent 的加载方式，连接或安装需要的技能。仓库的共享链接脚本只处理明确允许的目标；Windows 支持对单个 Agent 扫描并安装 Junction 目录链接。
 4. 使用前配置所需服务的凭据，避免将密钥、Cookie 或私人材料提交到 Git。修改技能后运行对应包的验证脚本。
 
 项目并发采用协作式准入：同一目录下的不同输出文件可以并行写入，只读任务可以与写入并存；代码修改优先采用独立分支和 worktree。它依赖各 Agent 遵守项目入口规则，不是操作系统文件锁。已有项目若使用旧版本地准入助手，需要按 `project-conventions` 的升级说明单独更新。
@@ -169,7 +169,7 @@ Apply only when the request authorizes both the repository refresh and allowlist
 bash scripts/link-macos.sh --sync-device --apply
 ```
 
-Windows (read-only plan; apply is currently unsupported):
+Windows combined device refresh (read-only plan; use scoped installation below):
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 -SyncDevice
@@ -189,9 +189,9 @@ Both link entry points require Python 3.11 or newer (Unix defaults to `python3`,
 
 Unix apply requires exclusive directory-fd symlink creation: it binds the write to the verified parent and never follows an existing leaf as a container. A concurrent leaf causes failure; if the parent pathname changes at creation, the operation reports failure and may leave the authorized link in the original pinned directory, never following the replacement for cleanup. Inspect that directory before retrying. Platforms without this primitive fail closed; there is no fallback to `ln` or `New-Item`.
 
-Windows supports read-only scan and existing-junction inspection only. Every `-Apply`, including `-SyncDevice -Apply`, stops before repository refresh or consumer writes until a handle-bound Windows creation primitive is implemented and verified.
+Windows supports scoped `-Agent` or `-Target` installation with `-Skill` or `-AllSkills`. The NT helper pins the checked directory handle, creates a new leaf exclusively, and sets/verifies the Junction through its own handle. Existing files, directories and wrong/dangling links remain conflicts; it never overwrites them. `-AllAgents -Apply` is rejected. Combined `-SyncDevice -Apply` remains unavailable: update the authorized checkout separately, validate it, then perform scoped installation.
 
-Publication does not imply Agent exposure. `document-workspace` and `others-manager` are validated packages but are not currently declared in `config/skill-exports.tsv`; adding either consumer link requires a separate explicit decision.
+Publication does not imply Agent exposure. The Trae allowlist explicitly includes all 11 published top-level Skill entries (including the nested research orchestrator). Internal bundled personas, private repositories and third-party pools are not flattened into consumer exports. A link does not supply an unavailable tool, OS capability or network environment.
 
 Cross-Agent packages can be scoped to the shared `agents` consumer so runtimes that already scan `~/.agents/skills` do not receive duplicate same-name brand-root links.
 
@@ -207,12 +207,16 @@ Apply only after reviewing the source and destination:
 ./scripts/link-macos.sh --apply --agent codex --skill project-conventions
 ```
 
-Windows scan:
+Windows scan and authorized installation:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 `
-  -Agent codex -Skill project-conventions
+  -Agent trae-cn -AllSkills
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.ps1 `
+  -Agent trae-cn -AllSkills -Apply
 ```
+
+For an explicit request to replace existing installations, first record exact conflicts and preserve each real directory in a unique rollback location outside the Agent discovery root. Record the old link target for a wrong or dangling link. Recheck the original before moving it, never delete its contents, then rerun the scoped installer and read back every target. This conflict-preservation workflow requires installation/replacement authority; the installer itself never performs backups or replacements. An all-skills apply can leave earlier successful links if a later entry fails, so always rescan before continuing.
 
 The repository scripts derive each exported source from the current checkout, so consumers point directly to the declared path inside the matching `GitHub/<package>` scope when run from the recommended layout. They never create missing target parents or replace conflicts.
 

@@ -124,7 +124,7 @@ One repository commit may contain changes to more than one published package. Th
 
 ### Device refresh
 
-The exact intents “本机全量同步 Skills”, “更新 GitHub 并让本机 Agent 使用”, and “同步共享 Skill 根” select **Device refresh**, not update-only or full initialization. Run the checked-out platform script in plan mode first. On supported Unix hosts, an authorized conflict-free plan may proceed to apply without asking the user to restate the same authorization. Windows is plan/scan-only: every `-Apply`, including `-SyncDevice -Apply`, stops with `safe-consumer-create-unsupported` before repository update or consumer writes.
+The exact intents “本机全量同步 Skills”, “更新 GitHub 并让本机 Agent 使用”, and “同步共享 Skill 根” select **Device refresh**, not update-only or full initialization. Run the checked-out platform script in plan mode first. On supported Unix hosts, an authorized conflict-free plan may proceed to apply without asking the user to restate the same authorization. Windows combined `-SyncDevice -Apply` remains unavailable. For explicitly authorized sync and installation, update and validate the one checkout separately, then scan/apply to one named Agent with the NT handle-based installer.
 
 ```text
 bash <collection>/GitHub/scripts/link-macos.sh --sync-device
@@ -134,7 +134,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
   <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice
 ```
 
-Supported Unix apply may fast-forward only the one existing `GitHub` checkout and add only missing public allowlisted Skill links under already existing configured Agent roots. It never creates a checkout or Agent root, regenerates wrappers/indexes/records, changes export policy, or replaces a real path, wrong link, or dangling link. Do not bypass Windows rejection with `New-Item`, `mklink`, another script, or manual Git/link steps. Link readback proves linked state only, not runtime discovery or execution. Unlike update-only, Device refresh intentionally reconciles consumers; unlike full initialization, it never materializes the collection.
+Supported Unix apply may fast-forward only the one existing `GitHub` checkout and add only missing public allowlisted Skill links under already existing configured Agent roots. It never creates a checkout or Agent root, regenerates wrappers/indexes/records, changes export policy, or replaces a real path, wrong link, or dangling link. Do not replace a scoped safe-create failure with `New-Item` or `mklink`. A separately authorized checkout update is supported; it does not itself authorize links. Link readback proves linked state only, not runtime discovery or execution. Unlike update-only, Device refresh intentionally reconciles consumers; unlike full initialization, it never materializes the collection.
 
 ### Agent consumers
 
@@ -148,7 +148,7 @@ Initialization and installation are separate states. For links:
 6. Every consumer must resolve directly to `<collection>/GitHub/project-conventions`.
 7. Read back raw link/junction type and resolved target. Verify discovery from an available fresh runtime readback. Create a new user-visible Agent task only when the user explicitly requests it; otherwise report discovery as unverified if no suitable runtime evidence is available.
 
-These steps do not make every platform apply-capable: the current repository Windows consumer script supports scan only. A healthy filesystem link proves only the linked state, not runtime discovery, loading, activation, or execution.
+Windows scoped apply uses the repository NT directory-handle helper; combined device-refresh apply remains unavailable. A healthy filesystem link proves only the linked state, not runtime discovery, loading, activation, or execution.
 
 ## Name the governance layer
 
@@ -293,7 +293,7 @@ A successful shared Skills initialization has:
 
 Materials: Use only the request, exact named paths, current disk/Git/link evidence, and routed references. Never invent a local path, repository state, Agent root, or remote fact.
 
-Task: Select one lifecycle. For a shared Skills initialization, create or verify the final `GitHub` checkout, run the deterministic initializer, validate the four control projections and member projection, and handle only separately authorized Agent consumers. For update-only, run the narrow updater and stop. For Device refresh, plan first; supported Unix hosts may then apply an already authorized conflict-free refresh of the one checkout and missing public allowlisted links in existing Agent roots. On Windows, report the plan and unsupported apply boundary, then stop.
+Task: Select one lifecycle. For a shared Skills initialization, create or verify the final `GitHub` checkout, run the deterministic initializer, validate the four control projections and member projection, and handle only separately authorized Agent consumers. For update-only, run the narrow updater and stop. For Device refresh, plan first; supported Unix hosts may then apply an already authorized conflict-free refresh of the one checkout and missing public allowlisted links in existing Agent roots. On Windows, use a separately authorized validated checkout update followed by scoped Agent installation; do not invoke combined `-SyncDevice -Apply`.
 
 Constraints: Stay within named paths; preserve conflicts and rollback evidence; never create a second source copy; never turn update-only into governance or link work.
 

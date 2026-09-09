@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Filesystem-identity boundary checks and handle-bound Unix consumer links."""
+"""Filesystem-identity boundary checks and handle-bound consumer links."""
 
 from __future__ import annotations
 
@@ -54,6 +54,10 @@ def inspect_target(repo: Path, target: Path) -> tuple[Path, str]:
 
 
 def require_safe_create() -> None:
+    if os.name == "nt":
+        import windows_junction
+        windows_junction.api()
+        return
     if (os.name != "posix" or not hasattr(os, "O_DIRECTORY")
             or not hasattr(os, "O_NOFOLLOW")
             or os.stat not in os.supports_follow_symlinks
@@ -73,6 +77,15 @@ def create_link(repo: Path, target: Path, name: str, source: Path, expected: str
     resolved, token = inspect_target(repo, target)
     if token != expected:
         raise ValueError("consumer-target-or-boundary-changed")
+    if os.name == "nt":
+        from windows_junction import create_junction
+
+        def validate():
+            if inspect_target(repo, target)[1] != expected:
+                raise ValueError("consumer-target-or-boundary-changed")
+
+        create_junction(resolved, name, source, json.loads(expected)[2], validate)
+        return
     descriptor = os.open(resolved, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         opened = os.fstat(descriptor)
@@ -102,7 +115,10 @@ def main() -> int:
     parser.add_argument("--name")
     parser.add_argument("--source", type=Path)
     parser.add_argument("--expected")
+    parser.add_argument("--expected-env", action="store_true")
     args = parser.parse_args()
+    if args.expected_env:
+        args.expected = os.environ.get("SKILLS_CONSUMER_EXPECTED")
     try:
         if args.operation == "check-create-support":
             require_safe_create()

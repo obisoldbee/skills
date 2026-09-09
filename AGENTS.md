@@ -21,7 +21,7 @@ Constraints:
 - Repository-wide device refresh is a separate root operation. It may fast-forward this one checkout and reconcile only missing links declared by the repository-root allowlists in already existing Agent roots; it must not modify member packages, local wrappers, indexes, records, or export policy.
 - Never create missing Agent parents or replace real paths, wrong links, or dangling links without explicit conflict-preservation authority.
 - Root refresh validates candidate files as data with the current trusted verifier, checks whole-update landing conflicts, freezes the actual index as well as Git refs, and fast-forwards only the validated SHA without overwriting ignored files.
-- Consumer checks use filesystem identities for the confirmed collection boundary and its aliases. Unix creation requires the directory-fd helper; Windows apply is unsupported and must stop before any repository update or consumer write. Do not substitute `ln` or `New-Item` after a safe-create failure.
+- Consumer checks use filesystem identities for the confirmed collection boundary and its aliases. Unix creation requires the directory-fd helper; scoped Windows creation requires the NT directory-handle helper. Combined Windows `-SyncDevice -Apply` remains unavailable; an explicitly authorized checkout update followed by scoped installation is supported. Do not substitute `ln` or `New-Item` after a safe-create failure.
 - Do not expose credentials, caches, local inventories, or machine-specific paths.
 - Base completion claims on current Git/disk/link readback and reply in the user's language.
 
@@ -30,7 +30,7 @@ Lifecycle routing:
 1. **Clone/bootstrap only**: clone to the exact named destination, verify Git identity, run root validation and the named package validator, report commit, and stop.
 2. **Fresh shared Skills collection**: clone this repository as `<collection>/GitHub`, then run `project-conventions/scripts/initialize_skills_control_project.py` dry-run and apply from that checkout. It creates the collection overlay, the control project's four root-management projections, the stable member wrapper, and the member projection. It creates no Agent links.
 3. **Update-only**: run the requested package's `scripts/update_shared_checkout.py`. It permits only clean, attached, ahead-zero fast-forward behavior, validates that named package, and stops.
-4. **Device refresh**: for “本机全量同步 Skills”, run `scripts/link-macos.sh --sync-device` or `scripts/link-windows.ps1 -SyncDevice` without apply first. Supported Unix apply may update this checkout and create only missing allowlisted public Skill links in existing compatible Agent roots. Windows is plan/scan-only; report unsupported apply rather than attempting a fallback.
+4. **Device refresh**: for “本机全量同步 Skills”, run `scripts/link-macos.sh --sync-device` or `scripts/link-windows.ps1 -SyncDevice` without apply first. Supported Unix apply may update this checkout and create only missing allowlisted public Skill links in existing compatible Agent roots. Windows combined refresh is plan-only; for an authorized update and installation, validate/update the checkout separately and use scoped `-Agent` or `-Target` apply.
 5. **Package maintenance**: modify only the explicitly authorized top-level package and run its validators/tests.
 6. **Repository-root maintenance**: modify only root-owned files, rebuild `ROOT-MANIFEST.sha256`, verify it, and do not modify package content.
 7. **Agent installation**: separately scan and apply only exact authorized consumers using the collection control scripts or this checkout's scoped link scripts.
@@ -73,7 +73,7 @@ Shared collection invariants:
 
 <collection>/GitHub/others-manager                              # true source
 <collection>/others-manager/src/others-manager                  # member projection
-# no Agent consumer export is declared for others-manager
+# Trae export is declared for others-manager
 
 <collection>/GitHub/minimax-h3-prompt                           # true source
 <collection>/MiniMax-H3-prompt/src/minimax-h3-prompt            # member projection
@@ -85,7 +85,7 @@ Shared collection invariants:
 - Windows member projection: junction to the final absolute package path.
 - Agent consumer links point directly to the true source, not through the member projection.
 - A link proves filesystem state only, not runtime discovery or execution.
-- `document-workspace/` is currently a published package without a collection wrapper or Agent export declaration. Do not invent either during unrelated maintenance.
+- `document-workspace/` is published and exported to Trae, without a collection wrapper. Do not invent a wrapper during unrelated maintenance.
 
 Validation:
 
@@ -135,8 +135,8 @@ Entry points:
 | `ROOT-MANIFEST.sha256` | Digests for repository-root files only |
 | `scripts/verify_release.py` | Offline root verifier and strict repository check/fast-forward gate |
 | `scripts/link-macos.sh` | Scoped Unix Agent consumer link tool |
-| `scripts/link-windows.ps1` | Read-only Windows Agent consumer junction scan; apply unsupported |
-| `scripts/consumer_paths.py` | Shared identity-based consumer boundary and handle-bound Unix link creation |
+| `scripts/link-windows.ps1` | Windows Agent consumer scan and scoped junction installation |
+| `scripts/consumer_paths.py` | Shared identity-based consumer boundary and handle-bound Unix and Windows link creation |
 | `project-conventions/SKILL.md` | Lifecycle and filesystem-governance package |
 | `web-bookmark-intelligence/SKILL.md` | Receipted public-web and bookmark evidence package |
 | `media-understanding/SKILL.md` | Multimodal task router and provider-binding package |

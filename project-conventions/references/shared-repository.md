@@ -130,7 +130,7 @@ Consumers link directly to the true package source:
 
 Do not create a link chain through the member projection. Do not create missing Agent parents. For existing conflicts, record the raw link target or preserve the full real directory in a collision-free backup before any explicitly authorized replacement.
 
-The current repository `link-windows.ps1` supports scan/plan only. Every `-Apply`, including Device refresh, returns `safe-consumer-create-unsupported` before any repository update or consumer write. Do not infer consumer-creation support from the initializer's Windows junction support, or bypass the guard with another command. See `lifecycle-workflows.md` for the Windows implementation and validation boundary.
+The current repository `link-windows.ps1` supports scoped Agent scan/apply with the NT directory-handle helper. Combined `-SyncDevice -Apply` is unavailable; separately authorized checkout update and scoped installation are supported. Do not infer consumer-creation support from the initializer's Windows junction support, or bypass the guard with another command. See `lifecycle-workflows.md` for the Windows implementation and validation boundary.
 
 ## Existing-layout migration
 
