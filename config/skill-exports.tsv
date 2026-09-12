@@ -7,6 +7,7 @@ paper-downloader	paper-downloader	agents,codex,minimax,workbuddy,trae-cn
 media-creator	media-creator	all
 project-handoff	project-handoff	codex,trae-cn
 minimax-h3-prompt	minimax-h3-prompt	agents,trae-cn
+wechat-sticker	wechat-sticker	agents
 buddy-travelling	buddy-travelling	trae-cn
 document-workspace	document-workspace	trae-cn
 others-manager	others-manager	trae-cn

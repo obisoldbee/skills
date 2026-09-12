@@ -20,6 +20,8 @@
 | [media-creator](media-creator/) | 跨 Agent 的媒体生成路由；包含 Agnes 图像／视频生成及参数校验 |
 | [minimax-h3-prompt](minimax-h3-prompt/) | MiniMax H3 视频提示词与素材组织规范 |
 | [buddy-travelling](buddy-travelling/) | Buddy 旅行任务的状态判断、交互流程和停止条件 |
+| [cdr-processing](cdr-processing/) | CDR 容器检查、预览提取、SVG/PDF/PNG 试转换与保真验收；分层 PSD 条件方案 |
+| [wechat-sticker](wechat-sticker/) | 微信表情专辑、单品及特效素材的规划、生成与交付验收 |
 | [others-manager](others-manager/) | 第三方开源仓库的获取、来源核对和本地维护 |
 
 ### 如何开始

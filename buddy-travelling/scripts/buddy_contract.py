@@ -36,6 +36,7 @@ OUTCOME_INVARIANTS = {
         {"ask_user_or_wait_for_destination_change"},
     ),
     "auth_required": (False, False, False, False, {"browser_handoff"}),
+    "maintenance": (False, False, False, True, {"wait_for_service"}),
     "blocked": (
         False,
         False,
@@ -48,6 +49,8 @@ OUTCOME_INVARIANTS = {
 
 def validate_outcome_evidence(receipt: dict[str, object]) -> None:
     outcome = receipt.get("outcome")
+    if outcome == "maintenance" and not str(receipt.get("evidence_text") or "").strip():
+        raise ValueError("maintenance requires current official maintenance evidence")
     if outcome == "daily_limit_reached" and receipt.get("evidence_text") != DAILY_LIMIT_TEXT:
         raise ValueError("daily_limit_reached requires exact evidence_text")
     if outcome == "already_travelling":
@@ -271,6 +274,12 @@ def choose_destination(options: list[dict[str, object]], requested: str | None) 
 
 def receipt_for_observed_state(service_day: str, state: dict[str, object]) -> dict[str, object]:
     name = state.get("state")
+    if name == "maintenance":
+        return make_receipt(
+            service_day, "maintenance", dispatch_attempted=False, dispatch_confirmed=False,
+            terminal_for_day=False, retry_allowed=True, next_action="wait_for_service",
+            evidence_text=state.get("evidence_text"),
+        )
     if name == "daily_limit_reached":
         return make_receipt(
             service_day,
@@ -341,8 +350,15 @@ def dispatch_receipt(
     """A confirm click is attempted; only both exact readbacks prove completion."""
     if not isinstance(expected_destination, str) or not expected_destination.strip():
         raise ValueError("expected_destination must be a non-empty observed label")
-    expected_status = f"Buddy 正在 {expected_destination} 采风中..."
-    confirmed = active_status_text == expected_status and bool(countdown_text and COUNTDOWN_PATTERN.fullmatch(countdown_text))
+    # The live card joins the destination without spaces. Text-node boundaries
+    # may introduce whitespace, but must not weaken exact destination matching.
+    status_pattern = rf"\s*Buddy\s+正在\s*{re.escape(expected_destination)}\s*采风中\.\.\.\s*"
+    confirmed = bool(
+        isinstance(active_status_text, str)
+        and re.fullmatch(status_pattern, active_status_text)
+        and countdown_text
+        and COUNTDOWN_PATTERN.fullmatch(countdown_text)
+    )
     if confirmed:
         return make_receipt(
             service_day,

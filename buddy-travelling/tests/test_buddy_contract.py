@@ -26,6 +26,42 @@ DAY = "2026-08-24"
 
 
 class BuddyContractTests(unittest.TestCase):
+    def test_live_destination_text_and_text_node_whitespace(self):
+        for status in ("Buddy 正在咖啡馆采风中...", "Buddy 正在 咖啡馆 采风中...",
+                       "\nBuddy 正在\n咖啡馆\n采风中...\n"):
+            with self.subTest(status=status):
+                receipt = dispatch_receipt(DAY, "咖啡馆", status, "旅行倒计时 03:59:47")
+                self.assertEqual(receipt["outcome"], "completed_cycle")
+                self.assertFalse(previous_receipt_gate(DAY, receipt)["proceed"])
+
+    def test_similar_destination_or_extra_status_text_does_not_confirm(self):
+        for status in ("Buddy 正在咖啡馆二店采风中...", "Buddy 正在咖 啡馆采风中...",
+                       "示例 Buddy 正在咖啡馆采风中...", "Buddy 正在咖啡馆采风中... 未确认"):
+            with self.subTest(status=status):
+                receipt = dispatch_receipt(DAY, "咖啡馆", status, "旅行倒计时 03:59:47")
+                self.assertEqual(receipt["outcome"], "dispatch_outcome_unknown")
+                self.assertFalse(previous_receipt_gate(DAY, receipt)["proceed"])
+
+    def test_destination_label_is_not_interpreted_as_regex(self):
+        receipt = dispatch_receipt(DAY, "馆(东)+", "Buddy 正在馆(东)+采风中...", "旅行倒计时 01:00:00")
+        self.assertEqual(receipt["outcome"], "completed_cycle")
+        receipt = dispatch_receipt(DAY, "馆(东)+", "Buddy 正在馆东采风中...", "旅行倒计时 01:00:00")
+        self.assertEqual(receipt["outcome"], "dispatch_outcome_unknown")
+
+    def test_maintenance_before_dispatch_can_resume_but_is_not_completed(self):
+        receipt = receipt_for_observed_state(DAY, {"state":"maintenance","evidence_text":"官网当前维护公告"})
+        self.assertEqual(receipt["outcome"],"maintenance")
+        self.assertFalse(receipt["dispatch_attempted"])
+        self.assertFalse(receipt["terminal_for_day"])
+        self.assertTrue(previous_receipt_gate(DAY,receipt)["proceed"])
+
+    def test_maintenance_does_not_allow_resetting_an_attempted_dispatch(self):
+        with self.assertRaises(ValueError):
+            make_receipt(DAY,"maintenance",dispatch_attempted=True,dispatch_confirmed=False,
+                         terminal_for_day=False,retry_allowed=True,next_action="wait_for_service",evidence_text="维护")
+        with self.assertRaises(ValueError):
+            receipt_for_observed_state(DAY,{"state":"maintenance"})
+
     def test_runtime_boundary_keeps_portable_source_separate_from_dependencies(self):
         skill = SKILL_PATH.read_text(encoding="utf-8")
         for required in (
