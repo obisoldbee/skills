@@ -8,7 +8,7 @@ Completion means the authorized outputs were written and checked, required recor
 
 ## Choose the scope
 
-Check the local status protocol_version first. The commands below require version 2. If the copied helper is version 1, follow its current contract and use the reviewed upgrade workflow only for an authorized named target; retrying version-2 flags cannot repair an old copy.
+Check the local status protocol_version first. The commands below require version 3. If the copied helper is version 1 or 2, follow its current contract and use the reviewed upgrade workflow only for an authorized named target; retrying version-3 flags cannot repair an old copy.
 
 Every cooperating Agent uses the same local helper. Select the smallest scope covering the actual task effects:
 
@@ -18,7 +18,7 @@ Every cooperating Agent uses the same local helper. Select the smallest scope co
 | One report or bounded file edits | scoped-writer + --write-file | Different files in one directory can run together |
 | A task-owned output subtree | scoped-writer + --write-dir | Reserves the directory and everything below it |
 | Code implementation | isolated-writer in a linked worktree | Separate branches/worktrees; same logical filenames allowed |
-| Unbounded/shared maintenance or integration | writer | Excludes other writers, not readers |
+| Short workspace maintenance or integration | writer | Excludes physically overlapping writers; disjoint external worktrees remain usable |
 
 ```bash
 python3 -B .project-conventions/project_access.py status
@@ -38,7 +38,7 @@ Save the returned session_id and token privately. Re-read current state after en
 
 Read-only admission does not freeze files. For a consistent review, use a fixed commit/snapshot or compare input hashes before and after and reread changed inputs. The helper coordinates cooperating Harnesses; it is not a filesystem lock and does not intercept writes from Agents that ignore the protocol.
 
-For code, prefer an existing clean linked Git worktree on a task-specific branch. Only one writer uses a physical worktree; different worktrees may change the same logical path and must resolve merge conflicts later. The helper validates but never creates worktrees. An isolated writer may edit/test its declared paths and commit on its admitted branch. Canonical records are updated in their owning Project Root under a short scoped claim after releasing the worktree claim. Git common-state maintenance, fetch, worktree add/remove and final integration use writer. Databases, ports, devices, services and build outputs need actual isolation; a file claim cannot reserve an external service. Use writer for shared effects not covered by a proven independent boundary.
+For code, prefer an existing clean linked Git worktree on a task-specific branch. Only one writer uses a physical worktree; different worktrees may change the same logical path and must resolve merge conflicts later. The helper validates but never creates worktrees. An isolated writer may edit/test its declared paths and commit on its admitted branch. Canonical records are updated in their owning Project Root under a short scoped claim after releasing the worktree claim. A canonical writer protects its physical workspace only. Repository-wide ref/config changes, pruning/removing worktrees, or other common-state maintenance use `enter --mode writer --registry-maintenance --actor <label>` for that short operation. It explicitly excludes all other writers in the shared registry; never infer repository-wide ownership from an ordinary workspace claim. Use a short canonical writer for integration, and preserve peer branches. Databases, ports, devices, services and build outputs need actual isolation; a file claim cannot reserve an external service. Declare shared filesystem outputs explicitly; services and devices need their own resource-specific coordination. Do not reserve an entire project for a build output directory. Build against stable input files or a fixed integrated snapshot; an output reservation does not freeze inputs.
 
 Record significant decisions and substantive work only when they add useful continuity; update indexes only when their represented facts change. Claim exact record files for the short write batch, reread and merge concurrent additions before saving, then release. For allocating conversation/NN-topic.md, briefly claim conversation/ so numbering is unique. Do not hold a record claim throughout research. Response-only tasks create no project records; the helper's own admission/release metadata remains part of this adopted protocol. Reuse existing exact work authorization rather than asking at every check or finish step.
 
@@ -51,7 +51,7 @@ The backend is fixed at adoption: an existing Git root (or explicitly configured
 
 An isolated-writer must use a real clean linked worktree, an attached branch and the same Git common directory as the configured backend. The helper rejects a normal directory, another repository, active Git operations and linked write-path components. Different clean linked worktrees may declare overlapping logical paths. They still need merge review; Git common refs/config and external services remain shared. An isolated-writer cannot claim canonical conversation/, memory/, INDEX.md, MEMBERS.md, controller/ or docs/indexes/: release it, then claim the actual record in its owning Project Root. Scoped writers cannot claim Git, protocol or Harness metadata. An actor label is diagnostic, never a lock boundary.
 
-A file claim covers only that file. A directory claim covers its subtree, even when it does not exist yet. Claims compare normalized physical paths, not just relative spelling or parent folders. An isolated-writer reserves its whole physical worktree against another writer there, including a scoped writer, while its declared paths remain its permitted task scope. A global writer excludes every other writer in that registry.
+A file claim covers only that file. A directory claim covers its subtree, even when it does not exist yet. Claims compare normalized physical paths, not just relative spelling or parent folders. An isolated-writer reserves its whole physical worktree against another writer there, including a scoped writer, while its declared paths remain its permitted task scope. A writer reserves its physical workspace subtree, not the entire registry. External sibling worktrees remain independent. A worktree nested physically inside that workspace still overlaps: place independent worktrees outside the reserved subtree.
 
 ## Entry and denied claims
 
@@ -70,9 +70,23 @@ python3 -B scripts/upgrade_project_access.py <project-root>
 python3 -B scripts/upgrade_project_access.py <project-root> --apply --plan-sha256 <reviewed-plan-sha256>
 ```
 
-The dry-run verifies current contract hashes without executing the old helper or changing the registry. Review the exact four-file plan. Apply rechecks the plan, acquires the existing helper's maintenance writer, backs up the original files, replaces the helper/ACCESS/managed AGENTS block and updates their hashes. Only recognized obsolete generated record/worktree lines outside the block are migrated; custom surrounding text is preserved. Active conflicting claims stop the upgrade without clearing them. The protocol-1 database is migrated transactionally to protocol 2, preserving sessions, token hashes, history and recovery plans. The configuration schema stays at version 1. Validate and release the maintenance claim; retain the backup and receipt.
+The dry-run verifies current contract hashes without executing the old helper or changing the registry. Review the exact four-file plan. Apply rechecks the plan, acquires the existing helper's registry-wide maintenance writer, backs up the original files, replaces the helper/ACCESS/managed AGENTS block and updates their hashes. Only recognized obsolete generated record/worktree lines outside the block are migrated; custom surrounding text is preserved. Active conflicting claims stop the upgrade without clearing them. Protocol-1 and protocol-2 databases are migrated transactionally to protocol 3, preserving sessions, token hashes, history and recovery plans. The configuration schema stays at version 1. Validate and release the maintenance claim; retain the backup and receipt.
 
-All copies using one registry must be upgraded before resuming their work. An older helper will reject the protocol-2 registry, not silently continue with protocol-1 rules. The upgrader can admit the next explicitly named copy using its trusted current maintenance implementation against that version-2 registry. Do not scan or update unnamed projects automatically. Before registry activation, a failed upgrade restores only bytes still owned by that attempt, preserving concurrent replacements. After activation, a release/receipt failure retains the valid version-2 control files and private recovery material rather than restoring an incompatible version-1 helper. The error identifies the backup and remaining repair boundary.
+All copies using one registry must be upgraded before resuming their work. An older helper will reject the protocol-3 registry, not silently continue with older conflict rules. The upgrader can admit the next explicitly named copy using its trusted current maintenance implementation against that version-3 registry. Do not scan or update unnamed projects automatically. Before registry activation, a failed upgrade restores only bytes still owned by that attempt, preserving concurrent replacements. After activation, a release/receipt failure retains the valid version-3 control files and private recovery material rather than restoring an incompatible older helper. The error identifies the backup and remaining repair boundary.
+
+## Bounded command lifetime
+
+Prefer the supervised command entry for a foreground build or file-generation batch:
+
+```bash
+python3 -B .project-conventions/project_access.py run --actor builder --write-dir out/task-a -- python3 build.py
+```
+
+Repeat `--write-file`/`--write-dir` for every actual output, including logs and caches. The command runs in the owning Project Root, without a shell, and the parent holds the scoped claim until it exits. Successful completion, a nonzero exit and process-start failure all release the claim; nonzero status is propagated. Do not daemonize children or leave background writers after the command exits. This is cooperative scope declaration, not a sandbox.
+
+Do not retain a whole-project writer across research, model calls, quota waits or an entire conversation. For code work, choose an independent linked worktree and its own outputs. For a large shared Chromium build, use a dedicated builder with stable integrated inputs and bounded output ownership; avoid duplicating the entire build merely to simulate isolation.
+
+A forcibly killed supervisor or machine crash can still leave a database claim. No timeout is treated as proof that its child stopped: inspect the process/resource before recovery. A stale claim in another disjoint workspace no longer blocks this work. Automatic lease expiry/fencing is not implemented and must not be advertised as filesystem enforcement.
 
 ## Crash and recovery
 

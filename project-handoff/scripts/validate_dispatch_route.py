@@ -324,6 +324,32 @@ def validate_route(route, field="route", allow_retired_auto=False):
         )
 
     retired_continuation = allow_retired_auto and model == "gpt-5.6-terra"
+    if model == ASTRA_MODEL and reasoning in {"none", "minimal"}:
+        add_error(errors, "unsupported_reasoning: gpt-6-astra does not support none/minimal; preserve a supported explicit or verified inherited effort")
+    # Optional observed destination state checks inherited defaults too, without
+    # turning them into explicit overrides in the emitted tool arguments.
+    destination = route.get("destination_state")
+    if destination is not None:
+        if not isinstance(destination, dict):
+            add_error(errors, f"{field}.destination_state must be an object")
+        else:
+            observed = {}
+            for axis in ("model", "reasoning"):
+                value = destination.get(axis)
+                if value is not None and (not isinstance(value, str) or not value.strip()):
+                    add_error(errors, f"{field}.destination_state.{axis} must be a nonempty string")
+                else:
+                    observed[axis] = value
+            effective_model = model or observed.get("model")
+            effective_reasoning = reasoning or observed.get("reasoning")
+            if effective_model == ASTRA_MODEL and effective_reasoning in {"none", "minimal"}:
+                add_error(errors, "unsupported_inherited_reasoning: destination Astra effort must be repaired before sending")
+            supported = destination.get("supported_reasoning")
+            if supported is not None:
+                if not isinstance(supported, list) or not supported or any(not isinstance(x, str) for x in supported):
+                    add_error(errors, "destination_state.supported_reasoning must be a nonempty string list")
+                elif destination.get("model") == effective_model and effective_reasoning is not None and effective_reasoning not in supported:
+                    add_error(errors, "unsupported_reasoning: effective effort is absent from the destination capability evidence")
     if model_basis == "explicit_auto" and model not in AUTO_MODELS and not retired_continuation:
         add_error(
             errors,

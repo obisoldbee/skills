@@ -133,7 +133,7 @@ def apply(target: Path, expected_plan: str) -> dict:
         # Another explicitly upgraded copy may share this registry. Use the
         # current trusted maintenance implementation, never the old conflict code.
         claim = access.enter(root, database, proposal["runtime_storage"], "writer", None,
-                             "project-access-upgrade", [], None)
+                             "project-access-upgrade", [], None, registry_maintenance=True)
     else:
         claim = target_command(root, "enter", "--mode", "writer", "--actor", "project-access-upgrade")
     backup: Path | None = None
@@ -173,7 +173,7 @@ def apply(target: Path, expected_plan: str) -> dict:
         if original_version != str(access.PROTOCOL_VERSION) and database_version(database) == str(access.PROTOCOL_VERSION):
             activated = True
         if activated:
-            # Never restore a version-1 helper over an activated version-2 DB.
+            # Never restore an older helper over an activated newer-protocol DB.
             raise UpgradeError(f"protocol activated; release/receipt needs repair; backup={backup}; {error}") from error
         preserved = []
         for name in reversed(replaced):

@@ -653,6 +653,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
                     "control-writer",
                     "--actor",
                     "control-agent",
+                    "--registry-maintenance",
                 ]
             )
             self.assertEqual(entered_control.returncode, 0, entered_control.stderr)

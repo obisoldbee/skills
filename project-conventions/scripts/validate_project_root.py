@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 
 CONTROL_DIRECTORY = ".project-conventions"
 CONFIG_SCHEMA_VERSION = 1
-ACCESS_PROTOCOL_VERSION = 2
+ACCESS_PROTOCOL_VERSION = 3
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MANAGED_START = "<!-- project-conventions:access:start -->"
 MANAGED_END = "<!-- project-conventions:access:end -->"
