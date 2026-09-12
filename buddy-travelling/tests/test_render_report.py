@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -20,11 +21,21 @@ class ReportTests(unittest.TestCase):
     def test_observed_live_dispatch_has_one_short_consistent_result(self):
         data = self.completed()
         result = subprocess.run([sys.executable, "-B", str(SCRIPTS / "render_report.py")],
-                                input=json.dumps(data), capture_output=True, text=True)
+                                input=json.dumps(data, ensure_ascii=False), capture_output=True,
+                                text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "Buddy｜2026-09-13\n结果：已完成（本轮已派出）\n"
                          "领取：10 积分（本轮已领取）\n旅行：咖啡馆 · 剩余 03:59:47\n"
                          "页面：已关闭\n飞书：未触发\n")
+
+    def test_cli_uses_utf8_under_legacy_windows_pipe_encoding(self):
+        result = subprocess.run(
+            [sys.executable, "-B", str(SCRIPTS / "render_report.py")],
+            input=json.dumps(self.completed(), ensure_ascii=False),
+            capture_output=True, text=True, encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, render(self.completed()) + "\n")
 
     def test_already_travelling_does_not_claim_reward_or_dispatch(self):
         data = self.completed()

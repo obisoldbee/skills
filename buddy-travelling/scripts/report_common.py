@@ -63,6 +63,9 @@ def finish_lines(lines, data, *, normal, maintenance=False):
 
 
 def main(render):
+    # The CLI contract is UTF-8, including pipes on Windows legacy code pages.
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")
     try:
         data = json.load(sys.stdin)
         print(render(data))
