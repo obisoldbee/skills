@@ -195,7 +195,14 @@ jobs:
       - name: Verify buddy-travelling package behavior
         shell: bash
         run: |
+          python -m pip install --disable-pip-version-check tzdata
           python -B -m unittest discover -s buddy-travelling/tests -p 'test_*.py'
+          python -B buddy-travelling/scripts/test_service_health.py
+
+      - name: Verify cdr-processing package behavior
+        shell: bash
+        run: |
+          python -B -m unittest discover -s cdr-processing/tests -p 'test_*.py'
 
       - name: Verify media-creator package behavior
         shell: bash
