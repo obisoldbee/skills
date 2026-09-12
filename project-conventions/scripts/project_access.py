@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 CONFIG_SCHEMA_VERSION = 1
 SESSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -466,7 +466,7 @@ def connect(database: Path) -> sqlite3.Connection:
         ).fetchone()
         if observed is not None and observed[0] == "1":
             # Preserve active sessions, token hashes, recovery plans and history.
-            # Old helpers reject version 2 instead of applying the old conflict rules.
+            # Old helpers reject the new version instead of applying old rules.
             connection.execute("ALTER TABLE claims RENAME TO claims_v1")
             connection.execute("""
                 CREATE TABLE claims (
@@ -479,6 +479,8 @@ def connect(database: Path) -> sqlite3.Connection:
             """)
             connection.execute("INSERT INTO claims SELECT * FROM claims_v1")
             connection.execute("DROP TABLE claims_v1")
+            connection.execute("UPDATE meta SET value = ? WHERE key = 'protocol_version'", (str(PROTOCOL_VERSION),))
+        elif observed is not None and observed[0] == "2":
             connection.execute("UPDATE meta SET value = ? WHERE key = 'protocol_version'", (str(PROTOCOL_VERSION),))
         elif observed is None or observed[0] != str(PROTOCOL_VERSION):
             raise AccessError("runtime database uses an unsupported protocol version")
@@ -630,7 +632,7 @@ def validate_write_scopes(workspace: Path, scopes: list[dict[str, str]]) -> None
 
 def physical_claim_paths(claim: dict[str, object]) -> list[str]:
     workspace = Path(str(claim["workspace"]))
-    if claim["mode"] == "isolated-writer":
+    if claim["mode"] in {"isolated-writer", "writer"}:
         # One writer per physical worktree: its index/build outputs are shared.
         return [workspace.as_posix()]
     return [(workspace / path).as_posix() for path in claim["write_paths"]]
@@ -639,7 +641,7 @@ def physical_claim_paths(claim: dict[str, object]) -> list[str]:
 def claims_conflict(requested: dict[str, object], existing: dict[str, object]) -> bool:
     if "read-only" in {requested["mode"], existing["mode"]}:
         return False
-    if "writer" in {requested["mode"], existing["mode"]}:
+    if any(claim.get("evidence", {}).get("registry_maintenance") for claim in (requested, existing)):
         return True
     return any(
         path_overlap(left, right)
@@ -654,7 +656,6 @@ def status(project_root: Path, database: Path, storage: str) -> dict[str, object
     else:
         with closing(connect(database)) as connection:
             claims = public_claims(connection)
-    modes = [claim["mode"] for claim in claims]
     return {
         "status": "ready",
         "protocol_version": PROTOCOL_VERSION,
@@ -662,7 +663,11 @@ def status(project_root: Path, database: Path, storage: str) -> dict[str, object
         "runtime_storage": storage,
         "claims": claims,
         "read_only_allowed": True,
-        "writer_allowed": not any(mode != "read-only" for mode in modes),
+        "writer_allowed": not any(claims_conflict(
+            {"mode": "writer", "workspace": str(project_root), "write_paths": []}, claim
+        ) for claim in claims),
+        "writer_scope": "physical_workspace_subtree",
+        "isolated_writer_allowed": "requires_nonoverlapping_linked_worktree",
         "scoped_writer_allowed": "requires_nonconflicting_paths",
         "next_action": "select the actual task mode and enter; active claims alone do not deny reading",
     }
@@ -679,9 +684,12 @@ def enter(
     workspace: Path | None,
     write_files: list[str] | None = None,
     write_dirs: list[str] | None = None,
+    registry_maintenance: bool = False,
 ) -> dict[str, object]:
     session_id = validate_session(session_id)
     actor = actor.strip()
+    if registry_maintenance and mode != "writer":
+        raise AccessError("registry maintenance requires writer mode")
     if not actor or len(actor) > 160:
         raise AccessError("actor must be a non-empty label of at most 160 characters")
     write_paths = normalize_write_paths(write_paths)
@@ -723,6 +731,8 @@ def enter(
         write_paths = [scope["path"] for scope in scopes]
     token = secrets.token_hex(24)
     evidence = git_evidence(actual_workspace)
+    if registry_maintenance:
+        evidence["registry_maintenance"] = True
     if mode == "writer" and evidence.get("linked_worktree"):
         raise AccessError(
             "exclusive writer must enter from the canonical worktree or Project Root wrapper"
@@ -755,7 +765,7 @@ def enter(
                 f"session already has an active {existing[0]} claim for actor {existing[1]!r}"
             )
         claims = public_claims(connection)
-        requested = {"mode": mode, "workspace": str(actual_workspace), "write_paths": write_paths}
+        requested = {"mode": mode, "workspace": str(actual_workspace), "write_paths": write_paths, "evidence": evidence}
         conflicts = [claim for claim in claims if claims_conflict(requested, claim)]
         if conflicts:
             connection.execute("ROLLBACK")
@@ -998,10 +1008,34 @@ def recover(
     }
 
 
+def run_scoped(project_root, database, storage, actor, files, directories, command):
+    """Keep a scoped claim only for one foreground command's lifetime."""
+    if command and command[0] == "--":
+        command = command[1:]
+    if not command:
+        raise AccessError("run requires a command after --")
+    receipt = enter(project_root, database, storage, "scoped-writer", None,
+                    actor, [], None, files, directories)
+    outcome = "aborted"
+    try:
+        check_claim(project_root, database, receipt["session_id"], receipt["token"])
+        completed = subprocess.run(command, cwd=project_root, check=False)
+        outcome = "success" if completed.returncode == 0 else "failed"
+        return {"status": "command_finished", "exit_code": completed.returncode,
+                "session_id": receipt["session_id"], "claim_released": True}
+    finally:
+        finish(project_root, database, receipt["session_id"], receipt["token"], outcome)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("--actor", required=True)
+    run_parser.add_argument("--write-file", action="append", default=[])
+    run_parser.add_argument("--write-dir", action="append", default=[])
+    run_parser.add_argument("argv", nargs=argparse.REMAINDER)
 
     enter_parser = subparsers.add_parser("enter")
     enter_parser.add_argument(
@@ -1009,6 +1043,7 @@ def main() -> int:
     )
     enter_parser.add_argument("--session")
     enter_parser.add_argument("--actor", required=True)
+    enter_parser.add_argument("--registry-maintenance", action="store_true")
     enter_parser.add_argument("--write-path", action="append", default=[])
     enter_parser.add_argument("--write-file", action="append", default=[])
     enter_parser.add_argument("--write-dir", action="append", default=[])
@@ -1037,6 +1072,9 @@ def main() -> int:
         ensure_runtime_boundary(database, create=False)
         if arguments.command == "status":
             result = status(project_root, database, storage)
+        elif arguments.command == "run":
+            result = run_scoped(project_root, database, storage, arguments.actor,
+                                arguments.write_file, arguments.write_dir, arguments.argv)
         elif arguments.command == "enter":
             result = enter(
                 project_root,
@@ -1049,6 +1087,7 @@ def main() -> int:
                 arguments.workspace,
                 arguments.write_file,
                 arguments.write_dir,
+                arguments.registry_maintenance,
             )
         elif arguments.command == "check":
             result = check_claim(project_root, database, arguments.session, arguments.token)
@@ -1085,6 +1124,8 @@ def main() -> int:
         )
         return 3
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    if arguments.command == "run":
+        return result["exit_code"] if result["exit_code"] >= 0 else 1
     return 0
 
 

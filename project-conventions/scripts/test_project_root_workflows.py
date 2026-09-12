@@ -1070,7 +1070,8 @@ Real workflow.
                     "integrator",
                 ]
             )
-            self.assertEqual(shared_writer.returncode, 2)
+            self.assertEqual(shared_writer.returncode, 0, shared_writer.stderr)
+            self.finish_claim(root, json.loads(shared_writer.stdout))
             detached = self.run_command(["git", "switch", "--detach"], cwd=worktrees[0])
             self.assertEqual(detached.returncode, 0, detached.stderr)
             drifted = self.run_command(

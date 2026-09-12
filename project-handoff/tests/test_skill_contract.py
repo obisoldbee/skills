@@ -15,10 +15,36 @@ SKILL_ROOT = TEST_ROOT.parent
 WORKSPACE_ROOT = SKILL_ROOT
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
-from validate_dispatch_route import resolve_request_case
+from validate_dispatch_route import resolve_request_case, validate_route
 
 
 class ProjectHandoffContractTests(unittest.TestCase):
+    def test_astra_rejects_explicit_and_inherited_invalid_effort(self):
+        route = {"requested_route": "gpt-6-astra", "model": "gpt-6-astra",
+                 "requested_model": "gpt-6-astra", "model_basis": "explicit_user",
+                 "reasoning": "minimal", "requested_reasoning": "minimal",
+                 "reasoning_basis": "explicit_user", "surface": "visible_thread"}
+        self.assertTrue(any("unsupported_reasoning" in e for e in validate_route(route)[1]))
+        inherited = {"requested_route": "platform-default", "model_basis": "platform_default",
+                     "reasoning_basis": "platform_default", "surface": "visible_thread",
+                     "destination_state": {"model": "gpt-6-astra", "reasoning": "minimal"}}
+        self.assertTrue(any("unsupported_inherited_reasoning" in e for e in validate_route(inherited)[1]))
+        inherited["destination_state"]["reasoning"] = "medium"
+        result, errors = validate_route(inherited)
+        self.assertEqual(errors, [])
+        self.assertEqual(result["create_thread_arguments"], {})
+        route.update(reasoning="ultra", requested_reasoning="ultra",
+                     destination_state={"model": "gpt-6-astra", "supported_reasoning": ["low", "medium", "high", "xhigh", "max"]})
+        self.assertTrue(any("capability evidence" in e for e in validate_route(route)[1]))
+
+    def test_malformed_destination_evidence_returns_validation_errors(self):
+        for axis in ("model", "reasoning"):
+            for value in ([], {}, 1, ""):
+                route = {"requested_route": "platform-default", "model_basis": "platform_default",
+                         "reasoning_basis": "platform_default", "surface": "visible_thread",
+                         "destination_state": {"model": "gpt-6-astra", axis: value}}
+                self.assertTrue(any(f"destination_state.{axis}" in e for e in validate_route(route)[1]))
+
     def test_skill_frontmatter_and_triggers(self):
         text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         self.assertTrue(text.startswith("---\n"))

@@ -45,7 +45,7 @@ class ScopedAccessTests(unittest.TestCase):
         # Compatibility fixture: v1 schema/CHECK and version gate, without
         # vendoring a second runtime implementation into the package.
         helper = self.access(self.root)
-        content = helper.read_text().replace("PROTOCOL_VERSION = 2", "PROTOCOL_VERSION = 1")
+        content = helper.read_text().replace("PROTOCOL_VERSION = 3", "PROTOCOL_VERSION = 1")
         content = content.replace("if observed is not None and observed[0] == \"1\":", "if False:")
         content = content.replace("'isolated-writer', 'scoped-writer'", "'isolated-writer'")
         helper.write_text(content)
@@ -199,7 +199,7 @@ class ScopedAccessTests(unittest.TestCase):
         self.assertEqual({p: (self.root / p).read_bytes() for p in upgrade.FILES}, before)
         result = upgrade.apply(self.root, proposal["plan_sha256"])
         self.assertEqual(result["status"], "upgraded")
-        self.assertEqual(result["database_protocol"], "2")
+        self.assertEqual(result["database_protocol"], "3")
         self.assertFalse((Path(result["backup"]) / "claim.json").exists())
         self.assertIn("Custom project instruction: preserve this.", agents.read_text())
         self.assertEqual(business.read_text(), "keep user source\n")
@@ -252,6 +252,49 @@ class ScopedAccessTests(unittest.TestCase):
         self.assertTrue(access.claims_conflict(isolated_a, scoped))
         self.assertTrue(access.claims_conflict(scoped, isolated_a))
         self.assertFalse(access.claims_conflict(isolated_b, scoped))
+        writer = {"mode": "writer", "workspace": "/fixture/wt-a", "write_paths": []}
+        self.assertTrue(access.claims_conflict(writer, isolated_a))
+        self.assertTrue(access.claims_conflict(writer, scoped))
+        self.assertFalse(access.claims_conflict(writer, isolated_b))
+        self.assertFalse(access.claims_conflict(isolated_b, writer))
+        self.assertTrue(access.claims_conflict(writer, dict(writer, workspace="/fixture/wt-a/nested")))
+        maintenance = dict(writer, evidence={"registry_maintenance": True})
+        self.assertTrue(access.claims_conflict(maintenance, isolated_b))
+        self.assertTrue(access.claims_conflict(isolated_b, maintenance))
+        self.assertFalse(access.claims_conflict(maintenance, {"mode": "read-only"}))
+
+    def test_scoped_command_releases_on_success_failure_and_start_error(self):
+        for code in (0, 7):
+            result = self.command("run", "--actor", "builder", "--write-dir", "out/test", "--",
+                                  sys.executable, "-c", f"raise SystemExit({code})")
+            self.assertEqual(result.returncode, code, result.stderr)
+            self.assertTrue(json.loads(result.stdout)["claim_released"])
+            self.assertEqual(json.loads(self.command("status").stdout)["claims"], [])
+        failed = self.command("run", "--actor", "builder", "--write-dir", "out/test", "--",
+                              str(self.root / "missing-executable"))
+        self.assertEqual(failed.returncode, 3)
+        self.assertEqual(json.loads(self.command("status").stdout)["claims"], [])
+
+    def test_scoped_command_does_not_execute_when_output_is_owned(self):
+        claim = self.enter("--write-dir", "out/test")
+        marker = self.root / "should-not-exist"
+        result = self.command("run", "--actor", "builder", "--write-dir", "out/test", "--",
+                              sys.executable, "-c", "from pathlib import Path; Path('should-not-exist').touch()")
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(marker.exists())
+        self.finish_claim(self.root, claim)
+
+    def test_v2_metadata_upgrade_preserves_claims(self):
+        receipt = self.enter(mode="writer")
+        database = self.root / ".project-conventions/runtime/access.sqlite3"
+        with closing(sqlite3.connect(database)) as connection:
+            connection.execute("UPDATE meta SET value='2' WHERE key='protocol_version'")
+            connection.commit()
+            before = connection.execute("SELECT * FROM claims").fetchall()
+        with closing(access.connect(database)) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM claims").fetchall(), before)
+            self.assertEqual(connection.execute("SELECT value FROM meta WHERE key='protocol_version'").fetchone()[0], "3")
+        self.finish_claim(self.root, receipt)
 
     @unittest.skipUnless(shutil.which("git"), "git is required")
     def test_real_worktrees_edit_and_commit_the_same_file_independently(self):
@@ -271,6 +314,10 @@ class ScopedAccessTests(unittest.TestCase):
         self.initialize(repository, mode="adopt-existing")
         (repository / "src/shared.py").write_text("original\n")
         commit(repository, "initial")
+        canonical = self.run_command([sys.executable, "-B", str(self.access(repository)),
+                                      "enter", "--mode", "writer", "--actor", "canonical"])
+        self.assertEqual(canonical.returncode, 0, canonical.stderr)
+        canonical_receipt = json.loads(canonical.stdout)
         tasks = []
         for name in ("a", "b"):
             worktree = self.root.parent / ("worktree-" + name)
@@ -289,6 +336,7 @@ class ScopedAccessTests(unittest.TestCase):
         self.assertEqual((repository / "src/shared.py").read_text(), "original\n")
         self.assertEqual(git("show", "task-a:src/shared.py"), "a")
         self.assertEqual(git("show", "task-b:src/shared.py"), "b")
+        self.finish_claim(repository, canonical_receipt)
 
     def test_upgrade_preserves_concurrent_foreign_replacement_on_rollback(self):
         self.install_v1_fixture()

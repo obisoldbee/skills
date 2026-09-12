@@ -192,3 +192,13 @@ failure_class:
 failure_disposition:
 spark_unavailable_supported:
 ~~~
+
+## Verify effective reasoning before sending
+
+A generic tool parameter enum is not evidence that every listed effort works with every model. Astra rejects `none` and `minimal`. When a destination task is known, read its current model/effort before forwarding, particularly after switching models or receiving an unsupported-value error. Global configuration does not prove a task override is compatible. Record observed state in the route's optional `destination_state` object (`model`, `reasoning`, and a model-specific `supported_reasoning` list when actually observed). The validator checks inherited values as well as explicit overrides without converting platform-default axes into tool arguments. If destination state is unavailable, record that compatibility is unverified; do not claim the route guard checked a hidden default.
+
+For a provider error, retain its actual supported list: it takes precedence over a broader tool advertisement for that destination. For example, an Astra destination advertising only low/medium/high/xhigh/max cannot accept ultra even if a generic tool schema lists it. Do not silently rewrite an explicitly requested alias.
+
+If the user asks to fix an invalid inherited effort, restore that task's last verified supported effort (for example medium), keeping the model and substantive request unchanged. This targeted repair is authorized by the repair request; do not change all tasks or global defaults. Verify the corrected effective turn from task readback. An erroring turn that never ran is not evidence its business action was completed. Before resuming externally visible actions, reread their actual state to avoid duplicates. Ordinary unsupported-parameter errors still do not authorize repeated new tasks or silent route changes.
+
+ChatGPT-to-Codex built-in forwarding is outside this repository. Updating this Skill guards callers that use it; it cannot patch the app's internal forwarding implementation. If that bridge injects an invalid effort, pass a supported explicit effort through an available authorized task API or correct the destination UI setting. Report app-layer recurrence separately instead of claiming a Skill edit repaired the bridge.
