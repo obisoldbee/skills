@@ -24,7 +24,7 @@ A Project Collection groups related but independently governed Project Roots. It
 
 The three collection-root files route; they do not absorb member documents or source. Exactly one **collection-control Project Root** owns the canonical member index and manages collection-wide repository utilities through declared projections rather than copies.
 
-An Agent entering the collection first routes to the exact control/member Project Root. When its current `AGENTS.md` adopts the managed access block, run that Project Root's local access helper before substantive work; a separate Harness conversation is not admission. An older member without adopted access remains subject to its live rules and observed conflicts; absence alone neither authorizes installing the helper nor blocks unrelated work. No orchestration Skill is required.
+An Agent entering the collection first routes to the exact control/member Project Root. New generated roots use worktree-first collaboration: read directly, keep independent report files, and isolate concurrent code changes in task worktrees of the true repository. Existing projects retain their live policy until an authorized named migration. No persistent claim or orchestration Skill is required by the default policy.
 
 ## Canonical member index
 

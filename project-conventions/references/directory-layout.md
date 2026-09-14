@@ -61,7 +61,7 @@ project-root/
 │   ├── YYYY-MM-DD.md        # Daily work log after substantive work (append-only)
 │   └── MEMORY.md            # Curated long-term project notes
 ├── .project-conventions/    # Required. Project-owned, Harness-neutral access entry
-│   ├── ACCESS.md            # Reader/writer/worktree admission contract
+│   ├── ACCESS.md            # Worktree-first collaboration policy
 │   ├── project.json         # Portable type/mapping and helper digest
 │   └── project_access.py    # Local status/enter/check/finish/recover CLI
 └── <agent-system-dir>/      # Agent platform's system directory (e.g. .workbuddy/, .qoderworkcn/) — NOT managed by this skill
@@ -125,11 +125,11 @@ project-root/
   - `05-brand-and-naming.md`
 
 **Numbering rule**:
-- Briefly hold `scoped-writer --write-dir conversation`, scan the directory and use the next available number. If `05-*.md` is the highest, the next file is `06-*.md`. Create without clobbering and release after the batch.
-- A read-only or isolated-worktree claim cannot allocate canonical conversation numbers. Finish isolated work first, then obtain the short directory claim in the owning Project Root.
+- One integrator scans the directory and uses the next available number; other Agents keep unique task records. If `05-*.md` is the highest, the next file is `06-*.md`. Create without clobbering.
+- Worktree workers keep separate records; the integrator allocates canonical numbers in the owning Project Root.
 - Never renumber existing files (breaks references).
 
-**Maintained by**: The Agent holding the claim covering the record or number allocation. One file per major topic or phase.
+**Maintained by**: The task record author or the canonical-record integrator. One file per major topic or phase.
 
 **Format**: See `conversation-format.md` for the full template.
 
@@ -291,7 +291,7 @@ This mapping prevents future agents from confusing wrapper files with repository
 
 “Append-only” is a history rule, not a concurrency primitive. Multiple Agents must not perform independent read-modify-write updates to the same daily file.
 
-In an adopted project, use a short `scoped-writer --write-file memory/YYYY-MM-DD.md` claim for the daily log (and separately declare MEMORY.md only if changing it). Reread after admission, preserve concurrent additions, save and release. Do not hold the record claim during research. Read-only tasks create no records; isolated-worktree Agents release their worktree claim before updating the canonical record in its owning Project Root. A substantive work log does not require rewriting `MEMORY.md`, conversation, or every index: update each only when its own facts or decision history changed. Legacy projects follow their existing write rules; missing governance is not installation authority.
+Use unique task records during concurrent work. One integrator rereads and merges canonical daily logs, memory and indexes only when their facts change. No persistent claim or mandatory update of every index is needed; response-only tasks create no records.
 
 **When to write**:
 - After completing substantive work (building, fixing, refactoring, generating a deliverable).
@@ -345,17 +345,7 @@ Follow the Document row in **Project Types**: require `AGENTS.md`, `README.md`, 
 
 ### What if multiple agents are working concurrently?
 
-- In a project whose current `AGENTS.md` adopts the managed access block, every Agent uses the project-local `.project-conventions/project_access.py` before substantive work. The SQLite transaction—not a role name or self-assessment—decides whether access is granted. An unrelated legacy task does not require governance installation; follow its actual rules and observed conflicts.
-- Multiple response-only reviewers may hold `read-only` claims alongside every writer. Use a fixed snapshot or recheck input hashes when reviewing changing files. A reader becoming an editor obtains a writing claim first.
-- Use `scoped-writer --write-file <file>` for reports or bounded file edits, and `--write-dir <dedicated-subtree>` for multiple outputs. Different files in the same folder may coexist. A directory reserves its descendants; a file never reserves its parent. Use the exclusive `writer` only for unbounded/shared maintenance; it excludes overlapping writers in its physical subtree, not readers or disjoint external worktrees.
-- Prefer task-specific branches and different clean linked worktrees for code. `isolated-writer` permits overlapping logical paths across worktrees, but only one writer per physical worktree. Canonical records use short scoped claims in the owning Project Root after releasing the worktree claim.
-- A worktree isolates physical files; reconcile logical overlap at integration. Isolate generated outputs, databases, ports, devices and services separately or use the exclusive writer for their shared effects.
-- Shared Git maintenance and merge/integration use a short exclusive writer claim after isolated writers finish. Reports and record files use scoped claims; conversation sequence allocation briefly reserves `conversation/`.
-- Do not initialize fixed role folders or a permanent `work/lanes/` tree. Roles do not determine isolation; actual effects and the access receipt do.
-- A blocked Agent writes nothing under the denied claim; reading or a fresh claim for independent authorized outputs may continue. Stale claims never expire automatically and require explicit user-authorized dry-run/apply recovery.
-- Harness-owned hidden directories remain opaque. Separate Agent conversations do not imply separate filesystems. The protocol needs no Agent messaging or other Skill.
-
-Read `project-access.md` for commands, receipts, recovery, worktree rules, and the guarantee boundary.
+Use `worktree-collaboration.md`: read directly, write separate reports, and use a task branch/worktree per concurrent code writer. Integrate validated commits through one editor. Shared outputs and services need their own isolation. Historical SQLite claims are not admission authority under worktree-first; older adopted projects need the named policy migration. Never treat separate chats as separate filesystems.
 
 ## File Focus Principle
 

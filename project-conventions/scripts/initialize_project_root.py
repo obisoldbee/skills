@@ -139,7 +139,7 @@ def validate_existing_path_components(target: Path, relative: str | None, label:
             break
 
 
-def render_access_block(project_profile: str, skill_name: str | None) -> str:
+def render_access_block(project_profile: str, skill_name: str | None, coordination_policy: str = "worktree-first") -> str:
     skill_rules = (
         f"""
 - This is an Agent Skill Code Project. Its true package root is `src/{skill_name}/`, even when most package files are Markdown or YAML.
@@ -150,6 +150,20 @@ def render_access_block(project_profile: str, skill_name: str | None) -> str:
         if project_profile == "agent-skill"
         else ""
     )
+    if coordination_policy == "worktree-first":
+        return f"""{MANAGED_START}
+## Worktree-first collaboration
+
+- Coordination policy: `worktree-first`. Read `.project-conventions/ACCESS.md` for the complete workflow.
+- Read-only work needs no admission or runtime writes. Use a fixed revision or recheck changed inputs.
+- Code changes use one task-specific branch and linked Git worktree per concurrent writer. Bind the actual repository, base commit, unique branch, and absent destination first. Existing dirty work stays in place; a new worktree starts from committed content only.
+- Reports use distinct exact output files or task-owned directories, with no-clobber creation. Different files in one folder may coexist. For existing shared files, use separate worktrees or one agreed integrator; do not overwrite concurrent edits.
+- Merge validated commits through one integrator after checking the destination and preserving unrelated work. Shared build outputs, databases and ports require their own isolation. A different chat is not an isolated filesystem.
+- Do not run `enter/check/finish/recover` or request claim cleanup for ordinary work. Legacy SQLite claims are historical metadata, not admission authority under this policy. Do not delete the old database or infer that old processes have stopped.
+- Record meaningful work in a unique task record; the integrator updates canonical logs and indexes. Do not hold a project-wide claim for records or number allocation.
+- A copied directory is not automatically a linked worktree. Verify its Git root/common directory before using Git; preserve existing content and copied runtime metadata.
+{skill_rules.rstrip()}
+{MANAGED_END}"""
     return f"""{MANAGED_START}
 ## Mandatory Agent Entry
 
@@ -175,6 +189,7 @@ def render_agents(
     repository_root: str | None,
     project_profile: str,
     skill_name: str | None,
+    coordination_policy: str = "worktree-first",
 ) -> str:
     repository = f"`{repository_root}` (verify with Git before use)" if repository_root else "not configured"
     src_row = "| `src/` | Source and repository entry |\n" if project_type in {"code", "hybrid"} else ""
@@ -203,7 +218,7 @@ def render_agents(
 
 {project_name} — {project_type.title()} Project Root.
 
-{render_access_block(project_profile, skill_name)}
+{render_access_block(project_profile, skill_name, coordination_policy)}
 
 ## Directory Index
 
@@ -213,7 +228,7 @@ def render_agents(
 {index_row}| `docs/` | Formal project documents |
 | `conversation/` | Decisions and collaboration history |
 | `memory/` | Project-owned continuity |
-{src_row}| `.project-conventions/` | Harness-neutral access protocol; runtime state is local and ignored |
+{src_row}| `.project-conventions/` | Worktree-first collaboration entry; legacy runtime stays local and ignored |
 {skill_row}
 
 ## Source Mapping
@@ -230,7 +245,7 @@ def render_agents(
 - Preserve existing user material. Generated specs go to `docs/specs/`, research to `docs/research/`, and runnable implementation to `src/` when present.
 - Harness-owned hidden directories are opaque and never replace project `conversation/` or `memory/`.
 - Read the instructions and materials needed for the selected task; reuse complete current readings. Run checks for the changed contract or behavior and preserve required acceptance gates, without unrelated suites or repeated passing checks.
-- Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records. Claim the exact record files with scoped-writer only for their write batch; reserve conversation/ briefly when allocating its next sequence number.
+- Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records. Use separate task records and one integrator for canonical logs and sequence numbers.
 - Complete the authorized deliverable, inspect it, fix failures caused by the change, and rerun affected checks without per-step approval. Report any unresolved blocker and the actual completion boundary.
 {skill_routing}- Do not initialize Git, move material, or publish without task authorization. A temporary task-specific worktree can support authorized code changes; choose its exact repository, base, branch and path before creating it. Initialization itself creates no worktree.
 """
@@ -253,7 +268,7 @@ This is an initialized {project_type.title()} Project Root.
 | Path | Purpose |
 |---|---|
 | `AGENTS.md` | Mandatory Agent entry and routing rules |
-| `.project-conventions/ACCESS.md` | Cross-Harness reader/writer admission protocol |
+| `.project-conventions/ACCESS.md` | Worktree-first collaboration policy and legacy compatibility |
 | `docs/` | Formal documents |
 | `conversation/` | Decision and collaboration records |
 | `memory/` | Project continuity |
@@ -261,7 +276,9 @@ This is an initialized {project_type.title()} Project Root.
 """
 
 
-def render_access_readme() -> str:
+def render_access_readme(coordination_policy: str = "worktree-first") -> str:
+    if coordination_policy == "worktree-first":
+        return (Path(__file__).resolve().parents[1] / "references" / "worktree-collaboration.md").read_text(encoding="utf-8")
     return """# Project Access — Protocol 2
 
 This directory is project-owned coordination infrastructure, not a Harness directory.
@@ -435,7 +452,7 @@ def render_initial_conversation(project_type: str, mode: str) -> str:
 
 ## Agent entry
 
-All later substantive work uses the project-local `.project-conventions/project_access.py` admission protocol before reading mutable state or writing project files.
+Follow the coordination policy in AGENTS.md and .project-conventions/ACCESS.md. Worktree-first is the default; legacy claims require explicit selection.
 """
 
 
@@ -815,7 +832,10 @@ def initialize(
     project_profile: str,
     skill_name: str | None,
     apply: bool,
+    coordination_policy: str = "worktree-first",
 ) -> dict[str, object]:
+    if coordination_policy not in {"worktree-first", "legacy-claims"}:
+        raise ProjectInitializationError("unsupported coordination policy")
     raw_target = target.expanduser().absolute()
     project_name = project_name or raw_target.name
     if (
@@ -843,9 +863,10 @@ def initialize(
         raise ProjectInitializationError("packaged project_access.py is missing or linked")
     helper = helper_source.read_bytes()
     helper_digest = portable_text_sha256(helper)
-    managed_block = render_access_block(project_profile, skill_name)
-    access_readme = render_access_readme()
+    managed_block = render_access_block(project_profile, skill_name, coordination_policy)
+    access_readme = render_access_readme(coordination_policy)
     config = {
+        "coordination_policy": coordination_policy,
         "access_readme_sha256": portable_text_sha256(access_readme.encode("utf-8")),
         "agents_block_sha256": hashlib.sha256(managed_block.encode("utf-8")).hexdigest(),
         "coordination_id": None,
@@ -884,7 +905,7 @@ def initialize(
 
     expected_files: dict[str, bytes] = {
         "AGENTS.md": render_agents(
-            project_name, project_type, repository_root, project_profile, skill_name
+            project_name, project_type, repository_root, project_profile, skill_name, coordination_policy
         ).encode("utf-8"),
         "README.md": render_readme(
             project_name, project_type, project_profile, skill_name
@@ -1049,6 +1070,7 @@ def main() -> int:
     parser.add_argument("--records-dir")
     parser.add_argument("--profile", choices=("standard", "agent-skill"), default="standard")
     parser.add_argument("--skill-name")
+    parser.add_argument("--coordination-policy", choices=("worktree-first", "legacy-claims"), default="worktree-first")
     parser.add_argument("--apply", action="store_true")
     arguments = parser.parse_args()
     try:
@@ -1062,6 +1084,7 @@ def main() -> int:
             arguments.profile,
             arguments.skill_name,
             arguments.apply,
+            arguments.coordination_policy,
         )
     except (ProjectInitializationError, OSError, UnicodeError) as exc:
         parser.error(str(exc))

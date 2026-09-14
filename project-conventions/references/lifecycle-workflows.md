@@ -223,7 +223,7 @@ python3 -B scripts/initialize_project_root.py <target> \
 python3 -B scripts/validate_project_root.py <target>
 ```
 
-The initializer preserves existing user material, creates no Git root or worktree, and installs a self-contained `.project-conventions/project_access.py` entry. Any Agent or Harness must obtain a local access claim before substantive work; read `project-access.md`. A normal Git-backed Project Root usually keeps its Repository Root under `src/`.
+The initializer preserves existing user material, creates no Git root or worktree, and installs the local collaboration entry. Worktree-first is the default: reading and independent reports need no claim; concurrent code writers use task branches/worktrees and one integrator. Read `worktree-collaboration.md`. The retained helper serves explicitly selected legacy compatibility only. A normal Git-backed Project Root usually keeps its Repository Root under `src/`.
 
 Do not apply the shared exception merely because two projects use the same hosting provider. It requires an explicit collection-relative `repository_root` plus a repository-relative `managed_scope`.
 

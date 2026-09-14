@@ -14,6 +14,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import time
 import unicodedata
 from contextlib import closing
 from datetime import datetime, timezone
@@ -198,8 +199,10 @@ def resolve_control(script_path: Path) -> tuple[Path, Path, dict[str, object]]:
         raise AccessError(f"invalid project configuration: {exc}") from exc
     if config.get("schema_version") != CONFIG_SCHEMA_VERSION:
         raise AccessError("unsupported project coordination schema")
-    if set(config) != CONFIG_KEYS:
+    if set(config) - {"coordination_policy"} != CONFIG_KEYS:
         raise AccessError("project configuration field set is invalid")
+    if config.get("coordination_policy", "legacy-claims") not in {"worktree-first", "legacy-claims"}:
+        raise AccessError("unsupported coordination policy")
     if config.get("project_type") not in {"code", "document", "hybrid"}:
         raise AccessError("invalid project_type in project configuration")
     if config.get("project_profile") not in {"standard", "agent-skill"}:
@@ -394,6 +397,20 @@ def git_evidence(project_root: Path) -> dict[str, object]:
 
 
 def connect(database: Path) -> sqlite3.Connection:
+    # Some SQLite PRAGMAs can report BUSY before busy_timeout takes effect on
+    # Windows. Retry only opening/transactional schema setup, never task writes.
+    deadline = time.monotonic() + 5.0
+    while True:
+        try:
+            return _connect_once(database)
+        except sqlite3.OperationalError as error:
+            code = getattr(error, "sqlite_errorcode", 0) & 0xff
+            if code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.025)
+
+
+def _connect_once(database: Path) -> sqlite3.Connection:
     ensure_runtime_boundary(database, create=True)
     if not database.exists():
         try:
@@ -403,9 +420,9 @@ def connect(database: Path) -> sqlite3.Connection:
         else:
             os.close(descriptor)
     ensure_runtime_boundary(database, create=False)
-    connection = sqlite3.connect(database, timeout=5.0, isolation_level=None)
+    connection = sqlite3.connect(database, timeout=0.25, isolation_level=None)
     try:
-        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA busy_timeout = 250")
         journal_mode = connection.execute("PRAGMA journal_mode").fetchone()
         if journal_mode is None or str(journal_mode[0]).lower() != "delete":
             raise AccessError("runtime database must use DELETE journal mode")
@@ -485,6 +502,8 @@ def connect(database: Path) -> sqlite3.Connection:
         elif observed is None or observed[0] != str(PROTOCOL_VERSION):
             raise AccessError("runtime database uses an unsupported protocol version")
         connection.execute("COMMIT")
+        # Restore the ordinary transaction timeout after initialization.
+        connection.execute("PRAGMA busy_timeout = 5000")
     except Exception:
         if connection.in_transaction:
             connection.execute("ROLLBACK")
@@ -1067,6 +1086,15 @@ def main() -> int:
     arguments = parser.parse_args()
     try:
         project_root, control, config = resolve_control(Path(__file__))
+        if config.get("coordination_policy") == "worktree-first":
+            # No database access: copied, corrupt or abandoned claims cannot gate work.
+            result = {"status": "ready" if arguments.command == "status" else "not_required",
+                      "protocol_version": PROTOCOL_VERSION, "coordination_policy": "worktree-first",
+                      "admission_required": False, "legacy_registry_consulted": False,
+                      "command_executed": False,
+                      "next_action": "run the authorized task directly in its worktree or independent output; see ACCESS.md"}
+            print(json.dumps(result, sort_keys=True))
+            return 0
         runtime, storage = runtime_root(project_root, control, config)
         database = runtime / DATABASE_FILE
         ensure_runtime_boundary(database, create=False)

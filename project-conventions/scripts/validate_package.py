@@ -21,6 +21,8 @@ REQUIRED_FILES = {
     "scripts/initialize_skills_control_project.py",
     "scripts/inspect_projects_workspace.py",
     "scripts/project_access.py",
+    "scripts/migrate_worktree_policy.py",
+    "references/worktree-collaboration.md",
     "scripts/test_inspect_projects_workspace.py",
     "scripts/test_lifecycle_workflows.py",
     "scripts/test_project_root_workflows.py",

@@ -96,59 +96,17 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.agents_template,
         )
 
-    def test_concurrency_has_project_local_admission_without_external_skill(self) -> None:
-        for required in (
-            ".project-conventions/project_access.py",
-            "project-local helper",
-            "read-only",
-            "scoped-writer",
-            "isolated-writer",
-            "blocked or failed configured admission means no write",
-            "不得自动接入",
-            "不得仅因此阻断原任务",
-        ):
-            self.assertIn(required, self.skill)
-        for required in (
-            "permanent `work/lanes/`",
-            "SQLite transaction",
-            "Multiple response-only reviewers",
-            "different clean linked worktrees",
-            "A blocked Agent writes nothing",
-            "Stale claims never expire automatically",
-            "Separate Agent conversations do not imply separate filesystems",
-        ):
-            self.assertIn(required, self.layout)
-        for required in (
-            ".project-conventions/project_access.py status",
-            "status: entered",
-            "A blocked Agent writes nothing",
-            "exclusive writer",
-            "permanent `work/lanes/`",
-        ):
-            self.assertIn(required, self.agents_template)
-        self.assertNotIn("$project-handoff", self.skill)
-        self.assertNotIn("$project-handoff", self.agents_template)
-        self.assertNotIn("sole active writer", self.agents_template)
-        self.assertNotIn("both appends are valid", self.layout)
-        for forbidden in (
-            "Create a `conversation/NN-topic.md` file (scan for next number)",
-            "Done working? Append a note to `memory/YYYY-MM-DD.md`",
-            "After substantive work, append to `memory/YYYY-MM-DD.md`",
-        ):
-            self.assertNotIn(forbidden, self.agents_template)
-        self.assertIn("project-local reader/writer admission", self.metadata)
-        self.assertIn("`src/<skill-name>/SKILL.md`", self.skill)
-        self.assertIn("`docs/<skill-name>/SKILL.md` are invalid", self.skill)
-        self.assertIn("every member helper stores claims in the collection-control runtime", self.shared)
-        self.assertIn("Scoped report/record claims compare physical paths", self.shared)
-        self.assertIn("no dual manual lock sequence", self.shared.lower())
-        for required_file in (
-            "initialize_project_root.py",
-            "project_access.py",
-            "validate_project_root.py",
-            "test_project_root_workflows.py",
-        ):
-            self.assertTrue((PACKAGE_ROOT / "scripts" / required_file).is_file())
+    def test_concurrency_defaults_to_worktrees_without_claim_gate(self) -> None:
+        self.assertIn("worktree-first", self.skill)
+        self.assertIn("migrate_worktree_policy.py", self.skill)
+        self.assertIn("worktree-collaboration.md", self.layout)
+        self.assertIn("no admission is required", self.agents_template)
+        self.assertNotIn("status: entered", self.agents_template)
+        self.assertNotIn("project_access.py status", self.agents_template)
+        self.assertIn("No reader/writer registry admission", self.shared)
+        self.assertIn("worktree-first", self.metadata)
+        for name in ("migrate_worktree_policy.py", "project_access.py", "validate_project_root.py"):
+            self.assertTrue((PACKAGE_ROOT / "scripts" / name).is_file())
 
     def test_legacy_project_adoption_contract_is_complete_chinese_and_routed(self) -> None:
         section = self.initialization.split("## 旧项目治理接入合同", 1)[1]
@@ -641,91 +599,13 @@ class LifecycleWorkflowTests(unittest.TestCase):
 
             control_access = control / ".project-conventions" / "project_access.py"
             member_access = wrapper / ".project-conventions" / "project_access.py"
-            entered_control = self.run_command(
-                [
-                    sys.executable,
-                    "-B",
-                    str(control_access),
-                    "enter",
-                    "--mode",
-                    "writer",
-                    "--session",
-                    "control-writer",
-                    "--actor",
-                    "control-agent",
-                    "--registry-maintenance",
-                ]
-            )
-            self.assertEqual(entered_control.returncode, 0, entered_control.stderr)
-            control_receipt = json.loads(entered_control.stdout)
-            blocked_member = self.run_command(
-                [
-                    sys.executable,
-                    "-B",
-                    str(member_access),
-                    "enter",
-                    "--mode",
-                    "writer",
-                    "--actor",
-                    "member-agent",
-                ]
-            )
-            self.assertEqual(blocked_member.returncode, 2, blocked_member.stderr)
-            finished_control = self.run_command(
-                [
-                    sys.executable,
-                    "-B",
-                    str(control_access),
-                    "finish",
-                    "--session",
-                    str(control_receipt["session_id"]),
-                    "--token",
-                    str(control_receipt["token"]),
-                    "--outcome",
-                    "success",
-                ]
-            )
-            self.assertEqual(finished_control.returncode, 0, finished_control.stderr)
-            entered_member = self.run_command(
-                [
-                    sys.executable,
-                    "-B",
-                    str(member_access),
-                    "enter",
-                    "--mode",
-                    "writer",
-                    "--session",
-                    "member-writer",
-                    "--actor",
-                    "member-agent",
-                ]
-            )
-            self.assertEqual(entered_member.returncode, 0, entered_member.stderr)
-            member_receipt = json.loads(entered_member.stdout)
-            self.assertEqual(member_receipt["runtime_storage"], "collection-control")
-            control_status = self.run_command(
-                [sys.executable, "-B", str(control_access), "status"]
-            )
-            self.assertEqual(control_status.returncode, 0, control_status.stderr)
-            self.assertEqual(
-                json.loads(control_status.stdout)["claims"][0]["session_id"],
-                "member-writer",
-            )
-            finished_member = self.run_command(
-                [
-                    sys.executable,
-                    "-B",
-                    str(member_access),
-                    "finish",
-                    "--session",
-                    str(member_receipt["session_id"]),
-                    "--token",
-                    str(member_receipt["token"]),
-                    "--outcome",
-                    "success",
-                ]
-            )
-            self.assertEqual(finished_member.returncode, 0, finished_member.stderr)
+            for helper in (control_access, member_access):
+                state = self.run_command([sys.executable, "-B", str(helper), "status"])
+                self.assertEqual(state.returncode, 0, state.stderr)
+                payload = json.loads(state.stdout)
+                self.assertFalse(payload["admission_required"])
+                self.assertFalse(payload["legacy_registry_consulted"])
+                self.assertFalse((helper.parent / "runtime").exists())
 
             member_config = wrapper / ".project-conventions" / "project.json"
             original_member_config = member_config.read_bytes()
@@ -751,7 +631,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
             tampered_coordinator_status = self.run_command(
                 [sys.executable, "-B", str(member_access), "status"]
             )
-            self.assertEqual(tampered_coordinator_status.returncode, 3)
+            self.assertEqual(tampered_coordinator_status.returncode, 0)  # No shared runtime dependency.
             tampered_coordinator_validation = self.run_command(
                 [sys.executable, "-B", str(project_root_validator), str(wrapper)]
             )

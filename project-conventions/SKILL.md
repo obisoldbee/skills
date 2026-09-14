@@ -210,12 +210,13 @@ Core rules:
 5. Archive superseded project documents rather than silently deleting them.
 6. Verify Repository Roots with Git; do not infer them from folder names.
 7. Keep wrapper metadata and machine paths out of portable/public packages.
-8. Ordinary initialization installs `.project-conventions/project_access.py` inside the target. This project-local helper—not Codex, another Skill, a role name, or Agent messaging—is the admission authority for cooperating Harnesses after adoption.
-9. In an adopted Project Root, read `references/project-access.md` for access changes and use the project-local helper. Select `read-only` for response-only reading, `scoped-writer --write-file <file>` for a report or bounded edit, `scoped-writer --write-dir <dedicated-subtree>` for multiple outputs, `isolated-writer` for code in a clean linked worktree, and a short `writer` for maintenance within one physical workspace. Use `writer --registry-maintenance` only for registry-wide Git/protocol maintenance. A blocked or failed configured admission means no write under that claim. Missing governance in a legacy project is not itself permission to initialize and is not an unrelated-task blocker.
-10. Readers coexist with every writer; use fixed snapshots or recheck changed inputs. Different files in the same folder may be written concurrently. A directory claim reserves its whole subtree; a file claim does not reserve its parent. Prefer a task-specific branch/worktree for code: different worktrees may edit the same logical filename and resolve overlap at integration. Ordinary initialization creates no permanent roles or worktrees.
-11. Claim exact canonical record files only for their short write batch; reread before updating and preserve concurrent additions. Briefly claim `conversation/` when allocating its next number. An isolated writer releases its worktree claim before updating canonical records in their owning Project Root. Use a short workspace writer for integration and an explicit registry-maintenance writer for shared Git control changes. Do not retain either across research, model calls or quota waits. Prefer `run` for bounded foreground commands so normal completion and failures release their scoped claims. Upgrade an already adopted project's copied helper only through an authorized, hash-checked `scripts/upgrade_project_access.py` dry-run/apply.
+8. Ordinary initialization selects **worktree-first** collaboration. Read `references/worktree-collaboration.md`. Code tasks use separate branches and linked worktrees; response-only reading and independent reports need no admission. The local helper remains for compatibility, not a mandatory claim gate.
+9. Resolve the actual repository, base commit, unique branch and absent task-worktree path. Authorized code work includes ordinary local worktree setup. Use the host's existing task worktree when suitable. A worktree begins from committed files; preserve and explicitly account for dirty/untracked inputs. Never reset or stash another task's work.
+10. One concurrent writer per physical worktree. Separate worktrees may edit the same logical filename; one integrator reconciles commits and runs affected checks. Worktrees do not isolate shared databases, ports, services or common build outputs. Use separate resources or one dedicated builder for a stable integrated revision.
+11. New reports use exact unique files with no-clobber creation; different files in one folder may coexist. For shared non-Git documents use one editor and separate proposals. Agents write task-specific records; the integrator updates canonical logs/indexes and allocates sequence numbers. Do not introduce persistent claims for these operations.
+12. Existing adopted projects retain their copied policy until migrated. For an authorized switch on an exact named target, run `scripts/migrate_worktree_policy.py <project-root> --apply`; it plans, checks, backs up and replaces the four governance files without consulting the old claim registry. No separate claim-recovery permission round is needed. A call without `--apply` is an optional preview. Updating the Skill alone does not migrate project copies. Reload running Agents' rules; preserve actual active work.
 
-These concurrency rules require `status.protocol_version == 3`. A project-local version-1 or version-2 copy still uses its old contract even when the global Skill is newer. Ordinary writers do not block physically disjoint external worktrees; nested worktrees still overlap. For an authorized concurrency fix, upgrade that exact named target; do not repeatedly send unsupported flags or silently update other projects.
+`worktree-first` is a coordination policy, separate from the retained legacy helper's protocol version 3. Old SQLite claims do not govern projects using this policy, and a copied database does not inherit control over an independent copy. Do not delete the database or infer process death from a stale row. Projects explicitly retaining `legacy-claims` use `references/project-access.md`; never mix those admission commands into the default workflow.
 
 Initialize an ordinary Project Root with a dry-run, explicit type/mode, apply, and target validation:
 
@@ -231,7 +232,7 @@ python3 -B scripts/validate_project_root.py <target>
 
 For an Agent Skill Code Project, add `--profile agent-skill --skill-name <lowercase-hyphen-name>` to both initializer commands. Validation then requires that exact package entry and a matching frontmatter `name`.
 
-After initialization, any Harness enters through relative project-local commands documented in `references/project-access.md`; it does not need this Skill installed at runtime. Existing materials are preserved and never moved by initialization.
+After initialization, any Harness follows the generated AGENTS.md and ACCESS.md worktree workflow; it does not need this Skill installed at runtime. Existing materials are preserved and never moved by initialization.
 
 For a contribution fork, read `references/fork-workflow.md`. For records, use `references/conversation-format.md`, `references/review-naming.md`, and `references/versioned-records.md` as routed.
 
@@ -281,7 +282,8 @@ A successful shared Skills initialization has:
 | `references/project-collection.md` | Initializing or maintaining a collection |
 | `references/directory-layout.md` | Initializing or explaining one Project Root |
 | `references/project-root-initialization.md` | Deterministically creating or adopting an ordinary Project Root |
-| `references/project-access.md` | Any overlapping Agent/Harness work or linked-worktree writer |
+| `references/worktree-collaboration.md` | Default code collaboration, independent reports, integration and policy migration |
+| `references/project-access.md` | Compatibility only: projects explicitly retaining legacy claims |
 | `references/agents-md-template.md` | Creating or revising AGENTS.md |
 | `references/migration-guide.md` | Moving existing paths or repository boundaries |
 | `references/fork-workflow.md` | Configuring a fork and upstream |

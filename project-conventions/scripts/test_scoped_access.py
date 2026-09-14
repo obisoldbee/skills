@@ -33,6 +33,30 @@ class ScopedAccessTests(unittest.TestCase):
         self.root = Path(temporary.name) / "project"
         self.initialize(self.root)
 
+    def test_schema_open_retries_only_transient_sqlite_lock(self):
+        busy = sqlite3.OperationalError("database is locked")
+        busy.sqlite_errorcode = sqlite3.SQLITE_BUSY
+        sentinel = object()
+        with mock.patch.object(access, "_connect_once", side_effect=[busy, sentinel]) as opening:
+            with mock.patch.object(access.time, "sleep"):
+                self.assertIs(access.connect(self.root / "test.sqlite3"), sentinel)
+        self.assertEqual(opening.call_count, 2)
+        corrupt = sqlite3.OperationalError("file is not a database")
+        corrupt.sqlite_errorcode = sqlite3.SQLITE_NOTADB
+        with mock.patch.object(access, "_connect_once", side_effect=corrupt) as opening:
+            with self.assertRaises(sqlite3.OperationalError):
+                access.connect(self.root / "test.sqlite3")
+        self.assertEqual(opening.call_count, 1)
+
+    def test_schema_retry_has_a_deadline(self):
+        busy = sqlite3.OperationalError("database is locked")
+        busy.sqlite_errorcode = sqlite3.SQLITE_LOCKED
+        with mock.patch.object(access, "_connect_once", side_effect=busy) as opening:
+            with mock.patch.object(access.time, "monotonic", side_effect=[0.0, 6.0]):
+                with self.assertRaises(sqlite3.OperationalError):
+                    access.connect(self.root / "test.sqlite3")
+        self.assertEqual(opening.call_count, 1)
+
     def command(self, *args):
         return self.run_command([sys.executable, "-B", str(self.access(self.root)), *args])
 
@@ -363,6 +387,152 @@ class ScopedAccessTests(unittest.TestCase):
         self.assertEqual(agents.read_bytes(), foreign)
         for name in upgrade.FILES[1:]:
             self.assertEqual((self.root / name).read_bytes(), before[name])
+
+
+class WorktreePolicyTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.base = Path(temporary.name)
+        self.root = self.base / "project"
+
+    def initialize(self, policy=None):
+        command = [sys.executable, "-B", str(fixtures.INITIALIZER), str(self.root),
+                   "--type", "code", "--mode", "fresh-empty", "--apply"]
+        if policy:
+            command += ["--coordination-policy", policy]
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def command(self, root, *args):
+        result = subprocess.run([sys.executable, "-B", str(root / ".project-conventions/project_access.py"),
+                                 *args], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_default_status_does_not_create_runtime_or_claim(self):
+        self.initialize()
+        result = self.command(self.root, "status")
+        self.assertFalse(result["admission_required"])
+        result = self.command(self.root, "enter", "--mode", "writer", "--actor", "old-prompt")
+        self.assertEqual(result["status"], "not_required")
+        self.assertNotIn("token", result)
+        self.assertFalse((self.root / ".project-conventions/runtime").exists())
+
+    def test_migration_preserves_abandoned_claim_and_database_bytes(self):
+        import migrate_worktree_policy as migration
+        self.initialize("legacy-claims")
+        self.command(self.root, "enter", "--mode", "writer", "--actor", "abandoned")
+        database = self.root / ".project-conventions/runtime" / access.DATABASE_FILE
+        before = database.read_bytes()
+        plan = migration.migrate(self.root)
+        self.assertEqual(plan["status"], "would_upgrade")
+        self.assertEqual(database.read_bytes(), before)
+        result = migration.migrate(self.root, apply=True)
+        self.assertEqual(result["status"], "migrated")
+        self.assertEqual(database.read_bytes(), before)
+        self.assertFalse(self.command(self.root, "status")["legacy_registry_consulted"])
+        self.assertEqual(database.read_bytes(), before)
+        self.assertEqual(migration.migrate(self.root, apply=True)["status"], "already_current")
+
+    def test_copied_corrupt_registry_does_not_block_policy_switch(self):
+        import migrate_worktree_policy as migration
+        self.initialize("legacy-claims")
+        copied = self.base / "external-copy"
+        shutil.copytree(self.root, copied)
+        runtime = copied / ".project-conventions/runtime"
+        runtime.mkdir()
+        database = runtime / access.DATABASE_FILE
+        database.write_bytes(b"copied-unreadable-runtime")
+        self.assertEqual(migration.migrate(copied, apply=True)["status"], "migrated")
+        self.assertFalse(self.command(copied, "status")["admission_required"])
+        self.assertEqual(database.read_bytes(), b"copied-unreadable-runtime")
+        self.assertEqual(json.loads((self.root / ".project-conventions/project.json").read_text())["coordination_policy"], "legacy-claims")
+
+    def test_pre_policy_config_and_generated_outside_rules_migrate(self):
+        import migrate_worktree_policy as migration
+        self.initialize("legacy-claims")
+        config_path = self.root / ".project-conventions/project.json"
+        config = json.loads(config_path.read_text())
+        del config["coordination_policy"]  # Real pre-policy configurations lack this field.
+        config_path.write_text(json.dumps(config))
+        agents = self.root / "AGENTS.md"
+        agents.write_text(agents.read_text() + "\n" + upgrade.LEGACY_RECORD_LINE + "\n"
+                         "- This member's local helper stores claims in `../skills/.project-conventions/runtime`, "
+                         "so one local `enter` automatically shares the collection-wide gate used by every member "
+                         "and the control project. Do not bypass it by entering `../GitHub` directly.\n"
+                         "- Preserve this custom rule.\n")
+        migration.migrate(self.root, apply=True)
+        updated = agents.read_text()
+        self.assertNotIn("collection-wide gate", updated)
+        self.assertNotIn(upgrade.LEGACY_RECORD_LINE, updated)
+        self.assertIn("- Preserve this custom rule.", updated)
+        self.assertFalse(self.command(self.root, "status")["admission_required"])
+
+    def test_migration_rolls_back_owned_files_on_validation_failure(self):
+        import migrate_worktree_policy as migration
+        self.initialize("legacy-claims")
+        before = {name: (self.root / name).read_bytes() for name in upgrade.FILES}
+        original = migration.validator.validate
+        def fail_new(root, *args, **kwargs):
+            if json.loads((root / upgrade.FILES[3]).read_text())["coordination_policy"] == "worktree-first":
+                raise ValueError("injected validation failure")
+            return original(root, *args, **kwargs)
+        with mock.patch.object(migration.validator, "validate", side_effect=fail_new):
+            with self.assertRaisesRegex(upgrade.UpgradeError, "owned files rolled back"):
+                migration.migrate(self.root, apply=True)
+        for name, content in before.items():
+            self.assertEqual((self.root / name).read_bytes(), content)
+
+    def test_migration_os_lock_releases_after_process_death(self):
+        import migrate_worktree_policy as migration
+        self.initialize()
+        script = ("from pathlib import Path; import sys; from migrate_worktree_policy import migration_lock\n"
+                  "with migration_lock(Path(sys.argv[1])):\n"
+                  " print('held', flush=True)\n"
+                  " sys.stdin.read()\n")
+        control = self.root / ".project-conventions"
+        child = subprocess.Popen([sys.executable, "-B", "-c", script, str(control)],
+                                 cwd=Path(__file__).parent, stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "held")
+            with self.assertRaises(OSError):
+                with migration.migration_lock(control):
+                    self.fail("second process acquired active migration lock")
+        finally:
+            child.terminate()
+            child.communicate(timeout=10)
+        with migration.migration_lock(control):
+            pass  # The existing lock file is harmless after owner exit.
+
+    def test_two_worktrees_edit_same_file_and_git_reports_merge_conflict(self):
+        self.initialize()
+        def git(root, *args, ok=True):
+            result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+            if ok:
+                self.assertEqual(result.returncode, 0, result.stderr)
+            return result
+        git(self.root, "init")
+        git(self.root, "config", "user.name", "Fixture")
+        git(self.root, "config", "user.email", "fixture@example.invalid")
+        (self.root / "app.txt").write_text("base\n")
+        git(self.root, "add", ".")
+        git(self.root, "commit", "-m", "baseline")
+        for name in ("task-a", "task-b"):
+            worktree = self.base / name
+            git(self.root, "worktree", "add", "-b", name, str(worktree), "HEAD")
+            (worktree / "app.txt").write_text(name + "\n")
+            git(worktree, "add", "app.txt")
+            git(worktree, "commit", "-m", name)
+            self.assertFalse(self.command(worktree, "status")["admission_required"])
+        self.assertEqual((self.root / "app.txt").read_text(), "base\n")
+        git(self.root, "merge", "--ff-only", "task-a")
+        conflict = git(self.root, "merge", "--no-edit", "task-b", ok=False)
+        self.assertNotEqual(conflict.returncode, 0)
+        self.assertIn("UU app.txt", git(self.root, "status", "--short").stdout)
+        git(self.root, "merge", "--abort")
+        self.assertEqual((self.base / "task-b/app.txt").read_text(), "task-b\n")
 
 
 if __name__ == "__main__":

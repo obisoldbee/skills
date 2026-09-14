@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -35,34 +36,65 @@ LEGACY_LINES = {
 }
 
 
+# Migrate only recognized generated record instructions, never arbitrary user rules.
+WORKTREE_RECORD_LINE = "- Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records. Use separate task records and one integrator for canonical logs and sequence numbers."
+LEGACY_RECORD_LINE = "- Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records. Claim the exact record files with scoped-writer only for their write batch; reserve conversation/ briefly when allocating its next sequence number."
+
+
 def digest(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def plan(target: Path) -> tuple[dict, dict[str, bytes], dict[str, bytes]]:
+def plan(target: Path, coordination_policy: str | None = None) -> tuple[dict, dict[str, bytes], dict[str, bytes]]:
     raw = target.expanduser().absolute()
     root, control, config = access.resolve_control(raw / ".project-conventions/project_access.py")
     # Validate as data; do not execute the target's helper in a dry-run.
     validator.validate(root, run_access_check=False)
-    runtime, storage = access.runtime_root(root, control, config)
+    if coordination_policy == "worktree-first" or config.get("coordination_policy") == "worktree-first":
+        runtime, storage = control / "runtime", "legacy-registry-not-consulted"
+    else:
+        runtime, storage = access.runtime_root(root, control, config)
     before = {name: (root / name).read_bytes() for name in FILES}
     agents = before["AGENTS.md"].decode("utf-8")
     newline = "\r\n" if "\r\n" in agents else "\n"
     start = agents.index(access.MANAGED_START)
     end = agents.index(access.MANAGED_END, start) + len(access.MANAGED_END)
-    block = initializer.render_access_block(config["project_profile"], config["skill_package"])
+    policy = coordination_policy or config.get("coordination_policy", "legacy-claims")
+    block = initializer.render_access_block(config["project_profile"], config["skill_package"], policy)
     outside_before, outside_after = agents[:start], agents[end:]
+    replacements = dict(LEGACY_LINES)
+    if policy == "worktree-first":
+        replacements[LEGACY_RECORD_LINE] = WORKTREE_RECORD_LINE
+        for key in replacements:
+            if "Record significant decisions" in key:
+                replacements[key] = WORKTREE_RECORD_LINE
+        # Previous shared-wrapper templates also emitted this line outside the block.
+        pattern = re.compile(
+            r"^- This member's local helper stores claims in `\.\./[\w-]+/\.project-conventions/runtime`, "
+            r"so one local `enter` automatically shares the collection-wide gate used by every member "
+            r"and the control project\. Do not bypass it by entering `\.\./([\w-]+)` directly\.$"
+        )
+        for line in (outside_before + outside_after).splitlines():
+            match = pattern.fullmatch(line)
+            if match:
+                replacements[line] = (
+                    f"- This member uses worktree-first. Resolve the true source in `../{match[1]}` "
+                    "before Git operations; independent wrapper reports need no claim. "
+                    "The old collection runtime is compatibility metadata only."
+                )
     def migrate_generated_lines(text: str) -> str:
-        return "".join(LEGACY_LINES.get(line.rstrip("\r\n"), line.rstrip("\r\n"))
+        return "".join(replacements.get(line.rstrip("\r\n"), line.rstrip("\r\n"))
                        + line[len(line.rstrip("\r\n")):] for line in text.splitlines(keepends=True))
     outside_before = migrate_generated_lines(outside_before)
     outside_after = migrate_generated_lines(outside_after)
     after = {
         "AGENTS.md": (outside_before + block.replace("\n", newline) + outside_after).encode("utf-8"),
-        ".project-conventions/ACCESS.md": initializer.render_access_readme().encode("utf-8"),
+        ".project-conventions/ACCESS.md": initializer.render_access_readme(policy).encode("utf-8"),
         ".project-conventions/project_access.py": Path(access.__file__).read_bytes(),
     }
     updated = dict(config)
+    if coordination_policy is not None:
+        updated["coordination_policy"] = policy
     updated.update(
         agents_block_sha256=digest(block.encode("utf-8")),
         access_readme_sha256=access.portable_text_sha256(after[".project-conventions/ACCESS.md"]),
@@ -121,6 +153,12 @@ def replace_owned(path: Path, expected: bytes, content: bytes) -> None:
 
 def apply(target: Path, expected_plan: str) -> dict:
     proposal, before, after = plan(target)
+    config = json.loads(before[FILES[3]])
+    if config.get("coordination_policy") == "worktree-first":
+        from migrate_worktree_policy import migrate
+        if proposal["plan_sha256"] != expected_plan:
+            raise UpgradeError("reviewed plan changed")
+        return migrate(target, apply=True)
     if proposal["plan_sha256"] != expected_plan:
         raise UpgradeError("reviewed plan changed; inspect a new dry-run before apply")
     if not proposal["changes"]:

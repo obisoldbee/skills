@@ -1,4 +1,6 @@
-# Project Access — Harness-Neutral Concurrency Contract
+# Legacy Project Access — Compatibility Only
+
+The default policy is now `worktree-first`; read [worktree-collaboration.md](worktree-collaboration.md). The commands below apply only to a project explicitly retaining `legacy-claims` (including older configurations without a policy field). Do not request recovery or execute enter/check/finish in a worktree-first project. For an authorized policy switch, use `migrate_worktree_policy.py <project-root> --apply`; it does not enter or clear the legacy registry.
 
 Use this contract in a Project Root whose current AGENTS.md adopts the local helper. A missing helper in an unrelated legacy project does not authorize adoption or block its original task. This is cooperative coordination for every Harness, not a Codex-only filesystem lock.
 

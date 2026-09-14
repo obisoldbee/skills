@@ -10,7 +10,7 @@ The shared Repository Root is collection infrastructure. It owns Git history and
 |---|---|
 | Git history and package bytes | `<collection>/GitHub` |
 | Project documents and continuity | `<collection>/<member>/` |
-| Cross-Harness reader/writer admission | `<collection>/<member>/.project-conventions/` and `<collection>/skills/.project-conventions/` |
+| Cross-Harness collaboration policy | `<collection>/<member>/.project-conventions/` and `<collection>/skills/.project-conventions/` |
 | Member and Repository Root mapping | `<collection>/skills/docs/indexes/members.md` |
 | Agent export allowlist | `<collection>/skills/src/config/skill-exports.tsv` |
 | Runtime consumer | Existing Agent-specific Skill root |
@@ -80,7 +80,7 @@ For a new or explicitly cleared collection, the allowed initial write order is:
 
 The clone path is final from the start. Do not clone beneath a temporary member `src/` and then ask the initializer to discover or move it.
 
-The generated control and member Project Roots each contain a Harness-neutral access helper, and every member helper stores claims in the collection-control runtime. Readers coexist with writers. Scoped report/record claims compare physical paths, so distinct wrapper outputs may run together. The exclusive writer remains collection-wide for shared Git index/HEAD maintenance; do not use a scoped report claim to mutate Git through a source projection. A member wrapper with a missing/wrong `coordination_root` is invalid and must fail closed. Worktree admission requires an explicitly configured Git-common backend; this collection-control binding does not silently change to one. No dual manual lock sequence, Agent messaging, or orchestration Skill is required.
+Generated control and member Project Roots select worktree-first. No reader/writer registry admission is needed. Reports use independent wrapper files; shared repository integration uses one editor. Resolve the true Git root before using a task branch/worktree, not the wrapper's projection. A linked worktree shares the same repository rather than creating another clone. The canonical checkout, wrappers and consumer links remain in place. Existing copied helpers require a named policy migration; do not scan or rewrite other wrappers automatically.
 
 ## Git safety gate
 
