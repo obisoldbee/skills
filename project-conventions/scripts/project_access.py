@@ -14,6 +14,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import time
 import unicodedata
 from contextlib import closing
 from datetime import datetime, timezone
@@ -396,6 +397,20 @@ def git_evidence(project_root: Path) -> dict[str, object]:
 
 
 def connect(database: Path) -> sqlite3.Connection:
+    # Some SQLite PRAGMAs can report BUSY before busy_timeout takes effect on
+    # Windows. Retry only opening/transactional schema setup, never task writes.
+    deadline = time.monotonic() + 5.0
+    while True:
+        try:
+            return _connect_once(database)
+        except sqlite3.OperationalError as error:
+            code = getattr(error, "sqlite_errorcode", 0) & 0xff
+            if code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.025)
+
+
+def _connect_once(database: Path) -> sqlite3.Connection:
     ensure_runtime_boundary(database, create=True)
     if not database.exists():
         try:
@@ -405,9 +420,9 @@ def connect(database: Path) -> sqlite3.Connection:
         else:
             os.close(descriptor)
     ensure_runtime_boundary(database, create=False)
-    connection = sqlite3.connect(database, timeout=5.0, isolation_level=None)
+    connection = sqlite3.connect(database, timeout=0.25, isolation_level=None)
     try:
-        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA busy_timeout = 250")
         journal_mode = connection.execute("PRAGMA journal_mode").fetchone()
         if journal_mode is None or str(journal_mode[0]).lower() != "delete":
             raise AccessError("runtime database must use DELETE journal mode")
@@ -487,6 +502,8 @@ def connect(database: Path) -> sqlite3.Connection:
         elif observed is None or observed[0] != str(PROTOCOL_VERSION):
             raise AccessError("runtime database uses an unsupported protocol version")
         connection.execute("COMMIT")
+        # Restore the ordinary transaction timeout after initialization.
+        connection.execute("PRAGMA busy_timeout = 5000")
     except Exception:
         if connection.in_transaction:
             connection.execute("ROLLBACK")

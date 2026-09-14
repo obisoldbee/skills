@@ -33,6 +33,30 @@ class ScopedAccessTests(unittest.TestCase):
         self.root = Path(temporary.name) / "project"
         self.initialize(self.root)
 
+    def test_schema_open_retries_only_transient_sqlite_lock(self):
+        busy = sqlite3.OperationalError("database is locked")
+        busy.sqlite_errorcode = sqlite3.SQLITE_BUSY
+        sentinel = object()
+        with mock.patch.object(access, "_connect_once", side_effect=[busy, sentinel]) as opening:
+            with mock.patch.object(access.time, "sleep"):
+                self.assertIs(access.connect(self.root / "test.sqlite3"), sentinel)
+        self.assertEqual(opening.call_count, 2)
+        corrupt = sqlite3.OperationalError("file is not a database")
+        corrupt.sqlite_errorcode = sqlite3.SQLITE_NOTADB
+        with mock.patch.object(access, "_connect_once", side_effect=corrupt) as opening:
+            with self.assertRaises(sqlite3.OperationalError):
+                access.connect(self.root / "test.sqlite3")
+        self.assertEqual(opening.call_count, 1)
+
+    def test_schema_retry_has_a_deadline(self):
+        busy = sqlite3.OperationalError("database is locked")
+        busy.sqlite_errorcode = sqlite3.SQLITE_LOCKED
+        with mock.patch.object(access, "_connect_once", side_effect=busy) as opening:
+            with mock.patch.object(access.time, "monotonic", side_effect=[0.0, 6.0]):
+                with self.assertRaises(sqlite3.OperationalError):
+                    access.connect(self.root / "test.sqlite3")
+        self.assertEqual(opening.call_count, 1)
+
     def command(self, *args):
         return self.run_command([sys.executable, "-B", str(self.access(self.root)), *args])
 
