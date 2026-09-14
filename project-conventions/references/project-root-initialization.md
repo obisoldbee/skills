@@ -100,6 +100,6 @@ Do not copy raw material into `docs/` merely because an Agent analyzed it. Deriv
 
 When work arrives from another computer, an absolute path in the handoff is only `source_host_observed_path` evidence. Resolve the actual target on the current host and write active `AGENTS.md`, `README.md`, indexes, and configuration with relative paths. Validate those paths from disk after writing.
 
-## Agent admission after initialization
+## Collaboration after initialization
 
-The generated `AGENTS.md` points every Harness to the project-local access helper. Read `project-access.md` for the exact reader/writer/worktree rules. This is the safety baseline; an optional orchestrator may improve scheduling, but it is not required for admission or mutual exclusion.
+Generated AGENTS.md and ACCESS.md default to worktree-first collaboration. Read `worktree-collaboration.md` for direct reading, independent report outputs, task branches/worktrees and single-editor integration. The retained helper is compatibility tooling, not mandatory admission. `--coordination-policy legacy-claims` is for explicitly requested old-protocol compatibility only. Existing projects switch via `migrate_worktree_policy.py <project-root> --apply`, not reinitialization or claim recovery.

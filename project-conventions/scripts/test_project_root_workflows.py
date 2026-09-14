@@ -48,6 +48,7 @@ class ProjectRootWorkflowTests(unittest.TestCase):
             "--mode",
             mode,
             "--apply",
+            "--coordination-policy", "legacy-claims",
         ]
         if extra:
             command.extend(extra)

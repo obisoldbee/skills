@@ -198,8 +198,10 @@ def resolve_control(script_path: Path) -> tuple[Path, Path, dict[str, object]]:
         raise AccessError(f"invalid project configuration: {exc}") from exc
     if config.get("schema_version") != CONFIG_SCHEMA_VERSION:
         raise AccessError("unsupported project coordination schema")
-    if set(config) != CONFIG_KEYS:
+    if set(config) - {"coordination_policy"} != CONFIG_KEYS:
         raise AccessError("project configuration field set is invalid")
+    if config.get("coordination_policy", "legacy-claims") not in {"worktree-first", "legacy-claims"}:
+        raise AccessError("unsupported coordination policy")
     if config.get("project_type") not in {"code", "document", "hybrid"}:
         raise AccessError("invalid project_type in project configuration")
     if config.get("project_profile") not in {"standard", "agent-skill"}:
@@ -1067,6 +1069,15 @@ def main() -> int:
     arguments = parser.parse_args()
     try:
         project_root, control, config = resolve_control(Path(__file__))
+        if config.get("coordination_policy") == "worktree-first":
+            # No database access: copied, corrupt or abandoned claims cannot gate work.
+            result = {"status": "ready" if arguments.command == "status" else "not_required",
+                      "protocol_version": PROTOCOL_VERSION, "coordination_policy": "worktree-first",
+                      "admission_required": False, "legacy_registry_consulted": False,
+                      "command_executed": False,
+                      "next_action": "run the authorized task directly in its worktree or independent output; see ACCESS.md"}
+            print(json.dumps(result, sort_keys=True))
+            return 0
         runtime, storage = runtime_root(project_root, control, config)
         database = runtime / DATABASE_FILE
         ensure_runtime_boundary(database, create=False)

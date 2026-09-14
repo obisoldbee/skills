@@ -10,7 +10,7 @@
 
 | Skill / 包 | 用途 |
 |---|---|
-| [project-conventions](project-conventions/) | 统一项目目录与治理入口；支持文件／目录范围写入准入、只读并发和独立 Git worktree 协作 |
+| [project-conventions](project-conventions/) | 统一项目目录与治理入口；默认使用独立 Git worktree 协作，支持旧项目策略迁移 |
 | [project-handoff](project-handoff/) | 任务交接、多 Agent 调度、模型路由与执行回执；包含 Spark CLI 使用规范 |
 | [document-workspace](document-workspace/) | 基于文件的文档组织、工作区治理与资料管理 |
 | [web-bookmark-intelligence](web-bookmark-intelligence/) | 网页与书签内容采集、整理和研究输入处理 |
@@ -31,7 +31,7 @@
 3. 根据所用 Agent 的加载方式，连接或安装需要的技能。仓库的共享链接脚本只处理明确允许的目标；Windows 支持对单个 Agent 扫描并安装 Junction 目录链接。
 4. 使用前配置所需服务的凭据，避免将密钥、Cookie 或私人材料提交到 Git。修改技能后运行对应包的验证脚本。
 
-项目并发采用协作式准入：同一目录下的不同输出文件可以并行写入，只读任务可以与写入并存；代码修改优先采用独立分支和 worktree。它依赖各 Agent 遵守项目入口规则，不是操作系统文件锁。已有项目若使用旧版本地准入助手，需要按 `project-conventions` 的升级说明单独更新。
+项目并发默认采用 worktree-first：代码任务分别在独立分支和工作目录中修改，最后由一个执行者合并；只读任务和独立报告不申请持久化 claim。已有项目需按 `project-conventions` 的迁移说明切换本地规则，旧数据库保留为历史。当前提供执行指引和策略迁移工具，尚不自动分配 worktree 或强制重定向 Agent 的编辑位置，实际隔离依赖 Agent 创建并使用正确的工作目录。
 
 下方保留英文目录布局、初始化、更新和验证说明，便于跨工具、跨设备复用。
 

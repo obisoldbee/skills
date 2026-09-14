@@ -95,7 +95,7 @@ List all files in `docs/reviews/` and check for any file matching the planned na
 
 ### Step 4: Create Without Clobbering
 
-Create the selected filename with no-clobber semantics (`O_CREAT|O_EXCL` or an equivalent tool). If creation reports that the name now exists, do not overwrite it; rescan, choose the next suffix, obtain a claim covering the new exact filename, and retry. A claim for the old filename does not cover the new one. A response-only reviewer returns findings directly without producing a file.
+Create the selected filename with no-clobber semantics (`O_CREAT|O_EXCL` or an equivalent tool). If creation reports that the name now exists, do not overwrite it; rescan, choose the next authorized suffix, and retry exclusive creation. Worktree-first does not require a claim; existing shared-file edits use a worktree or one integrator. A response-only reviewer returns findings directly without producing a file.
 
 ## Reviewing Agent Checklist
 
@@ -107,7 +107,7 @@ Before creating a review document, the reviewing agent should confirm:
 - [ ] `scope` is a valid value from the vocabulary (or a documented new value).
 - [ ] `HHMMSS` reflects the actual review start time (not a placeholder).
 - [ ] The directory has been scanned for collisions and a suffix applied if needed.
-- [ ] The Agent holds a valid claim covering this write.
+- [ ] The output is independent, or this is the agreed integration of shared-file changes.
 - [ ] The file is created atomically without clobbering an existing review.
 
 ## Review Document Content Guidance

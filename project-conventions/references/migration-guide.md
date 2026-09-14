@@ -2,7 +2,9 @@
 
 This document provides the step-by-step procedure for migrating a project's directory layout to conform to the `project-conventions` standard. It is based on real-world migrations (OB Dim, Pets) and covers safety checks, atomic moves, reference syncing, and verification.
 
-在任何迁移写入前，必须获取已完成治理接入的项目根目录所属的项目本地独占 `writer` 准入。如果本地准入助手缺失，只有用户另行针对该项目明确授权“旧项目治理接入”后才能补齐；否则保持只读，不得把迁移授权、无关修复或发现缺失助手自动解释为接入授权。准入被阻断时，不得新建迁移记录、移动文件或更新索引。准入必须保持到读回、会话记录和连续性记录更新完成，然后正常结束。
+路径迁移由一个执行者负责，先确定真实目录、Git 映射、正在使用这些路径的进程和回滚边界。默认 worktree-first 不要求项目独占 claim；不能把历史数据库行当成当前进程证据。仍采用旧 claim 规则的目标，在用户授权切换后使用 migrate_worktree_policy.py 更新本地规则，不先清旧 claim。迁移授权不扩大到未指定项目或消费者安装。
+
+缺少治理文件不构成无关任务的阻塞条件；“旧项目治理接入”仍需针对该项目的接入授权，不能在路径迁移中自动初始化治理。
 
 ## When to Use This Guide
 

@@ -390,10 +390,13 @@ def validate(target: Path, run_access_check: bool = True) -> dict[str, object]:
         "schema_version",
         "skill_package",
     }
-    if set(config) != expected_keys:
+    if set(config) - {"coordination_policy"} != expected_keys:
         raise ProjectValidationError("project.json field set is invalid")
     if config["schema_version"] != CONFIG_SCHEMA_VERSION:
         raise ProjectValidationError("project.json schema_version is unsupported")
+    policy = config.get("coordination_policy", "legacy-claims")
+    if policy not in {"worktree-first", "legacy-claims"}:
+        raise ProjectValidationError("unsupported coordination policy")
     project_type = config["project_type"]
     if project_type not in {"code", "document", "hybrid"}:
         raise ProjectValidationError("project.json project_type is invalid")
@@ -554,8 +557,10 @@ def validate(target: Path, run_access_check: bool = True) -> dict[str, object]:
         raise ProjectValidationError("AGENTS.md access block has an external Skill dependency")
     if any(pattern.search(managed_block) for pattern in PERSONAL_PATHS):
         raise ProjectValidationError("AGENTS.md access block contains a machine-specific path")
-    if ".project-conventions/project_access.py status" not in managed_block:
+    if policy == "legacy-claims" and ".project-conventions/project_access.py status" not in managed_block:
         raise ProjectValidationError("AGENTS.md does not route Agents through the local access helper")
+    if policy == "worktree-first" and "Coordination policy: `worktree-first`" not in managed_block:
+        raise ProjectValidationError("AGENTS.md coordination policy differs from project.json")
     if project_profile == "agent-skill":
         expected_entry = f"src/{skill_package}/SKILL.md"
         if expected_entry not in managed_block or f"src/{skill_package}/" not in agents_text:

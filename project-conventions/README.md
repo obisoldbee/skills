@@ -1,6 +1,6 @@
 # project-conventions
 
-Filesystem-governance Skill with strict lifecycle boundaries, deterministic ordinary Project Root initialization, and a self-contained cross-Harness reader/writer admission protocol. It also supports explicitly mapped public, private, local-only, and third-party Skill sources.
+Filesystem-governance Skill with strict lifecycle boundaries, deterministic ordinary Project Root initialization, and worktree-first cross-Harness collaboration. It also supports explicitly mapped public, private, local-only, and third-party Skill sources.
 
 ## Lifecycle routing
 
@@ -47,7 +47,8 @@ Publication class and runtime eligibility are independent. Environment-bound Ski
 |---|---|
 | `scripts/initialize_project_root.py` | Dry-run/apply initializer for ordinary Code, Document, and Hybrid Project Roots; preserves existing material |
 | `scripts/validate_project_root.py` | Validates one initialized Project Root and its local Agent-entry contract |
-| `scripts/project_access.py` | Source copied into each initialized Project Root for atomic status/enter/check/finish/recover admission |
+| `scripts/project_access.py` | Compatibility helper; worktree-first status never consults legacy claims |
+| `scripts/migrate_worktree_policy.py` | Backed-up four-file policy switch without old-claim admission |
 | `scripts/initialize_skills_control_project.py` | Dry-run/apply fresh shared collection initializer; creates no Git root, source copy, or Agent link |
 | `scripts/update_shared_checkout.py` | Candidate-first validated, clean fast-forward-only updater for one named package |
 | `scripts/upgrade_project_access.py` | Reviewed four-file upgrade for one already adopted Project Root |
@@ -55,7 +56,7 @@ Publication class and runtime eligibility are independent. Environment-bound Ski
 | `scripts/inspect_projects_workspace.py` | Read-only Projects Workspace and collection-mapping inspector |
 | `scripts/initialize_project_collection.py` | Generic non-shared three-file collection overlay initializer |
 
-The ordinary Project Root initializer installs only a small `.project-conventions/` control entry. Cooperating Agents in Codex, WorkBuddy, Qoder, Trae, or another Harness use the same project-local command, so no external dispatcher or Agent messaging is required to discover active readers/writers. Protocol 2 allows readers alongside writers, scoped file/directory writers (including different files in one folder), and isolated code writers in different linked worktrees even when logical paths overlap. The exclusive writer is reserved for shared maintenance and integration. Existing adopted projects need a reviewed `scripts/upgrade_project_access.py <project-root>` plan and `--apply --plan-sha256 <digest>`; changing the Skill alone does not update their copied helpers.
+新项目默认采用 **worktree-first**：代码任务各用独立分支和 worktree，报告使用独立文件，只读工作不登记占用，最后由一个执行者合并。旧 claim 不再是新流程的准入门槛。已有项目可在授权后运行 `scripts/migrate_worktree_policy.py <project-root> --apply`，备份并切换四个治理文件，保留旧数据库。更新 Skill 不会自动改写已有项目。详见 [协作流程](references/worktree-collaboration.md)。
 
 The shared Skills initializer creates a complete `skills/` control project, four independent projections of the public repository-root management entries, and a stable member wrapper. It never projects the whole checkout as `skills/src/skills` and never copies repository-root files into the control project. Control exports point directly to true Git packages so Agent consumers never form a link chain.
 

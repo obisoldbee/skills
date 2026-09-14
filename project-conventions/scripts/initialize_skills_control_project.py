@@ -112,6 +112,7 @@ def render_access_files(
     access_block = render_access_block().rstrip("\n")
     access_readme = render_access_readme()
     config = {
+        "coordination_policy": "worktree-first",
         "access_readme_sha256": hashlib.sha256(access_readme.encode("utf-8")).hexdigest(),
         "agents_block_sha256": hashlib.sha256(access_block.encode("utf-8")).hexdigest(),
         "coordination_id": coordination_id,
@@ -549,7 +550,7 @@ This wrapper owns project documents, conversation, and memory. Its loadable Skil
 
 ## Mandatory Rules
 
-- This member's local helper stores claims in `../{control_project}/.project-conventions/runtime`, so one local `enter` automatically shares the collection-wide gate used by every member and the control project. Do not bypass it by entering `../{repository_project}` directly.
+- This member uses worktree-first. Resolve the true source in `../{repository_project}` before Git operations; independent wrapper reports need no claim. The old collection runtime is compatibility metadata only.
 - Before package maintenance, read this entry, `../{repository_project}/AGENTS.md`, the package `SKILL.md`, and only its references required for the selected task. Reuse complete current readings until rules or relevant state change.
 - Edit Skill content through `src/{member_project}` or directly at `../{repository_project}/{package_subpath}`; both resolve to the same bytes.
 - `SKILL.md` is package source even though it is Markdown; never move the package under this wrapper's `docs/` or into an Agent consumer directory.
