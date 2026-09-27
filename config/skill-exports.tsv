@@ -6,6 +6,7 @@ research-qa-orchestrator	research-qa-plugin/skills/research-qa-orchestrator	code
 paper-downloader	paper-downloader	agents,codex,minimax,workbuddy,trae-cn
 media-creator	media-creator	all
 project-handoff	project-handoff	codex,trae-cn
+chatgpt-codex-review	chatgpt-codex-review	agents
 minimax-h3-prompt	minimax-h3-prompt	agents,trae-cn
 wechat-sticker	wechat-sticker	agents
 buddy-travelling	buddy-travelling	trae-cn

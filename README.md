@@ -12,6 +12,7 @@
 |---|---|
 | [project-conventions](project-conventions/) | 统一项目目录与治理入口；默认使用独立 Git worktree 协作，支持旧项目策略迁移 |
 | [project-handoff](project-handoff/) | 任务交接、多 Agent 调度、模型路由与执行回执；包含 Spark CLI 使用规范 |
+| [chatgpt-codex-review](chatgpt-codex-review/) | 联动网页 ChatGPT 深度研究与持续复审；源码默认 GitHub，无 GitHub 仓库走 MCP；Luna max 收发与下载，Astra max 编排，Sol max 开发 |
 | [document-workspace](document-workspace/) | 基于文件的文档组织、工作区治理与资料管理 |
 | [web-bookmark-intelligence](web-bookmark-intelligence/) | 网页与书签内容采集、整理和研究输入处理 |
 | [research-qa-plugin](research-qa-plugin/) | 研究问答编排与配套研究视角，按插件内的说明使用 |
@@ -32,6 +33,8 @@
 4. 使用前配置所需服务的凭据，避免将密钥、Cookie 或私人材料提交到 Git。修改技能后运行对应包的验证脚本。
 
 项目并发默认采用 worktree-first：代码任务分别在独立分支和工作目录中修改，最后由一个执行者合并；只读任务和独立报告不申请持久化 claim。已有项目需按 `project-conventions` 的迁移说明切换本地规则，旧数据库保留为历史。当前提供执行指引和策略迁移工具，尚不自动分配 worktree 或强制重定向 Agent 的编辑位置，实际隔离依赖 Agent 创建并使用正确的工作目录。
+
+`chatgpt-codex-review` 需要可用的 ego-browser、已登录的 ChatGPT 网页和 Codex 协作工具。执行时可说：“用 chatgpt-codex-review 审查这个项目，有 GitHub 仓库就审查固定提交，没有则用已配置的 MCP 内容快照，持续修复并复审到约定验收通过。”默认 GPT-6 Luna max 负责网页消息、上传、监测、回复保存与附件下载校验，GPT-6 Astra max 核实并编排，GPT-6 Sol max 开发和测试；三个角色的模型/思考强度均可显式覆盖。已有 GitHub 的访问或推送故障须在原路径解决，不自动切换 MCP。它是由 Agent 执行的工作流 Skill，附带源码路由、附件验证和本地状态建议脚本，不会自行部署 MCP 或常驻监控；真实持续监控须由宿主调度工具建立。
 
 下方保留英文目录布局、初始化、更新和验证说明，便于跨工具、跨设备复用。
 
@@ -54,6 +57,7 @@ Use one checkout per device and keep local project governance outside Git:
 │   ├── buddy-travelling/                     # true bounded Buddy travel workflow source
 │   ├── media-creator/                        # true cross-Agent media generation router
 │   ├── project-handoff/                      # true handoff/orchestration controller source
+│   ├── chatgpt-codex-review/                  # true ChatGPT web review and Codex repair source
 │   ├── others-manager/                       # true third-party checkout management source
 │   ├── minimax-h3-prompt/                    # true MiniMax H3 prompt guidance source
 │   └── document-workspace/                   # true file-based document governance source
@@ -110,6 +114,8 @@ python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_
 python3 -B <collection>/GitHub/media-creator/scripts/validate_skill.py
 python3 -B <collection>/GitHub/project-handoff/scripts/validate_package.py \
   <collection>/GitHub/project-handoff
+python3 -B <collection>/GitHub/chatgpt-codex-review/scripts/validate_package.py \
+  <collection>/GitHub/chatgpt-codex-review
 python3 -B <collection>/GitHub/others-manager/scripts/validate_package.py \
   <collection>/GitHub/others-manager
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" \
@@ -306,6 +312,8 @@ python3 -B media-creator/scripts/validate_skill.py
 python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
 python3 -B project-handoff/scripts/validate_package.py project-handoff
 python3 -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
+python3 -B chatgpt-codex-review/scripts/validate_package.py chatgpt-codex-review
+python3 -B -m unittest discover -s chatgpt-codex-review/tests -p 'test_*.py'
 python3 -B others-manager/scripts/validate_package.py others-manager
 python3 -B -m unittest discover -s others-manager/tests -p 'test_*.py'
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" minimax-h3-prompt
@@ -367,6 +375,13 @@ python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ├── project-handoff/
 │   ├── SKILL.md
 │   ├── agents/
+│   ├── references/
+│   ├── scripts/
+│   └── tests/
+├── chatgpt-codex-review/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
 │   ├── references/
 │   ├── scripts/
 │   └── tests/

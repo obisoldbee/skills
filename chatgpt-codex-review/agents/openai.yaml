@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChatGPT ↔ Codex Review"
+  short_description: "Route source, run web review, verify files, and repair until acceptance"
+  default_prompt: "Use $chatgpt-codex-review to coordinate Astra max, Luna max web IO, and Sol max development. Prefer a verified GitHub commit; use a configured MCP content snapshot only when no GitHub repository exists. Keep reviewing and repairing until the agreed checks pass."
