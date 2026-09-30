@@ -68,6 +68,262 @@ def collected(current):
     return HELPER.decide(current, scheduled(current, 10), first["observer_updates"])
 
 
+def recovery(current, seconds=5, **fields):
+    moment = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)
+    view = {} if current.get("followup_mode") == "inline" else {
+        "followup_view": followup(current, checked_seconds=seconds, evidence_ref=f"recovery-view-{seconds}")}
+    return event(current, "browser_recovered", **{
+        "observed_at": moment.isoformat(), "reason_code": "space_missing",
+        "conversation_url": current["conversation_url"], "old_space_id": "space-old",
+        "browser_context": {"space_id": "space-restored", "page_label": "p1", "ownership": "agent"},
+        "recovery_evidence_ref": f"ui/recovery-{seconds}.json", "request_status": "present",
+        "user_message_id": current.get("submitted_user_message_id"),
+        "prompt_sha256": current.get("submitted_prompt_sha256"), "assistant_message_id": "message-1",
+        **view, **fields})
+
+
+class RecoveryTests(unittest.TestCase):
+    def test_sent_space_loss_recovers_original_request_and_finishes_capture(self):
+        current = state("submitting")
+        current = apply(current, HELPER.decide(current, submission(current)))
+        identities = {key: current[key] for key in ("conversation_url", "submitted_user_message_id",
+                      "submitted_prompt_sha256", "source_id", "request_token", "contract_digest")}
+        fault = HELPER.decide(current, event(current, "browser_fault", reason_code="space_missing"))
+        self.assertEqual(fault["action"], "recover_browser_context")
+        self.assertEqual(fault["phase"], "waiting_web")
+        current = apply(current, fault)
+        restored = HELPER.decide(current, recovery(current))
+        self.assertEqual(restored["action"], "watch")
+        current = apply(current, restored)
+        self.assertEqual(identities, {key: current[key] for key in identities})
+        self.assertEqual(current["browser_context"]["old_space_id"], "space-old")
+        first = HELPER.decide(current, observation(current, 10))
+        completed = HELPER.decide(apply(current, first), observation(current, 20))
+        self.assertEqual(completed["action"], "triage_review")
+
+    def test_unsent_space_loss_recovers_then_uses_original_send_gate(self):
+        current = state("ready_to_submit")
+        current["awaiting_send"] = True
+        fault = HELPER.decide(current, event(current, "browser_fault", reason_code="space_closed"))
+        self.assertEqual(fault["action"], "recover_browser_context")
+        current = apply(current, fault)
+        restored = HELPER.decide(current, recovery(current, request_status="absent", definitive_absence=True))
+        self.assertEqual(restored["action"], "verify_before_submit")
+        current = apply(current, restored)
+        absent = event(current, "submission", status="not_sent", definitive_absence=True,
+                       conversation_url=current["conversation_url"], observed_at="2026-01-01T00:00:06+00:00",
+                       followup_view=followup(current, checked_seconds=6, evidence_ref="send-after-recovery"))
+        self.assertEqual(HELPER.decide(current, absent)["action"], "submit_once")
+        self.assertEqual(current["prepared_request"]["sha256"], "e" * 64)
+
+    def test_browser_crash_preserves_known_response_and_saved_artifacts(self):
+        current = state("submitting")
+        current = apply(current, HELPER.decide(current, submission(current)))
+        current = apply(current, HELPER.decide(current, observation(current)))
+        current = apply(current, HELPER.decide(current, observation(current, 10)))
+        current = with_required(current)
+        current["artifact_receipt"] = receipt(current)
+        fault = HELPER.decide(current, event(current, "browser_fault", reason_code="browser_crash"))
+        current = apply(current, fault)
+        restored = HELPER.decide(current, recovery(current, 20, reason_code="browser_crash"))
+        self.assertEqual(restored["action"], "continue_current_step")
+        restored_state = apply(current, restored)
+        for key in ("raw_reply_path", "review_message_id", "submitted_user_message_id", "artifact_receipt"):
+            self.assertEqual(restored_state[key], current[key])
+        mismatch = HELPER.decide(current, recovery(current, 20, assistant_message_id="different-reply"))
+        self.assertEqual(mismatch["action"], "reconcile_submission")
+        with self.assertRaisesRegex(ValueError, "server conversation"):
+            HELPER.decide(current, recovery(current, conversation_url="https://chatgpt.com/c/different"))
+
+    def test_actual_human_gates_take_priority_over_missing_space(self):
+        for gate in ("auth", "user_control", "permission_denied"):
+            with self.subTest(gate=gate):
+                current = state()
+                fault = event(current, "browser_fault", reason_code="space_missing", ui_error=gate)
+                self.assertEqual(HELPER.decide(current, fault)["action"], "request_browser_input")
+                mixed = observation(current, ui_error="space_missing", reason_code=gate)
+                self.assertEqual(HELPER.decide(current, mixed)["action"], "request_browser_input")
+                with self.assertRaisesRegex(ValueError, "recoverable fault"):
+                    HELPER.decide(current, recovery(current, ui_error=gate))
+                current.update(phase="blocked", resume_phase="waiting_web", blocker_reason_code=gate)
+                with self.assertRaisesRegex(ValueError, "human browser gate"):
+                    HELPER.decide(current, recovery(current))
+
+    def test_unknown_request_status_never_resends_after_recovery(self):
+        for phase in ("ready_to_submit", "submitting"):
+            current = state(phase)
+            if phase == "submitting":
+                current = apply(current, HELPER.decide(current, submission(current)))
+            for fields in ({"request_status": "unknown"}, {"request_status": "absent"},
+                           {"request_status": "present", "user_message_id": "different-user"}):
+                answer = HELPER.decide(current, recovery(current, **fields))
+                self.assertEqual(answer["action"], "reconcile_submission")
+                self.assertNotIn("submitted_user_message_id", answer["state_updates"])
+
+    def test_resolved_human_gate_does_not_permanently_block_later_ordinary_recovery(self):
+        current = state("blocked")
+        current.update(resume_phase="waiting_web", blocker_reason_code="auth")
+        resumed = HELPER.decide(current, event(current, "resume", resolution_ref="ui/login-resolved.json",
+                               observed_at="2026-01-01T00:00:10+00:00",
+                               followup_view=followup(current, checked_seconds=10, evidence_ref="view-after-login")))
+        self.assertEqual(resumed["action"], "resume_saved_step")
+        current = apply(current, resumed)
+        self.assertIsNone(current["blocker_reason_code"])
+        lost = HELPER.decide(current, event(current, "browser_fault", reason_code="space_missing"))
+        self.assertEqual(lost["action"], "recover_browser_context")
+
+    def test_old_missing_space_blocker_can_resume_with_actual_recovery(self):
+        current = state("submitting")
+        current = apply(current, HELPER.decide(current, submission(current)))
+        current.update(phase="blocked", resume_phase="waiting_web")
+        old = event(current, "external_blocker", reason="space not found", attempts=["ui/not-found.json"],
+                    requires_external_change="reopen browser", independent_work_remaining=False)
+        repaired = HELPER.decide(current, old)
+        self.assertEqual(repaired["action"], "recover_browser_context")
+        self.assertEqual(repaired["phase"], "waiting_web")
+        resumed = HELPER.decide(current, {**recovery(current), "type": "resume"})
+        self.assertEqual(resumed["action"], "watch")
+        self.assertEqual(resumed["phase"], "waiting_web")
+        self.assertEqual(resumed["state_updates"]["browser_recovery_attempts"], 0)
+        paused = {**current, "phase": "paused"}
+        self.assertEqual(HELPER.decide(paused, old)["action"], "pause")
+        with self.assertRaisesRegex(ValueError, "user pause"):
+            HELPER.decide(paused, recovery(paused))
+
+    def test_successful_recovery_starts_a_new_incident_budget_only_with_evidence(self):
+        current = state("submitting")
+        current = apply(current, HELPER.decide(current, submission(current)))
+        ledger = None
+        for seconds, expected in ((1, "recover_browser_context"), (2, "recover_browser_context"),
+                                  (3, "diagnose_browser_recovery")):
+            result = HELPER.decide(current, scheduled(current, seconds, ui_error="space_missing",
+                                   error_fingerprint="same-space-fault"), ledger)
+            self.assertEqual(result["action"], expected)
+            self.assertFalse(result["activate_controller"])
+            ledger = result["observer_updates"]
+        current = apply(current, HELPER.decide(current, recovery(current, 4)))
+        new = HELPER.decide(current, scheduled(current, 5, ui_error="browser_crash",
+                            error_fingerprint="new-crash"), ledger)
+        self.assertEqual(new["action"], "recover_browser_context")
+        self.assertEqual(new["observer_updates"]["browser_recovery_attempts"], 1)
+        with self.assertRaisesRegex(ValueError, "owned old/new"):
+            HELPER.decide(current, recovery(current, old_space_id=None))
+
+    def test_expired_inline_execution_renews_from_actual_turn_without_scheduler_configuration(self):
+        current = inline(state("submitting"))
+        current = apply(current, HELPER.decide(current, inline_event(submission(state("submitting")))))
+        old = recovery(current, 700)
+        self.assertEqual(HELPER.decide(current, old)["action"], "ensure_inline_luna")
+        binding = {**current["inline_observer_binding"], "turn_id": "restored-turn", "execution_ref": "tasks/restored-luna.json",
+                   "verified_at": "2026-01-01T00:11:39+00:00", "deadline_at": "2026-01-01T00:20:00+00:00"}
+        renewed = {**old, "inline_observer_binding": binding, "inline_turn_id": binding["turn_id"],
+                   "inline_execution_ref": binding["execution_ref"]}
+        restored = HELPER.decide(current, renewed)
+        self.assertEqual(restored["action"], "watch")
+        self.assertEqual(restored["schedule_action"], "none")
+        self.assertEqual(restored["state_updates"]["inline_observer_binding"], binding)
+
+    def test_owner_proof_refresh_preserves_window_queue_error_dedup_and_refresh_budget(self):
+        current = authorized(state())
+        first = HELPER.decide(current, scheduled(current, ui_error="quota", error_fingerprint="quota"))
+        current["web_io_binding"] = {**current["web_io_binding"], "verified_at": "2026-01-01T00:00:05+00:00",
+                                    "identity_readback_ref": "tasks/fresh-identity.json", "model_readback_ref": "tasks/fresh-pair.json",
+                                    "reasoning_readback_ref": "tasks/fresh-pair.json"}
+        current["followup"] = followup(current, checked_seconds=5, evidence_ref="fresh-owner-view")
+        refreshed = HELPER.decide(current, scheduled(current, 10, ui_error="quota", error_fingerprint="quota"),
+                                  first["observer_updates"])
+        self.assertEqual(refreshed["action"], "keep_quiet")
+        self.assertFalse(refreshed["activate_controller"])
+        self.assertEqual(refreshed["observer_updates"]["notifications"], first["observer_updates"]["notifications"])
+        self.assertEqual(refreshed["observer_updates"]["error_transition"], first["observer_updates"]["error_transition"])
+        start = HELPER.decide(current, scheduled(current, 20), refreshed["observer_updates"])
+        current["web_io_binding"]["verified_at"] = "2026-01-01T00:00:25+00:00"
+        stable = HELPER.decide(current, scheduled(current, 30), start["observer_updates"])
+        self.assertEqual(stable["action"], "notify_controller")
+        ledger = None
+        for seconds in (40, 70):
+            busy = HELPER.decide(current, scheduled(current, seconds, ui_error="transient", error_fingerprint="same-busy"), ledger)
+            ledger = busy["observer_updates"]
+        current["web_io_binding"]["verified_at"] = "2026-01-01T00:01:15+00:00"
+        waiting = HELPER.decide(current, scheduled(current, 80, ui_error="transient", error_fingerprint="same-busy"), ledger)
+        self.assertEqual(waiting["observer_updates"]["refresh_count"], ledger["refresh_count"])
+        self.assertEqual(waiting["observer_updates"]["refresh_count"], 1)
+
+    def test_new_inline_turn_preserves_pending_payload_and_budgets_but_restarts_unfinished_window(self):
+        current = inline(authorized(state()))
+        first = HELPER.decide(current, inline_event({**observation(current), "type": "inline_observation",
+                              "generation": "generating", "actionable_progress": True, "actionable_progress_ref": "ui/progress.json"}))
+        queued = copy.deepcopy(first["observer_updates"]["notifications"])
+        ledger = first["observer_updates"]
+        stable = HELPER.decide(current, inline_event({**observation(current, 5), "type": "inline_observation"}), ledger)
+        stable["observer_updates"].update(refresh_count=3, browser_recovery_attempts=2)
+        current["inline_observer_binding"] = {**current["inline_observer_binding"], "turn_id": "next-turn",
+                       "execution_ref": "tasks/next-turn-proof.json", "verified_at": "2026-01-01T00:00:10+00:00"}
+        checking = {**notification_check(current, 15), "inline_turn_id": "next-turn",
+                    "inline_execution_ref": "tasks/next-turn-proof.json"}
+        renewed = HELPER.decide(current, checking, stable["observer_updates"])
+        self.assertEqual(renewed["action"], "check_controller_receipt")
+        self.assertIsNone(renewed["observer_updates"]["last_completion"])
+        self.assertEqual(renewed["observer_updates"]["notifications"], queued)
+        self.assertEqual(renewed["observer_updates"]["refresh_count"], 3)
+        self.assertEqual(renewed["observer_updates"]["browser_recovery_attempts"], 2)
+        item = {**observation(current, 20), "type": "inline_observation", "inline_turn_id": "next-turn",
+                "inline_execution_ref": "tasks/next-turn-proof.json"}
+        first = HELPER.decide(current, item, renewed["observer_updates"])
+        self.assertEqual(first["action"], "keep_quiet")
+        completed = HELPER.decide(current, {**item, "observed_at": "2026-01-01T00:00:30+00:00"}, first["observer_updates"])
+        self.assertEqual(completed["action"], "return_to_controller")
+
+    def test_new_owner_restarts_window_without_dropping_unreceived_result(self):
+        current = authorized(state())
+        progress = HELPER.decide(current, scheduled(current, generation="generating", actionable_progress=True,
+                                actionable_progress_ref="ui/progress.json"))
+        first = HELPER.decide(current, scheduled(current, 5), progress["observer_updates"])
+        current["web_io_binding"] = {**current["web_io_binding"], "thread_id": "replacement-luna-thread"}
+        current["followup"] = followup(current, checked_seconds=10, evidence_ref="replacement-owner-view")
+        replaced = HELPER.decide(current, scheduled(current, 15), first["observer_updates"])
+        self.assertEqual(replaced["action"], "keep_quiet")
+        self.assertEqual(replaced["observer_updates"]["notifications"], progress["observer_updates"]["notifications"])
+        completed = HELPER.decide(current, scheduled(current, 25), replaced["observer_updates"])
+        self.assertEqual(completed["action"], "notify_controller")
+
+    def test_internal_agent_identity_changes_window_but_proof_file_does_not(self):
+        current = inline(state())
+        current["inline_observer_binding"]["agent_id"] = "/root/luna-one"
+        first = HELPER.decide(current, inline_event({**observation(current), "type": "inline_observation"}))
+        current["inline_observer_binding"]["execution_ref"] = "tasks/refreshed-proof.json"
+        item = {**observation(current, 10), "type": "inline_observation", "inline_turn_id": "current-turn",
+                "inline_execution_ref": "tasks/refreshed-proof.json"}
+        stable = HELPER.decide(current, item, first["observer_updates"])
+        self.assertEqual(stable["action"], "return_to_controller")
+        first = HELPER.decide(current, {**item, "observed_at": "2026-01-01T00:00:20+00:00"})
+        current["inline_observer_binding"]["agent_id"] = "/root/luna-two"
+        replaced = HELPER.decide(current, {**item, "observed_at": "2026-01-01T00:00:30+00:00"}, first["observer_updates"])
+        self.assertEqual(replaced["action"], "keep_quiet")
+
+    def test_review_only_failed_checks_keep_evidence_and_deliver_failed_acceptance_report(self):
+        current = inline(ready_review())
+        current["execution_scope"] = "review_only"
+        assessed = HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
+                                coverage_complete=True, confirmed_findings=3, unresolved_claims=1))
+        self.assertEqual(assessed["action"], "run_local_checks")
+        current = apply(current, assessed)
+        failed = HELPER.decide(current, event(current, "validation", checked_source_id=A, passed=False,
+                              required_unverified=["unavailable check"], evidence=["checks/failed.json"]))
+        self.assertEqual(failed["phase"], "validating")
+        self.assertEqual(failed["action"], "finish_delivery")
+        self.assertFalse(failed["state_updates"]["acceptance_passed"])
+        current = apply(current, failed)
+        completed = HELPER.decide(current, event(current, "delivery", delivered_source_id=A, complete=True))
+        self.assertTrue(completed["terminal"])
+        self.assertFalse(completed["state_updates"]["acceptance_passed"])
+        self.assertEqual(current["validation"]["evidence"], ["checks/failed.json"])
+        self.assertEqual(current["review"]["confirmed_findings"], 3)
+        with self.assertRaisesRegex(ValueError, "cannot accept developer"):
+            HELPER.decide({**current, "phase": "repairing"}, event(current, "worker_result", candidate_source_id=A,
+                          delivery_path="unauthorized/repair.json"))
+
+
 class SchedulerTests(unittest.TestCase):
     def test_controller_owned_schedule_and_duplicate_active_ids_cannot_authorize_send(self):
         current = state("ready_to_submit")

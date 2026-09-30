@@ -21,6 +21,8 @@ ARTIFACT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 GITHUB_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 LUNA_MODEL = re.compile(r"gpt-(\d+(?:\.\d+)*)-luna\Z")
 SCOPES = {"repair_loop", "review_only", "materials_only"}
+BROWSER_FAULTS = {"space_missing", "space_closed", "browser_crash", "connection_failed"}
+HUMAN_BROWSER_GATES = {"auth", "user_control", "permission_denied"}
 
 
 def require(condition, message):
@@ -367,8 +369,10 @@ def completion(state):
             and evidence(review.get("evidence"))):
         return result(state, "obtain_current_review", "This source has no accepted complete review.")
     checks_required = not review_only or bool(state["acceptance_contract"]["required_checks"])
+    failed_review_checks = (review_only and bound(checks, state) and checks.get("passed") is False
+                            and evidence(checks.get("evidence")))
     if checks_required and not (bound(checks, state) and checks.get("passed") is True
-            and checks.get("required_unverified") == [] and evidence(checks.get("evidence"))):
+            and checks.get("required_unverified") == [] and evidence(checks.get("evidence"))) and not failed_review_checks:
         return result(state, "run_local_checks", "Review alone cannot satisfy local acceptance.",
                       phase="validating")
     if not (bound(delivery, state) and delivery.get("complete") is True
@@ -377,8 +381,94 @@ def completion(state):
                       phase="validating")
     if followup_binding(state, state.get("followup")) and state["followup"]["status"] == "ACTIVE":
         return result(state, "disable_followup", "Pause this run's actual heartbeat and read back its state.")
-    return result(state, "complete", "Current review, required checks and delivery all passed.",
-                  phase="completed")
+    return result(state, "complete", "Review report delivered with failed-check evidence; acceptance did not pass."
+                  if failed_review_checks else "Current review, required checks and delivery all passed.",
+                  phase="completed", acceptance_passed=not failed_review_checks)
+
+
+def browser_fault_code(event):
+    codes = (event.get("ui_error"), event.get("reason_code"))
+    for code in codes:
+        if code in HUMAN_BROWSER_GATES:
+            return code
+    # Narrow compatibility for old free-text blockers, not a grant of permission.
+    reason = str(event.get("reason", "")).casefold()
+    if any(word in reason for word in ("login", "captcha", "permission denied", "approval rejected", "登录", "验证码", "权限拒绝")):
+        return "auth" if "permission" not in reason and "拒绝" not in reason else "permission_denied"
+    if any(word in reason for word in ("user control", "inactive", "unassigned", "用户接管")):
+        return "user_control"
+    for code in codes:
+        if code in BROWSER_FAULTS:
+            return code
+    if any(word in reason for word in ("space missing", "space not found", "space disappeared", "空间丢失", "空间消失")):
+        return "space_missing"
+    if "browser crash" in reason or "浏览器崩溃" in reason:
+        return "browser_crash"
+    return event.get("reason_code") or event.get("ui_error")
+
+
+def recover_browser(state, event, code):
+    require(code in BROWSER_FAULTS | HUMAN_BROWSER_GATES, "unclassified browser fault")
+    if code in HUMAN_BROWSER_GATES or state.get("blocker_reason_code") in HUMAN_BROWSER_GATES:
+        return result(state, "request_browser_input", "Respect actual login, user control or permission denial; do not rebuild to bypass it.")
+    if state["phase"] == "paused":
+        return result(state, "pause", "An explicit user pause still applies.")
+    phase = state.get("resume_phase") if state["phase"] == "blocked" else state["phase"]
+    require(phase in PHASES - {"paused", "blocked", "completed"}, "missing resumable browser phase")
+    count = state.get("browser_recovery_attempts", 0)
+    require(type(count) is int and 0 <= count <= 2, "invalid browser recovery attempts")
+    if count == 2:
+        return result(state, "diagnose_browser_recovery", "Stop repeated restarts; diagnose the actual tool/app condition and reuse saved material.", phase=phase)
+    return result(state, "recover_browser_context", "Reuse task authority: restore the owned space, then rebuild it if confirmed lost; reopen the same URL and reconcile the original request. Never resend or replace the server conversation.",
+                  phase=phase, browser_recovery_attempts=count + 1)
+
+
+def browser_recovered(state, event):
+    code = browser_fault_code(event)
+    require(code in BROWSER_FAULTS, "browser recovery needs the actual recoverable fault classification")
+    require(state["phase"] != "paused" and state.get("blocker_reason_code") not in HUMAN_BROWSER_GATES,
+            "browser recovery cannot bypass user pause or a human browser gate")
+    require(event.get("conversation_url") == state.get("conversation_url"), "recovery changed the server conversation")
+    timestamp(event.get("observed_at"))
+    context = event.get("browser_context") or {}
+    space_ids = (context.get("space_id"), event.get("old_space_id"))
+    require(context.get("ownership") == "agent" and all(nonempty(value) or type(value) is int and value > 0 for value in space_ids)
+            and nonempty(context.get("page_label"))
+            and nonempty(event.get("recovery_evidence_ref")), "recovery needs owned old/new space mapping and actual evidence")
+    prior = state.get("browser_context") or {}
+    require(not prior or prior.get("space_id") == event["old_space_id"], "wrong prior browser space")
+    phase = state.get("resume_phase") if state["phase"] == "blocked" else state["phase"]
+    require(phase in PHASES - {"paused", "blocked", "completed"}, "missing browser recovery phase")
+    updates = {"phase": phase, "browser_recovery_attempts": 0, "blocker_reason_code": None,
+               "browser_context": record(state, event, **context, old_space_id=event["old_space_id"],
+                                                        recovery_evidence_ref=event["recovery_evidence_ref"])}
+    candidate = {**state, **updates}
+    renewed = event.get("inline_observer_binding")
+    if renewed is not None:
+        require(state.get("followup_mode") == "inline", "inline renewal requires inline mode")
+        old = state.get("inline_observer_binding") or {}
+        require(not old or all(renewed.get(key) == old.get(key) for key in ("model", "reasoning")), "recovery must preserve the selected model/effort")
+        candidate["inline_observer_binding"] = renewed
+        require(inline_execution(candidate, event) is not None, "inline renewal needs actual current execution evidence")
+        updates["inline_observer_binding"] = renewed
+    status = event.get("request_status")
+    require(status in {"present", "absent", "unknown"}, "recovery needs original request readback")
+    submitted = state.get("submitted_user_message_id")
+    if status == "unknown" or (submitted and (status != "present"
+            or event.get("user_message_id") != submitted or event.get("prompt_sha256") != state.get("submitted_prompt_sha256"))):
+        return result(state, "reconcile_submission", "Recovery preserves the original request; unknown or mismatched readback never authorizes resend.", **updates)
+    if not submitted and not (status == "absent" and event.get("definitive_absence") is True):
+        return result(state, "reconcile_submission", "Check original history/draft before the normal send gate.", **updates)
+    known_reply = state.get("review_message_id") or (state.get("last_completion") or {}).get("assistant_message_id")
+    if known_reply and event.get("assistant_message_id") != known_reply:
+        return result(state, "reconcile_submission", "Recover the known response identity without generating another response.", **updates)
+    view = submission_observer(candidate, event)
+    if (web_capture_required(candidate) or not submitted) and view is None:
+        return ensure_followup(candidate, "Renew the actual current execution/readback and continue recovery; no user scheduler configuration is needed for inline.", **updates)
+    if view:
+        updates.update(observer_readback_updates(view))
+    action = "watch" if submitted and web_capture_required(candidate) else "continue_current_step" if submitted else "verify_before_submit" if prepared_request(candidate) else "prepare_review_request"
+    return result(state, action, "Original conversation/request/source and saved files are preserved; continue the existing capture or send gate.", **updates)
 
 
 def observe(state, event):
@@ -387,9 +477,11 @@ def observe(state, event):
     now = timestamp(event.get("observed_at"))
     error = event.get("ui_error")
     generation = event.get("generation")
-    require(error in {"none", "transient", "auth", "user_control", "quota", "provider"}, "unknown ui_error")
+    require(error in {"none", "transient", "auth", "user_control", "quota", "provider", "permission_denied"} | BROWSER_FAULTS, "unknown ui_error")
     require(generation in {"idle", "generating", "unknown"}, "unknown generation state")
-    if error in {"auth", "user_control", "quota", "provider"}:
+    if error in BROWSER_FAULTS:
+        return recover_browser(state, event, browser_fault_code(event))
+    if error in {"auth", "user_control", "permission_denied", "quota", "provider"}:
         return result(state, "request_browser_input", "Hand off the browser; assess independent work before blocking the run.",
                       last_completion=None)
     if generation == "generating":
@@ -447,7 +539,12 @@ def observer_binding(state):
     return {key: state.get(key) for key in (
         "run_id", "round", "source_id", "source_binding_digest", "request_token", "contract_digest",
         "acceptance_digest", "consumer_host", "artifact_root", "conversation_url",
-        "submitted_user_message_id", "execution_scope", "followup_mode", "web_io_binding", "inline_observer_binding")}
+        "submitted_user_message_id", "execution_scope", "followup_mode")}
+
+
+def observer_identity(state):
+    owner = state.get("web_io_binding") or state.get("inline_observer_binding") or {}
+    return {key: owner.get(key) for key in ("surface", "thread_id", "host_id", "agent_id", "model", "reasoning")}
 
 
 def notification_authorized(state):
@@ -506,13 +603,23 @@ def scheduled_observation(state, event, saved):
     """Luna's independent ledger; never return updates for Controller state/events."""
     binding = observer_binding(state)
     ledger = dict(saved or {})
-    if ledger.get("binding") != binding:
+    if observer_binding(ledger.get("binding") or {}) != binding:
         ledger = {"validator": "luna-observer/v1", "binding": binding, "notifications": [],
                   "error_transition": 0}
     require(ledger.get("validator") == "luna-observer/v1"
             and isinstance(ledger.get("notifications"), list)
             and all(isinstance(item, dict) and nonempty(item.get("key"))
                     for item in ledger["notifications"]), "invalid Luna observer record")
+    owner = observer_identity(state)
+    turn = (state.get("inline_observer_binding") or {}).get("turn_id")
+    changed = ledger.get("observer_identity", observer_identity(ledger["binding"])) != owner or ledger.get("inline_turn_id", turn) != turn
+    if changed and not ledger.get("text_complete"):
+        ledger["last_completion"] = ledger["completion_observation"] = None
+    ledger.update(observer_identity=owner, inline_turn_id=turn)
+    recovery = (state.get("browser_context") or {}).get("recovery_evidence_ref")
+    if recovery and recovery != ledger.get("browser_recovery_evidence_ref"):
+        ledger.update(browser_recovery_attempts=state.get("browser_recovery_attempts", 0),
+                      browser_recovery_evidence_ref=recovery)
     when = timestamp(event.get("observed_at"))
     previous_time = ledger.get("last_observed_at")
     require(previous_time is None or when >= timestamp(previous_time), "observer timestamps moved backwards")
@@ -649,10 +756,11 @@ def scheduled_observation(state, event, saved):
                 "observer does not follow the submitted user message")
         prior_completion = ledger.get("completion_observation")
         local = {**state, **{key: ledger.get(key) for key in ("last_completion", "next_refresh_at")},
-                 "refresh_count": ledger.get("refresh_count", 0)}
+                 "refresh_count": ledger.get("refresh_count", 0),
+                 "browser_recovery_attempts": max(ledger.get("browser_recovery_attempts", 0), state.get("browser_recovery_attempts", 0))}
         observed = observe(local, event)
         ledger.update({key: value for key, value in observed["state_updates"].items()
-                       if key in {"last_completion", "refresh_count", "next_refresh_at"}})
+                       if key in {"last_completion", "refresh_count", "next_refresh_at", "browser_recovery_attempts"}})
         if observed["state_updates"].get("last_completion"):
             ledger["completion_observation"] = {**event, "execution_scope": state.get("execution_scope", "repair_loop")}
         elif "last_completion" in observed["state_updates"]:
@@ -665,6 +773,8 @@ def scheduled_observation(state, event, saved):
         if list(transition) != ledger.get("last_error_transition"):
             ledger["error_transition"] += 1
             ledger["last_error_transition"] = list(transition)
+        if observed["action"] in {"recover_browser_context", "diagnose_browser_recovery"}:
+            return answer(observed["action"], observed["reason"])
         if observed["action"] == "triage_review":
             controller_event = {**event, "type": "observation", "prior_observation": prior_completion}
             notification_material = {"kind": "reply", "message": event["assistant_message_id"],
@@ -679,7 +789,7 @@ def scheduled_observation(state, event, saved):
             controller_event = {**event, "type": "observation"}
             notification_material = {"kind": "blocker", "transition": ledger["error_transition"],
                                      "error": error, "fingerprint": error_id}
-            schedule_action = "pause_if_active" if error in {"auth", "user_control"} else "keep_active"
+            schedule_action = "pause_if_active" if error in HUMAN_BROWSER_GATES else "keep_active"
         elif event.get("actionable_progress") is True and error == "none":
             require(event.get("after_request") is True and nonempty(event.get("assistant_message_id"))
                     and isinstance(event.get("body_sha256"), str) and SHA256.fullmatch(event["body_sha256"])
@@ -692,7 +802,7 @@ def scheduled_observation(state, event, saved):
             action = observed["action"] if observed["action"] == "reload_same_conversation" else "keep_quiet"
             return answer(action, observed["reason"], observe_webpage=True)
 
-    key = notification_key(binding, notification_material)
+    key = notification_key(ledger["binding"], notification_material)
     if any(item.get("key") == key for item in ledger["notifications"]):
         return answer("keep_quiet", "This reply/content or error transition already has a receipt; do not wake Controller again.",
                       schedule_action=schedule_action, key=key,
@@ -770,6 +880,12 @@ def _decide(state, event, observer_record=None):
         return result(state, "record_controller_receipt", "Controller read the saved result; receipt alone does not assess or integrate it.")
     if state["phase"] == "completed":
         return result(state, "already_complete", "Start a separately authorized run for new work.")
+    if kind == "browser_fault":
+        return recover_browser(state, event, browser_fault_code(event))
+    if kind == "browser_recovered":
+        return browser_recovered(state, event)
+    if kind == "external_blocker" and browser_fault_code(event) in BROWSER_FAULTS:
+        return recover_browser(state, event, browser_fault_code(event))
     if kind == "bind_controller":
         require(nonempty(event.get("controller_thread_id")) and nonempty(event.get("controller_host"))
                 and isinstance(event.get("state_path"), str)
@@ -845,12 +961,14 @@ def _decide(state, event, observer_record=None):
         require(state["phase"] in {"paused", "blocked"}, "resume requires paused/blocked")
         phase = state.get("resume_phase")
         require(phase in PHASES - {"completed", "paused", "blocked"}, "missing resumable phase")
+        if browser_fault_code(event) in BROWSER_FAULTS:
+            return browser_recovered(state, event) if event.get("recovery_evidence_ref") else recover_browser(state, event, browser_fault_code(event))
         require(nonempty(event.get("resolution_ref")), "resume needs user resumption or resolved-condition evidence")
         view = submission_observer(state, event, fresh_view=True)
         if view is None and web_capture_required({**state, "phase": phase}):
             return ensure_followup(state, "View this run's ACTIVE heartbeat before restoring unattended work.")
         return result(state, "resume_saved_step", "Continue the saved run, not a duplicate workflow.",
-                      phase=phase, **(observer_readback_updates(view) if view else {}))
+                      phase=phase, blocker_reason_code=None, **(observer_readback_updates(view) if view else {}))
     require(state["phase"] not in {"paused", "blocked"}, "resume the run before other events")
     if kind == "prepare_submission":
         require(state["phase"] == "ready_to_submit", "prepare_submission requires ready_to_submit")
@@ -882,12 +1000,13 @@ def _decide(state, event, observer_record=None):
         return result(state, "verify_before_submit", "Request is frozen; verify the selected observer binding before sending.",
                       prepared_request=prepared, awaiting_send=True)
     if kind == "external_blocker":
+        code = browser_fault_code(event)
         require(nonempty(event.get("reason")) and evidence(event.get("attempts"))
                 and nonempty(event.get("requires_external_change")), "blocker needs attempts and an external change")
         require(type(event.get("independent_work_remaining")) is bool, "declare independent work remaining")
         if event["independent_work_remaining"]:
             return result(state, "continue_independent_work", "Complete authorized work that does not need this condition.")
-        return result(state, "request_external_input", event["reason"], phase="blocked", resume_phase=state["phase"])
+        return result(state, "request_external_input", event["reason"], phase="blocked", resume_phase=state["phase"], blocker_reason_code=code)
     if kind == "submission":
         require(state.get("execution_scope") != "materials_only", "materials-only scope cannot submit")
         require(state["phase"] in {"ready_to_submit", "submitting", "waiting_web"}, "unexpected submission receipt")
@@ -1104,6 +1223,9 @@ def _decide(state, event, observer_record=None):
             validation["source_binding_digest"] = source_binding_digest(
                 state["source_route"], checked, event["next_source_binding"])
         if not event["passed"]:
+            if state.get("execution_scope") == "review_only":
+                return result(state, "finish_delivery", "Deliver the review report with failed-check evidence; this scope does not authorize repair.",
+                              validation=validation, acceptance_passed=False)
             return result(state, "diagnose_or_repair", "Use the failure evidence; no implicit repair-round limit.",
                           phase="repairing", validation=validation)
         if missing:
@@ -1150,7 +1272,7 @@ def decide(state, event, observer_record=None):
     # Controller reads the independent observer record before closing its own
     # Web follow-up. Processing a primary event can acknowledge it in this update.
     candidate = {**state, **answer["state_updates"]}
-    if (observer_record and observer_record.get("binding") == observer_binding(candidate)
+    if (observer_record and observer_binding(observer_record.get("binding") or {}) == observer_binding(candidate)
             and candidate["phase"] not in {"paused", "blocked"}
             and any(item.get("status") != "received" and not notification_received(candidate, item, observer_record)
                     for item in observer_record.get("notifications", []))):

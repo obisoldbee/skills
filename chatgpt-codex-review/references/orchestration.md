@@ -2,7 +2,7 @@
 
 Astra Controller 单写 `RUN_ROOT/state.json` 和 `events.jsonl`，核实 Luna 原始网页证据与获准的 Sol 交付。Luna max 独占页面和定时观察，Sol max 只在指定 worktree 修复。角色默认采用当前 `project-handoff`：Astra high（最高难度明确选 ultra）、Luna max、Sol max；2026-09-30 基线为 `gpt-6-astra`、`gpt-6-luna`、`gpt-6.1-sol`。新族名按目标宿主的真实能力解析最新版，已有任务保持验证过的路由，用户精确覆盖优先。实际参数/成功回执、会话设置或原生元数据决定可证明的模型/强度，不以提示词自称作为证据。
 
-普通执行可用宿主内部协作，只有用户直接要求新可见任务才创建。durable heartbeat 必须有 ready 的真实 Luna 可见聊天，先查可复用任务和同一浏览器 TaskSpace；内部 Agent、排队中的 clientThreadId 不能作 owner。替换故障任务前保存产物、未完成项与实际身份。无持久 owner 时如实记录所缺能力与选择，不把定时器放到 Astra 聊天上。
+普通执行可用宿主内部协作，只有用户直接要求新可见任务才创建。durable heartbeat 必须有 ready 的真实 Luna 可见聊天，先查可复用任务和当前可用的本任务 Agent 空间；内部 Agent、排队中的 clientThreadId 不能作 owner。服务端对话/请求/source/合同保持原身份，浏览器空间是可替换载体：恢复现有空间，确认丢失/崩溃后按原任务授权重开已有应用或重建并打开原 URL，记录旧→新映射；不重复索取普通恢复许可，不绕过真实登录/用户接管/工具拒绝。替换故障任务前保存产物、未收讫队列与实际身份。无持久 owner 时如实记录所缺能力与选择，不把定时器放到 Astra 聊天上。
 
 ## 任务通讯与执行主机
 
@@ -32,7 +32,7 @@ Astra 给 Luna 的输入是冻结的 run/round/source/token、prompt SHA、合�
 
 完整回复后，Astra 将发现分成确认缺陷、待裁决主张、已证据反驳、范围外建议和必需未验项。若必需附件缺失，先推进与文件无关的确认修复及文本核实；`pending_file_findings` 保留待处理数量。Luna 在 repairing/validating 期间补取文件后，Astra把当前验证回执交给同一个 Sol 继续，不创建重叠 writer；局部 worker 交付不消除缺件义务。Sol 的输入含精确写入范围、原始需求、确认问题和依赖附件、完成标准；文件依赖项完成时明确计入 `addressed_file_findings`。每次返修交固定新身份/差异/检查记录。一次 worker 完成只进入本地验证，失败继续诊断与返修；没有默认一次反馈预算。网页意见不授权需求扩大或外部写入。
 
-只在本回合完整收取时可选 `followup_mode=inline`：绑定本 turn 的实际 Luna model/effort、执行回执和有界期限；发送、稳定观察与下载可在此完成，不要求新可见聊天，不声称后台跟进。若期限内未收齐，保留原消息/材料并准确交代剩余等待。用户明确要求 durable 时不能静默改成 inline。普通 wait/sleep 不是可恢复调度。
+只在本回合完整收取时可选 `followup_mode=inline`：绑定本 turn 的实际 Luna model/effort、执行回执和有界期限；发送、稳定观察与下载可在此完成，不要求新可见聊天，不声称后台跟进。旧期限过期或新 turn 续作时，核实并写入当前真实执行绑定后继续原流程，不让用户配置调度。内部执行者的真实 agent_id 与 turn 区分执行者，读回引用/verified_at 变化不算换人；未完成的稳定窗口换执行者/turn 后重开，同业务去重、累计预算与未收讫原 payload/evidence 保留。若期限内未收齐，保留原消息/材料并准确交代剩余等待。用户明确要求 durable 时不能静默改成 inline。普通 wait/sleep 不是可恢复调度。
 
 跨回合采用 `durable`：先查本 run 的真实 `automation_update` heartbeat 与现有 Luna owner，默认建议每 10 分钟并记录宿主实际节奏。使用支持的 `targetThreadId` 绑定 Luna 的真实 threadId；它继承目标聊天模型/强度，heartbeat prompt 不配置模型，也没有本 Skill 发明的 model 参数。核实 owner 的聊天 host、实际 model/effort、证据限度，另绑 Controller 目的地与直接用户通讯授权。`read_thread` 不一定给模型字段：显式 create_thread 参数和成功原始回执连同已运行进展、真实会话设置或原生运行元数据可作为可接受证据；仅接受请求不能冒充独立服务端模型核实。缺适合的现有 owner 且用户未要求创建时，报告缺少的 owner/创建选择或调度能力，允许在本回合准备/有界观察，不偷建可见任务、Controller heartbeat、standalone cron 或睡眠常驻。
 
@@ -44,4 +44,4 @@ Astra 处理 observation、artifact_receipt 或 assessment 时可在同次 state
 
 本 run 的正文/必需文件和已排队收讫义务均闭合、用户停止或已确认必须人工处理时，暂停**同一现有** heartbeat 并 view 读回 PAUSED；暂时忙碌、额度恢复等待和刷新预算耗尽不取消低成本观察。Luna 可执行已获准的本 run 暂停并写独立 readback，Controller 后续核对并更新主 state。项目级 Luna watcher 尚有开发/构建等待时仅关闭网页子义务，不能暂停整个 watcher。暂停保存未收讫 payload/检查点；恢复时核实同一 Luna owner 的 ACTIVE 状态后继续核对，不改用 Controller heartbeat。下一次发送前 re-arm。模型/host 无法验证时保留恢复入口并报告能力缺口；durable 请求仍待满足。旧工作无调度则直接验收，不先建再关。离线 helper 只校验声明结构与决策，不证明真实调度/模型/browser 执行。
 
-最后门槛按 scope：review_only 要当前源码的完整审查、所需附件和约定报告交付，保留确认问题/待核实建议；repair_loop 还需确认缺陷和待裁决主张归零、同一合同的本地必需检查与交付通过。不为纯审查添加原生构建/修复门槛。测试宿主错误不冒充产品缺陷，网页检查不冒充设备验收；新源码/合同使旧证据失效。发布、合并和安装各按原授权，未获推送许可不改走 MCP 或用旧版本冒充复审。
+最后门槛按 scope：review_only 要当前源码的完整审查、所需附件和约定报告交付，保留确认问题/待核实建议；约定检查失败也保留证据并交未通过报告，acceptance_passed=false，不派修或要求先批准修复。repair_loop 还需确认缺陷和待裁决主张归零、同一合同的本地必需检查与交付通过。不为纯审查添加原生构建/修复门槛。测试宿主错误不冒充产品缺陷，网页检查不冒充设备验收；新源码/合同使旧证据失效。发布、合并和安装各按原授权，未获推送许可不改走 MCP 或用旧版本冒充复审。
