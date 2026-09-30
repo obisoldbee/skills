@@ -102,7 +102,7 @@ Luna 执行只读 CLI `next_action.py --state <state> --event <observation> --ob
 
 附件与正文到达顺序不影响采集就绪。Controller 与 Luna 在各自记录的 `artifact_observation={payload,sha256}` 保存实际校验原事件，按绑定、合同、规范 SHA 与真实 verifier receipt 合并为当前必需文件证明；observed_at 来自本次 verifier 返回后的真实观察，不能用文件 mtime 或补造时间。主 state 较新证明可以覆盖 Luna 较旧证明；最新实际 invalid/missing/unverified 使必需附件重新待采集，不对未经验证的 ready 布尔值取 OR。assessment 的依赖项、worker 文件处置、validation 与最终交付共用同一门：当前证明有效，且主 state 已应用的必需文件快照与其一致。独立修复和可选附件变化不受此门阻断。
 
-新有效必需快照未应用时，Controller 本地处理对应的原 artifact_receipt；队首可选回执不能遮盖后面的必需更新。真实 A→B→A 重验要应用本次快照；历史同 key/SHA 事件仍幂等，不能重写原 key/payload。已有通知不包含本次校验时间时，使用已保存的本次原始附件观测本地应用，不重开网页。相同时间但必需快照冲突时，artifact_observation 附带一份原 `conflicting_proof={payload,sha256}`，保留主 state 已应用回执；冲突事件再放一次也不解除门槛。缺时间的旧直接回执不能覆盖有时间的新证明；未知顺序或同时间冲突用一次真正更新的本地校验消解，不加用户确认或重新下载要求。错误 SHA/绑定不能作为当前证明。
+新有效必需快照未应用时，Controller 本地处理对应的原 artifact_receipt；队首可选回执不能遮盖后面的必需更新。真实 A→B→A 重验要应用本次快照；历史同 key/SHA 事件仍幂等，不能重写原 key/payload。已有通知不包含本次校验时间时，使用已保存的本次原始附件观测本地应用，不重开网页。Controller 和 Luna 替换各自 artifact_observation 前使用相同的合并规则：相同时间但必需快照冲突时附带一份原 `conflicting_proof={payload,sha256}`，保留主 state 已应用回执；同一 Luna 的旧成功、冲突原事件或第三份同时间观测都不能抹掉失败/必需冲突。必需快照相同而仅 optional 不同，不新增冲突。缺时间的旧直接回执不能覆盖有时间的新证明；未知顺序或同时间冲突用一次真正更新的本地校验消解，不加用户确认或重新下载要求。错误 SHA/绑定不能作为当前证明。
 
 unknown 先核对足够覆盖原请求 key/payload 的目的地历史；最近几条或可能截断的 read_thread 输出只能保留 unknown。非 unknown 的 presence/absence 和用于恢复的 idle 证据绑定真实 destination_thread_id/destination_host，readback_observed_at 在本次 observed_at 前 60 秒内且不早于上次投递。已知 not_delivered/active_writer 或已确证 absent 时，目标 idle、直接通讯授权仍有效、冷却至少 60 秒才 retry_notification；原 key、payload、source/token/原网页请求身份保持不变。总投递机会最多三次，耗尽返回 delivery_recovery_checkpoint，保留低成本核对和可读原件；Controller 可主动 wait/read/读共享回执收取，不要求先成功反向消息。Controller 当前 turn 的 active writer 尤其应由当前 Controller 直接读结果。无授权不重试。
 

@@ -353,6 +353,24 @@ def required_artifact_snapshot(state, receipt):
              for item in state["artifact_contract"]["required"]} if receipt_bound(state, receipt) else None)
 
 
+def merge_artifact_observation(state, event, previous_proof):
+    """Both writers preserve required conflicts before replacing their proof."""
+    proof = artifact_observation(state, event)
+    previous_proof = previous_proof or {}
+    previous = previous_proof.get("payload") or {}
+    if bound(previous, state, token=True) and previous.get("observed_at"):
+        before = timestamp(previous["observed_at"])
+        when = timestamp(event["observed_at"]) if event.get("observed_at") else None
+        if when is None or when < before:
+            return previous_proof, "stale"
+        same_required = required_artifact_snapshot(state, event.get("receipt")) == required_artifact_snapshot(state, previous.get("receipt"))
+        if when == before and (previous_proof.get("conflicting_proof") or not same_required):
+            proof["conflicting_proof"] = (previous_proof["conflicting_proof"] if same_required
+                else {"payload": previous, "sha256": previous_proof.get("sha256")})
+            return proof, "conflict"
+    return proof, None
+
+
 def current_artifact_observation(state, ledger):
     """One current proof across both writers; absence retains legacy receipts."""
     candidates = [state.get("artifact_observation")]
@@ -848,7 +866,7 @@ def scheduled_observation(state, event, saved):
             or inline == (kind in {"inline_observation", "inline_artifacts"}), "observer surface disagrees with followup_mode")
     if kind in {"scheduled_artifacts", "inline_artifacts"}:
         require(receipt_bound(state, event.get("receipt")), "scheduled artifacts have stale or invalid binding")
-        ledger["artifact_observation"] = artifact_observation(state, event)
+        ledger["artifact_observation"], _ = merge_artifact_observation(state, event, ledger.get("artifact_observation"))
     ledger["required_artifacts_ready"] = captured_artifacts_ready(state, ledger)
     ledger["notifications"] = [({**item, "status": "received"} if notification_received(state, item, ledger) else item)
                                for item in ledger["notifications"]]
@@ -1022,7 +1040,7 @@ def scheduled_observation(state, event, saved):
     if any(item.get("key") == key for item in ledger["notifications"]):
         return answer("keep_quiet", "This reply/content or error transition already has a receipt; do not wake Controller again.",
                       schedule_action=schedule_action, key=key,
-                      observe_webpage=web_capture_required(state) and not (ledger.get("text_complete") and ledger.get("required_artifacts_ready")))
+                      observe_webpage=web_capture_required(state, ledger) and not (ledger.get("text_complete") and ledger.get("required_artifacts_ready")))
     controller_event = {**controller_event, "execution_scope": state.get("execution_scope", "repair_loop"),
                         "followup_mode": state.get("followup_mode", "durable"), "notification_key": key}
     digest = notification_digest(controller_event)
@@ -1356,25 +1374,13 @@ def _decide(state, event, observer_record=None):
                 "artifact receipt requires a current webpage round")
         receipt = event.get("receipt")
         require(isinstance(receipt, dict), "missing artifact receipt")
-        proof = artifact_observation(state, event)
-        previous_proof = state.get("artifact_observation") or {}
-        previous = previous_proof.get("payload") or {}
-        if bound(previous, state, token=True) and previous.get("observed_at") and not event.get("observed_at"):
-            return result(state, "ignore_stale_artifact_receipt", "An undated legacy receipt cannot replace a newer applied proof; verify the current files locally if reconciliation is needed.")
-        if event.get("observed_at"):
-            when = timestamp(event["observed_at"])
-            if bound(previous, state, token=True) and previous.get("observed_at"):
-                before = timestamp(previous["observed_at"])
-                if when < before:
-                    return result(state, "ignore_stale_artifact_receipt", "Preserve the newer applied verification; read the current original proof.")
-                if when == before and (previous_proof.get("conflicting_proof")
-                        or required_artifact_snapshot(state, receipt) != required_artifact_snapshot(state, previous.get("receipt"))):
-                    require(receipt_bound(state, receipt), "artifacts are mismatched")
-                    proof["conflicting_proof"] = (previous_proof["conflicting_proof"]
-                        if required_artifact_snapshot(state, receipt) == required_artifact_snapshot(state, previous.get("receipt"))
-                        else {"payload": previous, "sha256": previous_proof.get("sha256")})
-                    return result(state, "reconcile_artifact_verification", "Preserve the actual same-time conflict until fresh local verification resolves it; do not invent an order.",
-                                  artifact_observation=proof)
+        proof, disposition = merge_artifact_observation(state, event, state.get("artifact_observation"))
+        if disposition == "stale":
+            return result(state, "ignore_stale_artifact_receipt", "Preserve the newer applied verification; an older or undated receipt cannot replace it. Verify current files locally if needed.")
+        if disposition == "conflict":
+            require(receipt_bound(state, receipt), "artifacts are mismatched")
+            return result(state, "reconcile_artifact_verification", "Preserve the actual same-time conflict until fresh local verification resolves it; do not invent an order.",
+                          artifact_observation=proof)
         candidate = {**state, "artifact_receipt": receipt, "artifact_observation": proof}
         require(receipt_bound(candidate, receipt) and artifact_ready(candidate),
                 "artifacts are missing, invalid or mismatched")

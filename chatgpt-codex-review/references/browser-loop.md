@@ -22,6 +22,8 @@ Astra 冻结 prompt SHA、run/round/source/token、scope、源码入口、附件
 
 每次只获取决策所需状态：原请求是否在、其后的新助手消息 ID、生成/错误信号、完整正文长度/SHA、观察时间、证据路径。完整正文写独立 UTF-8 文件；不能把 viewport 截断内容标为完整。只有无生成中和错误、完成操作区可见、同一消息非空正文两次观测指纹相同且间隔至少十秒，才交 Astra 核实。完成控件按当前 UI 实测，可为本消息可见 Copy/复制或“回答已完成”状态；旧 CSS/role 定位返回 false 不证明仍在生成，先检查完整当前消息及实际 DOM/截图并修正定位，原生 completed 不能冒充看见控件。正文变化时观察时间也必须单调。旧回复、按钮暂消失、网页自称“完成”都不足以验收。
 
+浏览器 innerText、原生 ChatGPT Markdown 和下载 Markdown 是不同表示，各自完整保存并计算 SHA。稳定性比较同一提取方式的两次完整 UI 内容；不要求不同表示逐字节或去换行后一致，也不因正常 Markdown 标记、表格或附件卡片差异判未完成或阻断。
+
 若网页给文件，先按 ego-browser 文档在触发点击前监听 download event，`saveAs()` 到 `artifact_root` 内的独立文件。review_ready/repairing/validating 补件和 waiting_web 使用同一故障/人类门与临时退避；不能跳过分类，错误小回执可由 Controller 保留原阶段直接处理，正常补件保留已收正文。调用 `verify_artifacts.py` 检查本轮 required/optional 合同，保存完整 JSON 回执及校验返回后真实 observed_at，不以文件 mtime 代替。真实下载失败、CRC/PNG 解码失败、缺依赖/不支持格式均报告 missing/invalid/unverified；不得把网页自报文件名或选择文件成功当已收到。无预期原件哈希时只报告本次接收 SHA。必需缺件继续补取，不阻止独立文本核实；可选缺件记录即可。
 
 Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍交小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐后只核对未收讫通知，不重复打开网页；采集和 Controller 收讫均闭合才暂停本 run 同一 heartbeat 并回读。仅登记已读、尚未处理的原事件由 Controller 据同一最新 ledger 本地 process_saved_result；已应用同 key/SHA/业务事件重放不再处理，不让旧进展抢占完整报告。正文/附件先后无关，按 Controller/Luna 原校验事件的实际时间核对当前必需快照；较新失败覆盖旧成功，较新真实成功不被旧 Luna 失败遮盖。新必需快照先本地应用，队首可选回执或历史 A→B→A 去重不能替代此步；顺序不明或同时间冲突先本地重验，不重开网页。项目级 watcher 的开发等待独立保留。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话和当前可用载体。inline 收齐直接交回 Controller，一次处理记收讫，不要求后台任务。
