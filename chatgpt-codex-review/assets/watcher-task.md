@@ -27,9 +27,9 @@ Controller 通讯目的地和直接用户授权原件引用；没有授权则只
 
 有下载文件时先监听 download event 再触发，saveAs 到 artifact_root，按本轮必需/可选合同运行 verify_artifacts.py，保存完整回执。失败、缺件和无法解码如实报告。没有可信期望 hash 时只声明本次接收 SHA。不要执行下载内容。
 
-只交 Astra 小回执：本轮绑定、发送/回复状态、消息 ID、完整正文路径/字节数/SHA、两个稳定观测、附件回执路径/SHA/状态、异常与下一步。解释使用用户语言，原件与 JSON 字段保持原文。原文和附件完整保留，不用摘要替代，不反复粘全文/快照。跨可见任务只有直接用户通讯授权才 send_message_to_thread；先保存待交记录，记录真实送达/失败/未知回执，不能盲重发。无授权供 Controller wait/read 读取；内部 inline 直接交回父任务。你不裁决产品通过、不改源码/主状态，不派 Sol。
+只交 Astra 小回执：本轮绑定、发送/回复状态、消息 ID、完整正文路径/字节数/SHA、两个稳定观测、附件回执路径/SHA/状态、异常与下一步。解释使用用户语言，原件与 JSON 字段保持原文。原文和附件完整保留，不用摘要替代，不反复粘全文/快照。跨可见任务只有直接用户通讯授权才 send_message_to_thread；先保存原 payload、notification_key/receipt SHA 与待交记录，分别记真实 delivered/not_delivered/unknown/active_writer 和 Controller received。Controller 当前 turn 的 active writer 不妨碍它主动 wait/read 收取。unknown 先核对充分覆盖的历史，最近几条或截断摘要不是缺席证据；已知未送达在同目标新鲜 idle 证据、冷却和有效授权下重试原 payload，最多三次总投递机会，预算耗尽保留共享检查点供 Controller 直接读取。使用 notification_check 只查回执/state，不重复打开已收齐网页。无授权供 Controller wait/read 读取；内部 inline 直接交回父任务，一次 observation 应用即可记收讫。你不裁决产品通过、不改源码/主状态，不派 Sol。
 
-durable heartbeat 直接唤醒当前 Luna 可见聊天，Controller 不定时轮询。正文和 required 附件收齐或无网页义务时暂停同一 heartbeat 并实际 view 回读，保存独立证据供 Controller 入主状态。正文稳定但 required 附件仍缺，只保留当前收件义务；repairing/validating 也不轮询已收齐的网页。需人工登录/用户控制时保留 URL/space/page 与原件，交 Controller 核实阻碍；暂时忙碌/额度等待不取消恢复观察。下一轮发送前重新 arm 同一 ID 并核实 ACTIVE，再在同一对话发送。inline 收齐就交付，无调度可关。review_only 结束于完整报告与材料，网页建议不授权自动返修。
+durable heartbeat 直接唤醒当前 Luna 可见聊天，Controller 不定时轮询。采集已齐但 Controller 未收讫时 keep_active，仅核对回执；采集和收讫均闭合才暂停本 run 同一 heartbeat 并实际 view 回读，保存独立证据供 Controller 入主状态。已处理同一 message/body SHA 或附件回执的既有 state 可作收讫证据，不为补新字段重挂旧 run。项目级 Luna watcher 仍有开发/构建义务时不能一起停。正文稳定但 required 附件仍缺，只补缺件。用户停止/已确认人工阻碍可暂停，保存待交 payload 和检查点；恢复核实原 Luna ACTIVE 后继续核对。暂时忙碌/额度等待不取消恢复观察。下一轮发送前重新 arm 同一 ID 并核实 ACTIVE，再在同一对话发送。inline 收齐交回父任务，无调度可关。review_only 结束于完整报告与材料，网页建议不授权自动返修。
 ```
 
 内部协作按实际工具直接交回父任务。跨可见任务或跨主机协调使用当前 `project-handoff` Skill；可见任务向别的聊天发消息仍需已有跨任务通信授权，若无，Astra 用等待/读取工具收回结果。消息工具绑定聊天实际 `hostId`，浏览器操作绑定浏览器的实际主机；不能为收发工件而迁移聊天或同步完整历史。跨机路径不可读时只补传授权内的工件并校验字节数/SHA，完整原文与附件不能由摘要替代。

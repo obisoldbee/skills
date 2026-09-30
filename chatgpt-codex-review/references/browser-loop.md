@@ -14,7 +14,7 @@ Astra 冻结 prompt SHA、run/round/source/token、scope、源码入口、附件
 
 若网页给文件，先按 ego-browser 文档在触发点击前监听 download event，`saveAs()` 到 `artifact_root` 内的独立文件。调用 `verify_artifacts.py` 检查本轮 required/optional 合同，保存完整 JSON 回执。真实下载失败、CRC/PNG 解码失败、缺依赖/不支持格式均报告 missing/invalid/unverified；不得把网页自报文件名或选择文件成功当已收到。无预期原件哈希时只报告本次接收 SHA。必需缺件继续补取，不阻止独立文本核实；可选缺件记录即可。
 
-Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍只交一次小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐即暂停同一 heartbeat 并回读；缺 required 文件继续 capture，其他返修/验证期间不轮询已收齐页面。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话/空间。inline 收齐后直接交付，不声称后台常驻。
+Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍交小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐后只核对未收讫通知，不重复打开网页；采集和 Controller 收讫均闭合才暂停本 run 同一 heartbeat 并回读。缺 required 文件继续 capture；项目级 watcher 的开发等待独立保留。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话/空间。inline 收齐直接交回 Controller，一次处理记收讫，不要求后台任务。
 
 ## 临时故障
 

@@ -80,7 +80,7 @@ Visible-task authority and field authority are separate. A user who only invokes
 - **Purpose**: Continue or correct an existing visible task.
 - **Use when**: The worker needs a scoped correction, user intervention must be synchronized, a downstream gate failed, or a running lane must pause/abort.
 - **Do not use when**: Creating the initial task.
-- **Failure handling**: Do not duplicate the same follow-up after an uncertain send without checking the task.
+- **Failure handling**: Unknown delivery first needs history covering the original request/payload; a few recent or truncated summaries cannot establish absence. Save the actual target thread/host, original payload/identity and receipt. For explicit not-delivered or active writer, wait/read the same target and retry that payload only after fresh verified idle, the declared cooldown/budget, and continuing direct user messaging authority. Never convert unknown into not-delivered or create another chat as recovery.
 - **Route rule**: Preserve the task's effective model/reasoning route. Do not pass a new model or `thinking` value unless the user explicitly requested that route change; in particular, keep `luna-max` at `max`.
 - **Retired automatic route**: For an existing GPT-5.6 Sol/Luna/Terra task, verify the task id and original effective route from readback and its historical receipt before declaring `route_changed=false`. The offline guard's compatibility allowance validates that declaration only; it does not establish task existence or original routing. Use its original effective model/effort, including when its historical alias has since changed meaning. This exception never authorizes new automatic GPT-5.6 creation or migration to GPT-6.
 
@@ -108,6 +108,8 @@ Visible-task authority and field authority are separate. A user who only invokes
 9. Return task receipt.
 
 Before closing dispatch-only, also satisfy any initial progress wait/readback required by the live host. This ends the dispatch request, not the worker's substantive work. If the user requested completion, monitoring, or integration, continue bounded waits and verify the lane's declared outputs and checks before reporting that result complete.
+
+For those continuing obligations, each dispatch names the result reader, next check time/entry and Controller receipt responsibility. A running Controller should use `wait_threads`/`read_thread` to collect the worker result even when the worker's reverse message failed with active writer; messages are hints, not the only collection route. Record receipt in the same state/log update that assesses the actual result or shared independent receipt. Across turns, use an actual verified observer and resumable schedule. An already selected Luna policy, such as chatgpt-codex-review or an explicit user choice, uses a verified Luna owner; respect explicit other model/effort choices and do not select/modify an unrequested axis for ordinary handoff. Reuse a suitable visible task and request new visible creation only under direct user authority. No Controller heartbeat or fake background promise. Development/build waiting remains open independently of any completed Web capture subtask.
 
 ## Multi-lane lifecycle
 

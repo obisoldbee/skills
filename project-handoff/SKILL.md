@@ -85,11 +85,13 @@ Do not use when: The user asks only for a complete text/file handoff or explanat
 
 Parameters: Project/host target, lane id and goal, self-contained prompt, exact read/write paths, mutable resources, dependencies, expected outputs, validation, requested/effective model/reasoning axes with separate bases, the validator-produced `create_thread_arguments` and `attempt_sha256`, concurrency cap, integration owner, retry budget, and archive policy.
 
+For completion or coordination work, bind the result reader, next check time/entry, and Controller receipt responsibility before dispatch. Initial delivery is not result receipt. The current Controller can use bounded `wait_threads`/`read_thread`; cross-turn waiting requires an actual verified observer and resumable schedule. An already selected Luna monitoring policy (for example chatgpt-codex-review or an explicit user choice) uses a verified Luna owner; respect explicit other model/effort choices, and ordinary handoff does not select or modify an unrequested axis. Reuse a suitable visible owner; creating another visible task still requires a direct user request. Do not use a Controller heartbeat or claim background follow-up from a prompt. Web capture and development/build waiting remain separate obligations.
+
 Returns: A confirmed `thread_id` plus `host_id`, a queued `client_thread_id`, exact `actual_tool`, prompt-delivery/readback state, receipt-guard result, current cursor/status, artifact/validation receipts, or an exact structured failure.
 
 Failure handling: Classify the exact failure with the dispatch guard. Retry only an eligible readback/title synchronization delay against the already identified task; preserve every other failure receipt and stop or replace only under the declared worker-failure policy. Never silently change route, scope, authority, executor, or create a second task by stripping a rejected parameter.
 
-Tool stop rule: Stop after the requested handoff is delivered, the lane reaches its declared gate, a non-repairable blocker appears, the retry budget is exhausted, the user aborts, or the integrated run closes.
+Tool stop rule: Stop after the requested dispatch-only handoff is delivered, the lane reaches its declared gate, a non-repairable blocker appears, the retry budget is exhausted, the user aborts, or the integrated run closes. For requested completion/coordination, keep unreceived results and a next check until Controller has actually read them; a send failure or successful dispatch does not close that obligation.
 
 Task: Apply the verified materials, selected outcome, route basis, authority boundary, dependency/conflict analysis, tool contract, and stop rules above to produce the requested complete handoff or close the authorized dispatch through its artifact and integration gates.
 

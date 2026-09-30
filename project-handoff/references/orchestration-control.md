@@ -128,6 +128,7 @@ Append events; do not rewrite history to make a retry or failure disappear. `sta
 Controller to worker:
 
 - Send one self-contained RUN envelope with exact inputs, outputs, authority, route, validation, and stop rules.
+- Name the result reader, next check time/entry and Controller receipt responsibility. In the current turn use bounded waits/reads; cross-turn observation needs a verified actual observer and schedule, never a Controller heartbeat or a prompt-only promise. Use a verified Luna owner when a Luna monitoring policy is already selected, such as chatgpt-codex-review or an explicit user choice. Respect explicit other model/effort choices; ordinary handoff does not select or modify unrequested axes. Reuse an existing suitable visible owner; new visible task creation still needs a direct user request.
 - Send a correction only after reading the latest worker state. Do not duplicate an uncertain RUN or correction.
 - When the global goal changes, pause or abort affected lanes, invalidate stale downstream gates, update the graph, and then send scoped replacements.
 
@@ -135,7 +136,10 @@ Worker to Controller:
 
 - Reconcile task state and the required artifacts or response evidence; an unsupported self-report is not completion evidence. A response-only audit is assessed against its requested findings and verifiable sources, without creating unrequested files.
 - Record changed files, validation, risks, and the lane's requested next state.
+- Save results before sending a hint. Distinguish collected, delivered and Controller received; message success is not receipt. While Controller is still writing, a reverse send may return active writer: Controller can directly wait/read the worker or shared saved receipt instead of waiting for a successful reverse message. Unknown delivery requires sufficiently covering history; a truncated recent summary does not prove absence. Known non-delivery may retry the same identity/payload after verified same-target idle, a bounded cooldown/budget and continuing direct user communication authority. Exhausted retries preserve a readable checkpoint and the next receipt check.
 - Carry forward only verified outputs. Mark replaced or superseded outputs stale until revalidated.
+
+Controller records actual receipt alongside result assessment in its existing state/log update; no separate approval or round trip is required. The selected observer owns observation/delivery records, while Controller remains the sole main-state writer. Web capture ending cannot stop a project watcher that still owns development/build waits. Dots may be the sole coordinator only when the user explicitly assigns it and its actual target and permissions are verified; local task access does not establish arbitrary cross-host chat access or bypass active-writer constraints. It is not a default dependency.
 
 User to either side:
 

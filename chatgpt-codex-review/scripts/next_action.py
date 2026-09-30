@@ -457,6 +457,51 @@ def notification_authorized(state):
             and permission.get("destination_host") == state.get("controller_host"))
 
 
+def notification_digest(payload):
+    content = {key: value for key, value in payload.items() if key not in {
+        "notification_receipt_sha256", "controller_received_at"}}
+    return hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False,
+                                    separators=(",", ":")).encode()).hexdigest()
+
+
+def notification_key(binding, change):
+    return hashlib.sha256(json.dumps({"binding": binding, "change": change}, sort_keys=True,
+                                    ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
+def notification_received(state, item, ledger):
+    payload = item.get("controller_event") or {}
+    saved = (state.get("received_notifications") or {}).get(item["key"]) or {}
+    if (saved.get("receipt_sha256") == item.get("receipt_sha256")
+            and bound(saved, state, token=True) and evidence(saved.get("evidence"))):
+        return True
+    # Existing Controller-owned processing state is also a receipt. Never revive
+    # a finished old run merely because its observer predates explicit receipts.
+    if not payload:
+        # v1 observer records kept the completed observation and notification key,
+        # but not the whole delivery payload. Match that exact processed result.
+        completed = ledger.get("completion_observation") or {}
+        reply = {"kind": "reply", "message": completed.get("assistant_message_id"),
+                 "sha256": completed.get("body_sha256")}
+        if notification_key(ledger["binding"], reply) == item["key"]:
+            payload = {**completed, "type": "observation"}
+        elif artifact_ready(state) and notification_key(ledger["binding"], {
+                "kind": "artifacts", "receipt": state.get("artifact_receipt")}) == item["key"]:
+            return True
+    if not bound(payload, state, token=True):
+        return False
+    if payload.get("type") == "observation":
+        completed = state.get("last_completion") or {}
+        return (state["phase"] != "waiting_web" and state.get("review_message_id") == payload.get("assistant_message_id")
+                and completed.get("body_sha256") == payload.get("body_sha256")
+                and state.get("raw_reply_path") == payload.get("raw_reply_path"))
+    if payload.get("type") == "artifact_receipt":
+        return state.get("artifact_receipt") == payload.get("receipt") and artifact_ready(state)
+    progress = state.get("web_progress") or {}
+    return (payload.get("type") == "web_progress" and bound(progress, state, token=True)
+            and progress.get("evidence_ref") == payload.get("actionable_progress_ref"))
+
+
 def scheduled_observation(state, event, saved):
     """Luna's independent ledger; never return updates for Controller state/events."""
     binding = observer_binding(state)
@@ -473,32 +518,103 @@ def scheduled_observation(state, event, saved):
     require(previous_time is None or when >= timestamp(previous_time), "observer timestamps moved backwards")
     ledger["last_observed_at"] = stamp(when)
 
-    def answer(action, reason, *, controller_event=None, schedule_action="keep_active", key=None):
+    def answer(action, reason, *, controller_event=None, schedule_action="keep_active", key=None, observe_webpage=False):
+        outstanding = any(item.get("status") != "received" for item in ledger["notifications"])
+        if outstanding and state["phase"] not in {"paused", "blocked"}:
+            schedule_action = "keep_active"
         return {"action": action, "reason": reason, "phase": state["phase"], "terminal": False,
-                "activate_controller": action in {"notify_controller", "return_to_controller"}, "activate_developer": False,
+                "activate_controller": action in {"notify_controller", "retry_notification", "return_to_controller"},
+                "activate_developer": False, "observe_webpage": observe_webpage,
                 "schedule_action": "none" if state.get("followup_mode", "durable") == "inline" else schedule_action,
                 "state_updates": {},
                 "observer_updates": ledger, "notification_key": key, "controller_event": controller_event}
 
     kind = event["type"]
     inline = state.get("followup_mode", "durable") == "inline"
-    require(inline == (kind in {"inline_observation", "inline_artifacts", "observer_delivery"})
-            or kind == "observer_delivery", "observer surface disagrees with followup_mode")
+    require(kind in {"observer_delivery", "notification_check"}
+            or inline == (kind in {"inline_observation", "inline_artifacts"}), "observer surface disagrees with followup_mode")
+    ledger["notifications"] = [({**item, "status": "received"} if notification_received(state, item, ledger) else item)
+                               for item in ledger["notifications"]]
     if kind == "observer_delivery":
         key = event.get("notification_key")
         pending = next((item for item in ledger["notifications"] if item.get("key") == key), None)
         require(pending is not None, "delivery has no pending observer notification")
-        require(event.get("delivery_status") in {"delivered", "not_delivered", "unknown"}
+        require(event.get("delivery_status") in {"delivered", "not_delivered", "unknown", "active_writer"}
                 and nonempty(event.get("delivery_evidence_ref")), "notification delivery needs actual evidence")
+        require(event.get("destination_thread_id") == state.get("controller_thread_id")
+                and event.get("destination_host") == state.get("controller_host"), "delivery destination mismatch")
         if event["delivery_status"] == "delivered":
-            require(notification_authorized(state)
+            require(notification_authorized(state),
+                    "delivered notification lacks direct user communication authority or destination binding")
+        ledger["notifications"] = [({**item, "status": event["delivery_status"] if item.get("status") != "received" else "received",
+                                     "evidence_ref": event["delivery_evidence_ref"], "delivery_observed_at": stamp(when),
+                                     "destination_thread_id": event["destination_thread_id"], "destination_host": event["destination_host"],
+                                     "next_check_at": stamp(when + timedelta(seconds=60))}
+                                    if item.get("key") == key else item)
+                                   for item in ledger["notifications"]]
+        return answer("record_notification_delivery", "Delivery and Controller receipt are distinct; retain receipt checks without reopening the webpage.")
+
+    outstanding = next((item for item in ledger["notifications"] if item.get("status") != "received"), None)
+    if state["phase"] in {"paused", "blocked"}:
+        return answer("pause_followup", "Preserve unreceived results and their checkpoint while this run is stopped or blocked.",
+                      schedule_action="pause_if_active")
+    if kind == "notification_check" or ((not web_capture_required(state) or
+            (ledger.get("text_complete") and ledger.get("required_artifacts_ready"))) and outstanding):
+        if outstanding is None:
+            capture = web_capture_required(state) and not (ledger.get("text_complete") and ledger.get("required_artifacts_ready"))
+            armed = state.get("awaiting_send") is True and state["phase"] in {"ready_to_submit", "submitting"}
+            if capture or armed:
+                if submission_observer(state, event) is None:
+                    action = "ensure_inline_luna" if inline else "ensure_followup" if web_io_binding(state) else "ensure_luna_owner"
+                    return answer(action, "Receipts are closed, but capture or the armed send still needs the verified observer.")
+                if capture:
+                    action = "capture_required_artifacts" if ledger.get("text_complete") or state["phase"] != "waiting_web" else "keep_quiet"
+                    return answer(action, "Receipts are closed; continue the unfinished reply or required artifact capture.",
+                                  observe_webpage=True)
+                return answer("keep_quiet", "Receipts are closed; preserve the same observer's armed send window.")
+            return answer("finish_inline_capture" if inline else "pause_followup", "Controller has received all queued results.",
+                          schedule_action="pause_if_active")
+        if submission_observer(state, event) is None:
+            action = "ensure_inline_luna" if inline else "ensure_followup" if web_io_binding(state) else "ensure_luna_owner"
+            return answer(action, "Preserve the unreceived result; restore the actual Luna receipt checker, never a Controller heartbeat.")
+        key = event.get("notification_key", outstanding["key"])
+        pending = next((item for item in ledger["notifications"] if item["key"] == key), None)
+        require(pending is not None, "unknown notification checkpoint")
+        if pending.get("status") == "received":
+            return answer("check_controller_receipt", "This receipt is closed; check the remaining unreceived result.", key=outstanding["key"])
+        readback = event.get("delivery_readback", "unknown")
+        require(readback in {"present", "absent", "unknown"}, "invalid delivery readback")
+        destination = event.get("destination_status", "unknown")
+        require(destination in {"idle", "active_writer", "unknown"}, "invalid destination status")
+        if readback != "unknown" or destination != "unknown":
+            require(nonempty(event.get("readback_evidence_ref"))
                     and event.get("destination_thread_id") == state.get("controller_thread_id")
                     and event.get("destination_host") == state.get("controller_host"),
-                    "delivered notification lacks direct user communication authority or destination binding")
-        ledger["notifications"] = [({**item, "status": event["delivery_status"],
-                                     "evidence_ref": event["delivery_evidence_ref"]} if item.get("key") == key else item)
-                                   for item in ledger["notifications"]]
-        return answer("record_notification_delivery", "Receipt records delivery; unknown or failed sends never trigger blind retries.")
+                    "delivery readback requires evidence bound to the Controller destination")
+            checked = timestamp(event.get("readback_observed_at"))
+            attempted = pending.get("delivery_observed_at") or pending.get("attempted_at")
+            require(0 <= (when - checked).total_seconds() <= 60
+                    and (attempted is None or checked >= timestamp(attempted)),
+                    "delivery readback is stale or predates the last delivery attempt")
+        if readback == "present":
+            pending = {**pending, "status": "delivered", "readback_evidence_ref": event["readback_evidence_ref"]}
+            ledger["notifications"] = [pending if item["key"] == key else item for item in ledger["notifications"]]
+        if (pending.get("status") in {"not_delivered", "active_writer"} or
+                (pending.get("status") in {"pending", "unknown"} and readback == "absent")):
+            due = pending.get("next_check_at")
+            if (destination == "idle"
+                    and (due is None or when >= timestamp(due)) and notification_authorized(state)):
+                if pending.get("attempts", 1) >= 3:
+                    return answer("delivery_recovery_checkpoint", "Delivery attempt budget is exhausted; retain receipt checks and let Controller read the saved result directly.", key=key)
+                payload = pending.get("controller_event")
+                require(isinstance(payload, dict) and notification_digest(payload) == pending.get("receipt_sha256"),
+                        "retry needs the original saved payload and its receipt SHA")
+                pending = {**pending, "status": "pending", "attempts": pending.get("attempts", 1) + 1,
+                           "attempted_at": stamp(when), "next_check_at": stamp(when + timedelta(seconds=60))}
+                ledger["notifications"] = [pending if item["key"] == key else item for item in ledger["notifications"]]
+                return answer("retry_notification", "Confirmed non-delivery and an idle destination permit one same-payload authorized retry.",
+                              controller_event=payload, key=key)
+        return answer("check_controller_receipt", "Read delivery history, Controller state or the shared receipt; unknown is not non-delivery and delivered is not received.", key=key)
 
     if not web_capture_required(state) or (ledger.get("text_complete") and ledger.get("required_artifacts_ready")):
         if state.get("awaiting_send") is True and state["phase"] in {"ready_to_submit", "submitting"}:
@@ -519,13 +635,15 @@ def scheduled_observation(state, event, saved):
         receipt = event.get("receipt")
         require(receipt_bound(state, receipt), "scheduled artifacts have stale or invalid binding")
         if not artifact_ready({**state, "artifact_receipt": receipt}):
-            return answer("capture_required_artifacts", "Required attachments remain; preserve capture obligations without waking Controller.")
+            return answer("capture_required_artifacts", "Required attachments remain; preserve capture obligations without waking Controller.",
+                          observe_webpage=True)
         ledger["required_artifacts_ready"] = True
         schedule_action = "pause_if_active" if state["phase"] != "waiting_web" or ledger.get("text_complete") else "keep_active"
         controller_event = {**event, "type": "artifact_receipt"}
         notification_material = {"kind": "artifacts", "receipt": receipt}
     elif state["phase"] != "waiting_web":
-        return answer("capture_required_artifacts", "Text is collected; only the outstanding required attachments need observation.")
+        return answer("capture_required_artifacts", "Text is collected; only the outstanding required attachments need observation.",
+                      observe_webpage=True)
     else:
         require(event.get("request_user_message_id") == state.get("submitted_user_message_id"),
                 "observer does not follow the submitted user message")
@@ -572,21 +690,26 @@ def scheduled_observation(state, event, saved):
                                      "sha256": event["body_sha256"]}
         else:
             action = observed["action"] if observed["action"] == "reload_same_conversation" else "keep_quiet"
-            return answer(action, observed["reason"])
+            return answer(action, observed["reason"], observe_webpage=True)
 
-    key = hashlib.sha256(json.dumps({"binding": binding, "change": notification_material},
-                                   sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    key = notification_key(binding, notification_material)
     if any(item.get("key") == key for item in ledger["notifications"]):
         return answer("keep_quiet", "This reply/content or error transition already has a receipt; do not wake Controller again.",
-                      schedule_action=schedule_action, key=key)
+                      schedule_action=schedule_action, key=key,
+                      observe_webpage=web_capture_required(state) and not (ledger.get("text_complete") and ledger.get("required_artifacts_ready")))
+    controller_event = {**controller_event, "execution_scope": state.get("execution_scope", "repair_loop"), "notification_key": key}
+    digest = notification_digest(controller_event)
+    controller_event["notification_receipt_sha256"] = digest
     ledger["notifications"] = [*ledger["notifications"], {"key": key, "status": "pending",
-                                                          "evidence": event["evidence"]}]
+                "receipt_sha256": digest, "controller_event": controller_event,
+                "attempts": 1 if not inline and notification_authorized(state) else 0, "attempted_at": stamp(when),
+                "next_check_at": stamp(when + timedelta(seconds=60)), "evidence": event["evidence"]}]
     action = "return_to_controller" if inline else "notify_controller" if notification_authorized(state) else "save_receipt_for_controller"
     return answer(action, "One new actionable receipt is ready; Controller verifies it before any authorized developer work.",
                   controller_event=controller_event, schedule_action=schedule_action, key=key)
 
 
-def decide(state, event, observer_record=None):
+def _decide(state, event, observer_record=None):
     require(isinstance(state, dict) and isinstance(event, dict), "state/event must be JSON objects")
     require(type(state.get("schema_version")) is int and state["schema_version"] == 2,
             "unsupported schema_version; migrate v1 with a new artifact contract and reverify files")
@@ -639,8 +762,12 @@ def decide(state, event, observer_record=None):
                 "consumer_host", "artifact_root"):
         require(event.get(key) == state[key], "stale or mismatched " + key)
     kind = event.get("type")
-    if kind in {"scheduled_observation", "scheduled_artifacts", "inline_observation", "inline_artifacts", "observer_delivery"}:
+    if kind in {"scheduled_observation", "scheduled_artifacts", "inline_observation", "inline_artifacts", "observer_delivery", "notification_check"}:
         return scheduled_observation(state, event, observer_record)
+    if kind == "controller_received":
+        require(SHA256.fullmatch(str(event.get("notification_key", "")))
+                and SHA256.fullmatch(str(event.get("notification_receipt_sha256", ""))), "receipt needs notification identity and payload SHA")
+        return result(state, "record_controller_receipt", "Controller read the saved result; receipt alone does not assess or integrate it.")
     if state["phase"] == "completed":
         return result(state, "already_complete", "Start a separately authorized run for new work.")
     if kind == "bind_controller":
@@ -1008,6 +1135,34 @@ def decide(state, event, observer_record=None):
         answer["state_updates"]["delivery"] = delivery
         return answer
     raise ValueError("unsupported event type")
+
+
+def decide(state, event, observer_record=None):
+    answer = _decide(state, event, observer_record)
+    if (event.get("type") in {"controller_received", "observation", "artifact_receipt", "assessment", "worker_result", "web_progress"}
+            and event.get("notification_key")):
+        key, digest = event["notification_key"], event.get("notification_receipt_sha256")
+        require(SHA256.fullmatch(str(key)) and SHA256.fullmatch(str(digest)), "invalid Controller notification receipt")
+        if event["type"] in {"observation", "artifact_receipt", "web_progress"}:
+            require(digest == notification_digest(event), "Controller receipt payload SHA mismatch")
+        received = record(state, event, receipt_sha256=digest, received_at=event.get("controller_received_at"))
+        answer["state_updates"]["received_notifications"] = {**(state.get("received_notifications") or {}), key: received}
+    # Controller reads the independent observer record before closing its own
+    # Web follow-up. Processing a primary event can acknowledge it in this update.
+    candidate = {**state, **answer["state_updates"]}
+    if (observer_record and observer_record.get("binding") == observer_binding(candidate)
+            and candidate["phase"] not in {"paused", "blocked"}
+            and any(item.get("status") != "received" and not notification_received(candidate, item, observer_record)
+                    for item in observer_record.get("notifications", []))):
+        answer["schedule_action"] = "none" if state.get("followup_mode", "durable") == "inline" else "keep_active"
+        if event["type"] == "followup_closed" or answer["action"] in {"complete", "disable_followup"}:
+            answer["action"] = "ensure_followup" if event["type"] == "followup_closed" else "await_controller_receipt"
+            answer["reason"] = "Controller receipt remains open; read the saved result before closing this run's Luna follow-up."
+            answer["terminal"] = False
+            if candidate["phase"] == "completed":
+                answer["state_updates"]["phase"] = state["phase"]
+                answer["phase"] = state["phase"]
+    return answer
 
 
 def main():

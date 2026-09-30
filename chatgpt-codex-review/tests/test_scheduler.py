@@ -42,6 +42,32 @@ def inline_event(item):
     return {**item, "inline_execution_ref": "tasks/inline-luna.json", "inline_turn_id": "current-turn"}
 
 
+def notification_check(current, seconds=20, **fields):
+    moment = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)
+    view = {} if current.get("followup_mode") == "inline" else {
+        "followup_view": followup(current, checked_seconds=seconds, evidence_ref=f"receipt-view-{seconds}")}
+    return event(current, "notification_check", observed_at=moment.isoformat(),
+                 **view, **fields)
+
+
+def delivery(current, key, status, seconds=11):
+    moment = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)
+    return event(current, "observer_delivery", observed_at=moment.isoformat(), notification_key=key,
+                 delivery_status=status, delivery_evidence_ref=f"io/{status}-{seconds}.json",
+                 destination_thread_id=current["controller_thread_id"], destination_host=current["controller_host"])
+
+
+def destination_readback(current, seconds, **fields):
+    moment = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)
+    return {"destination_thread_id": current["controller_thread_id"], "destination_host": current["controller_host"],
+            "readback_observed_at": moment.isoformat(), "readback_evidence_ref": f"io/destination-{seconds}.json", **fields}
+
+
+def collected(current):
+    first = HELPER.decide(current, scheduled(current))
+    return HELPER.decide(current, scheduled(current, 10), first["observer_updates"])
+
+
 class SchedulerTests(unittest.TestCase):
     def test_controller_owned_schedule_and_duplicate_active_ids_cannot_authorize_send(self):
         current = state("ready_to_submit")
@@ -121,13 +147,19 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(answer["action"], "notify_controller")
         self.assertTrue(answer["activate_controller"])
         self.assertFalse(answer["activate_developer"])
-        self.assertEqual(answer["schedule_action"], "pause_if_active")
+        self.assertEqual(answer["schedule_action"], "keep_active")
         ledger = answer["observer_updates"]
         triaged = HELPER.decide(current, answer["controller_event"])
         self.assertEqual(triaged["action"], "triage_review")
         self.assertEqual(current, initial)
         duplicate = HELPER.decide(current, scheduled(current, 20), ledger)
         self.assertFalse(duplicate["activate_controller"])
+        self.assertFalse(duplicate["observe_webpage"])
+        self.assertEqual(duplicate["action"], "check_controller_receipt")
+        current = apply(current, triaged)
+        received = HELPER.decide(current, notification_check(current, 30), duplicate["observer_updates"])
+        self.assertEqual(received["action"], "pause_followup")
+        self.assertEqual(received["schedule_action"], "pause_if_active")
 
     def test_streaming_changes_and_unchanged_generation_remain_quiet(self):
         current = authorized(state())
@@ -148,6 +180,57 @@ class SchedulerTests(unittest.TestCase):
         second = HELPER.decide(current, {**progress, "observed_at": "2026-01-01T00:00:05+00:00"}, first["observer_updates"])
         self.assertEqual(second["action"], "keep_quiet")
         self.assertFalse(second["activate_controller"])
+
+    def test_received_progress_does_not_pause_the_unfinished_web_reply(self):
+        current = authorized(state())
+        progress = HELPER.decide(current, scheduled(current, generation="generating", actionable_progress=True,
+                                actionable_progress_ref="ui/progress.json"))
+        current = apply(current, HELPER.decide(current, progress["controller_event"], progress["observer_updates"]))
+        checking = HELPER.decide(current, notification_check(current, 20), progress["observer_updates"])
+        self.assertEqual(checking["phase"], "waiting_web")
+        self.assertEqual(checking["action"], "keep_quiet")
+        self.assertEqual(checking["schedule_action"], "keep_active")
+        self.assertTrue(checking["observe_webpage"])
+        self.assertFalse(checking["activate_controller"])
+        self.assertEqual(checking["observer_updates"]["notifications"][0]["status"], "received")
+        first = HELPER.decide(current, scheduled(current, 30), checking["observer_updates"])
+        complete = HELPER.decide(current, scheduled(current, 40), first["observer_updates"])
+        self.assertEqual(complete["action"], "notify_controller")
+
+    def test_notification_check_with_no_notifications_retains_initial_web_wait(self):
+        current = state()
+        checking = HELPER.decide(current, notification_check(current))
+        self.assertEqual(checking["action"], "keep_quiet")
+        self.assertEqual(checking["schedule_action"], "keep_active")
+        self.assertTrue(checking["observe_webpage"])
+        self.assertEqual(checking["observer_updates"]["notifications"], [])
+        current["followup"] = followup(current, status="PAUSED")
+        missing = HELPER.decide(current, notification_check(current))
+        self.assertEqual(missing["action"], "ensure_followup")
+        self.assertEqual(missing["schedule_action"], "keep_active")
+
+    def test_notification_check_with_no_notifications_retains_required_artifact_capture(self):
+        current = with_required(ready_review())
+        checking = HELPER.decide(current, notification_check(current))
+        self.assertEqual(checking["action"], "capture_required_artifacts")
+        self.assertEqual(checking["schedule_action"], "keep_active")
+        self.assertTrue(checking["observe_webpage"])
+        self.assertFalse(checking["activate_controller"])
+        captured = event(current, "scheduled_artifacts", observed_at="2026-01-01T00:00:30+00:00",
+                         followup_view=followup(current, checked_seconds=30), receipt=receipt(current))
+        saved = HELPER.decide(current, captured, checking["observer_updates"])
+        current = apply(current, HELPER.decide(current, saved["controller_event"], saved["observer_updates"]))
+        closed = HELPER.decide(current, notification_check(current, 40), saved["observer_updates"])
+        self.assertEqual(closed["action"], "pause_followup")
+
+    def test_notification_check_with_no_notifications_preserves_the_armed_send_window(self):
+        current = state("ready_to_submit")
+        current["awaiting_send"] = True
+        checking = HELPER.decide(current, notification_check(current))
+        self.assertEqual(checking["action"], "keep_quiet")
+        self.assertEqual(checking["schedule_action"], "keep_active")
+        self.assertFalse(checking["observe_webpage"])
+        self.assertEqual(checking["state_updates"], {})
 
     def test_old_quota_error_only_wakes_once_and_new_error_transition_can_wake(self):
         current = authorized(state())
@@ -170,8 +253,7 @@ class SchedulerTests(unittest.TestCase):
         full = HELPER.decide(current, scheduled(current, 10), first["observer_updates"])
         self.assertEqual(full["action"], "save_receipt_for_controller")
         self.assertFalse(full["activate_controller"])
-        failed = event(current, "observer_delivery", observed_at="2026-01-01T00:00:11+00:00",
-                       notification_key=full["notification_key"], delivery_status="unknown", delivery_evidence_ref="io/timeout.json")
+        failed = delivery(current, full["notification_key"], "unknown")
         ledger = HELPER.decide(current, failed, full["observer_updates"])["observer_updates"]
         self.assertFalse(HELPER.decide(current, scheduled(current, 20), ledger)["activate_controller"])
         with self.assertRaisesRegex(ValueError, "communication authority"):
@@ -206,13 +288,203 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(current["phase"], "repairing")
         tick = HELPER.decide(current, scheduled(current, 20), full["observer_updates"])
         self.assertEqual(tick["action"], "capture_required_artifacts")
+        self.assertTrue(tick["observe_webpage"])
         self.assertFalse(tick["activate_controller"])
         captured = event(current, "scheduled_artifacts", observed_at="2026-01-01T00:00:30+00:00",
                          followup_view=followup(current, checked_seconds=30), receipt=receipt(current))
         ready = HELPER.decide(current, captured, tick["observer_updates"])
         self.assertEqual(ready["action"], "notify_controller")
-        self.assertEqual(ready["schedule_action"], "pause_if_active")
-        self.assertEqual(HELPER.decide(current, ready["controller_event"])["action"], "continue_repair_with_files")
+        self.assertEqual(ready["schedule_action"], "keep_active")
+        applied = HELPER.decide(current, ready["controller_event"])
+        self.assertEqual(applied["action"], "continue_repair_with_files")
+        current = apply(current, applied)
+        received = HELPER.decide(current, notification_check(current, 40), ready["observer_updates"])
+        self.assertEqual(received["schedule_action"], "pause_if_active")
+        self.assertFalse(received["observe_webpage"])
+
+    def test_delivered_is_not_received_and_processing_records_receipt_once(self):
+        current = authorized(state())
+        full = collected(current)
+        delivered = HELPER.decide(current, delivery(current, full["notification_key"], "delivered"), full["observer_updates"])
+        checking = HELPER.decide(current, notification_check(current), delivered["observer_updates"])
+        self.assertEqual(checking["action"], "check_controller_receipt")
+        self.assertEqual(checking["schedule_action"], "keep_active")
+        self.assertFalse(checking["activate_controller"])
+        self.assertFalse(checking["observe_webpage"])
+        received = HELPER.decide(current, full["controller_event"], checking["observer_updates"])
+        self.assertEqual(received["action"], "triage_review")
+        self.assertIn(full["notification_key"], received["state_updates"]["received_notifications"])
+        current = apply(current, received)
+        stopped = HELPER.decide(current, notification_check(current, 30), checking["observer_updates"])
+        self.assertEqual(stopped["action"], "pause_followup")
+        self.assertEqual(stopped["observer_updates"]["notifications"][0]["status"], "received")
+        self.assertFalse(stopped["observe_webpage"])
+
+    def test_active_writer_waits_then_retries_original_payload_without_dedup_loss(self):
+        current = authorized(state())
+        current["submitted_user_message_id"] = "original-user-message"
+        full = collected(current)
+        failed = HELPER.decide(current, delivery(current, full["notification_key"], "active_writer"), full["observer_updates"])
+        saved = failed["observer_updates"]
+        self.assertEqual(saved["notifications"][0]["destination_thread_id"], current["controller_thread_id"])
+        busy = HELPER.decide(current, notification_check(current, 80, **destination_readback(current, 80,
+                            destination_status="active_writer")), saved)
+        self.assertEqual(busy["action"], "check_controller_receipt")
+        self.assertFalse(busy["activate_controller"])
+        retry = HELPER.decide(current, notification_check(current, 90, **destination_readback(current, 90,
+                             destination_status="idle")), busy["observer_updates"])
+        self.assertEqual(retry["action"], "retry_notification")
+        self.assertEqual(retry["notification_key"], full["notification_key"])
+        self.assertEqual(retry["controller_event"], full["controller_event"])
+        self.assertEqual(retry["controller_event"]["request_user_message_id"], "original-user-message")
+        self.assertEqual(retry["observer_updates"]["notifications"][0]["attempts"], 2)
+        duplicate = HELPER.decide(current, notification_check(current, 100), retry["observer_updates"])
+        self.assertFalse(duplicate["activate_controller"])
+        self.assertFalse(duplicate["observe_webpage"])
+        self.assertEqual(len(duplicate["observer_updates"]["notifications"]), 1)
+
+    def test_unknown_delivery_needs_sufficient_absence_readback_before_retry(self):
+        current = authorized(state())
+        full = collected(current)
+        failed = HELPER.decide(current, delivery(current, full["notification_key"], "unknown"), full["observer_updates"])
+        idle = destination_readback(current, 80, destination_status="idle")
+        unknown = HELPER.decide(current, notification_check(current, 80, **idle), failed["observer_updates"])
+        self.assertEqual(unknown["action"], "check_controller_receipt")
+        self.assertEqual(unknown["observer_updates"]["notifications"][0]["status"], "unknown")
+        present = HELPER.decide(current, notification_check(current, 90, **destination_readback(current, 90,
+                               delivery_readback="present", destination_status="idle")), unknown["observer_updates"])
+        self.assertEqual(present["action"], "check_controller_receipt")
+        self.assertEqual(present["observer_updates"]["notifications"][0]["status"], "delivered")
+        absent = HELPER.decide(current, notification_check(current, 90, **destination_readback(current, 90,
+                              delivery_readback="absent", destination_status="idle")), unknown["observer_updates"])
+        self.assertEqual(absent["action"], "retry_notification")
+        self.assertEqual(absent["controller_event"], full["controller_event"])
+
+    def test_retry_readback_must_match_target_be_fresh_and_follow_the_failed_attempt(self):
+        current = authorized(state())
+        full = collected(current)
+        for status in ("delivered", "unknown", "active_writer", "not_delivered"):
+            with self.subTest(status=status), self.assertRaisesRegex(ValueError, "destination mismatch"):
+                HELPER.decide(current, {**delivery(current, full["notification_key"], status),
+                                       "destination_host": "other-host"}, full["observer_updates"])
+        failed = HELPER.decide(current, delivery(current, full["notification_key"], "not_delivered"), full["observer_updates"])
+        checks = destination_readback(current, 80, destination_status="idle", delivery_readback="absent")
+        for change in ({"destination_thread_id": "other-thread"}, {"destination_host": "other-host"},
+                       {"readback_evidence_ref": ""}, {"readback_observed_at": "2026-01-01T00:00:00+00:00"},
+                       {"readback_observed_at": "2026-01-01T00:01:21+00:00"}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                HELPER.decide(current, notification_check(current, 80, **{**checks, **change}), failed["observer_updates"])
+        early = HELPER.decide(current, notification_check(current, 20, **destination_readback(current, 20,
+                             destination_status="idle")), failed["observer_updates"])
+        self.assertEqual(early["action"], "check_controller_receipt")
+
+    def test_failed_delivery_retries_are_bounded_but_saved_result_remains_collectable(self):
+        current = authorized(state())
+        full = collected(current)
+        ledger = full["observer_updates"]
+        for failure_time, retry_time in ((11, 80), (81, 150)):
+            failed = HELPER.decide(current, delivery(current, full["notification_key"], "not_delivered", failure_time), ledger)
+            retried = HELPER.decide(current, notification_check(current, retry_time, **destination_readback(current, retry_time,
+                                   destination_status="idle")), failed["observer_updates"])
+            self.assertEqual(retried["action"], "retry_notification")
+            ledger = retried["observer_updates"]
+        failed = HELPER.decide(current, delivery(current, full["notification_key"], "active_writer", 151), ledger)
+        checkpoint = HELPER.decide(current, notification_check(current, 220, **destination_readback(current, 220,
+                                  destination_status="idle")), failed["observer_updates"])
+        self.assertEqual(checkpoint["action"], "delivery_recovery_checkpoint")
+        self.assertFalse(checkpoint["activate_controller"])
+        self.assertEqual(checkpoint["schedule_action"], "keep_active")
+        self.assertFalse(checkpoint["observe_webpage"])
+        self.assertEqual(checkpoint["observer_updates"]["notifications"][0]["controller_event"], full["controller_event"])
+        current = apply(current, HELPER.decide(current, full["controller_event"], checkpoint["observer_updates"]))
+        collected_by_controller = HELPER.decide(current, notification_check(current, 230), checkpoint["observer_updates"])
+        self.assertEqual(collected_by_controller["action"], "pause_followup")
+
+    def test_retry_needs_current_direct_authority_but_controller_read_does_not(self):
+        current = authorized(state())
+        full = collected(current)
+        failed = HELPER.decide(current, delivery(current, full["notification_key"], "not_delivered"), full["observer_updates"])
+        current["controller_notification_authorization"]["authorized"] = False
+        check = HELPER.decide(current, notification_check(current, 80, **destination_readback(current, 80,
+                            destination_status="idle")), failed["observer_updates"])
+        self.assertEqual(check["action"], "check_controller_receipt")
+        self.assertFalse(check["activate_controller"])
+        current = apply(current, HELPER.decide(current, full["controller_event"], check["observer_updates"]))
+        self.assertEqual(HELPER.decide(current, notification_check(current, 90), check["observer_updates"])["action"], "pause_followup")
+
+    def test_pause_and_resume_preserve_unreceived_result_and_restore_luna_checker(self):
+        current = authorized(state())
+        full = collected(current)
+        paused = HELPER.decide(current, event(current, "pause", reason="user_stop", user_instruction_ref="user/stop.md"))
+        current = apply(current, paused)
+        paused_tick = HELPER.decide(current, notification_check(current, 20), full["observer_updates"])
+        self.assertEqual(paused_tick["schedule_action"], "pause_if_active")
+        current = apply(current, HELPER.decide(current, closed_followup(current)))
+        resume = event(current, "resume", observed_at="2026-01-01T00:00:30+00:00", resolution_ref="user/resume.md",
+                       followup_view=followup(current, checked_seconds=30, evidence_ref="view-resumed"))
+        self.assertEqual(HELPER.decide(current, resume)["action"], "ensure_followup")
+        current["followup"] = followup(current, checked_seconds=30, evidence_ref="view-restored-luna")
+        current = apply(current, HELPER.decide(current, {**resume,
+                             "followup_view": followup(current, checked_seconds=30, evidence_ref="view-fresh-resume")}))
+        checking = HELPER.decide(current, notification_check(current, 40), paused_tick["observer_updates"])
+        self.assertEqual(checking["action"], "check_controller_receipt")
+        self.assertEqual(checking["schedule_action"], "keep_active")
+        self.assertFalse(checking["observe_webpage"])
+        self.assertEqual(checking["observer_updates"]["notifications"][0]["controller_event"], full["controller_event"])
+
+    def test_existing_processed_reply_and_legacy_observer_naturally_close(self):
+        current = authorized(state())
+        full = collected(current)
+        current = ready_review()
+        self.assertNotIn("received_notifications", current)
+        for legacy in (False, True):
+            ledger = copy.deepcopy(full["observer_updates"])
+            if legacy:
+                ledger["notifications"] = [{"key": full["notification_key"], "status": "unknown", "evidence": ["io/old.json"]}]
+            with self.subTest(legacy=legacy):
+                stopped = HELPER.decide(current, notification_check(current, 20), ledger)
+                self.assertEqual(stopped["action"], "pause_followup")
+                self.assertEqual(stopped["schedule_action"], "pause_if_active")
+                self.assertEqual(stopped["observer_updates"]["notifications"][0]["status"], "received")
+        unverified = {**current, "last_completion": {**current["last_completion"], "body_sha256": "d" * 64}}
+        still_open = HELPER.decide(unverified, notification_check(unverified, 20), ledger)
+        self.assertEqual(still_open["action"], "check_controller_receipt")
+        self.assertEqual(still_open["schedule_action"], "keep_active")
+        self.assertNotEqual(still_open["observer_updates"]["notifications"][0]["status"], "received")
+
+    def test_controller_receipt_can_be_recorded_with_assessment_or_direct_shared_read(self):
+        current = authorized(state())
+        full = collected(current)
+        current = ready_review()
+        metadata = {key: full["controller_event"][key] for key in ("notification_key", "notification_receipt_sha256")}
+        assessed = HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
+                                 coverage_complete=True, confirmed_findings=1, unresolved_claims=0, **metadata))
+        self.assertIn(full["notification_key"], assessed["state_updates"]["received_notifications"])
+        read = HELPER.decide(current, event(current, "controller_received", evidence=["controller/read-saved-result.json"], **metadata))
+        self.assertEqual(read["action"], "record_controller_receipt")
+        self.assertEqual(read["state_updates"]["received_notifications"][full["notification_key"]]["evidence"],
+                         ["controller/read-saved-result.json"])
+        tampered = {**full["controller_event"], "body_sha256": "d" * 64}
+        with self.assertRaisesRegex(ValueError, "payload SHA mismatch"):
+            HELPER.decide(state(), tampered)
+
+    def test_controller_cannot_close_while_another_result_is_unreceived(self):
+        current = authorized(state())
+        progress = HELPER.decide(current, scheduled(current, generation="generating", actionable_progress=True,
+                               actionable_progress_ref="ui/progress.json"))
+        first = HELPER.decide(current, scheduled(current, 10), progress["observer_updates"])
+        full = HELPER.decide(current, scheduled(current, 20), first["observer_updates"])
+        triaged = HELPER.decide(current, full["controller_event"], full["observer_updates"])
+        self.assertEqual(triaged["schedule_action"], "keep_active")
+        current = apply(current, triaged)
+        premature = HELPER.decide(current, closed_followup(current), full["observer_updates"])
+        self.assertEqual(premature["action"], "ensure_followup")
+        self.assertFalse(premature["terminal"])
+        self.assertEqual(premature["schedule_action"], "keep_active")
+        received = event(current, "controller_received", evidence=["controller/read-progress.json"],
+                         **{key: progress["controller_event"][key] for key in ("notification_key", "notification_receipt_sha256")})
+        current = apply(current, HELPER.decide(current, received, full["observer_updates"]))
+        self.assertEqual(HELPER.decide(current, closed_followup(current), full["observer_updates"])["action"], "continue_current_step")
 
     def test_review_only_reports_findings_without_dispatch_and_without_invented_local_checks(self):
         current = ready_review()
@@ -258,7 +530,11 @@ class SchedulerTests(unittest.TestCase):
                              first["observer_updates"])
         self.assertEqual(full["action"], "return_to_controller")
         self.assertEqual(full["schedule_action"], "none")
-        current = apply(current, HELPER.decide(current, full["controller_event"]))
+        current = apply(current, HELPER.decide(current, full["controller_event"], full["observer_updates"]))
+        self.assertIn(full["notification_key"], current["received_notifications"])
+        received = HELPER.decide(current, inline_event(notification_check(current, 20)), full["observer_updates"])
+        self.assertEqual(received["action"], "finish_inline_capture")
+        self.assertEqual(received["schedule_action"], "none")
         current = apply(current, HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
                         coverage_complete=True, confirmed_findings=1, unresolved_claims=1)))
         completed = HELPER.decide(current, event(current, "delivery", delivered_source_id=A, complete=True))
