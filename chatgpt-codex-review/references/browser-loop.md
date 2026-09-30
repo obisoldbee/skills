@@ -10,7 +10,7 @@
 | 请求或发送状态未知 | 核对原历史、草稿和上传状态；不重发、不 Retry/Regenerate |
 | 登录/验证码、真实工具拒绝、用户接管或 inactive/unassigned 所有权 | 停对应操作并交接；不以重建空间、换账号或别的工具绕过 |
 
-恢复最多连续尝试两次；仍失败先诊断实际 app/tool 状态并使用已有 DOM/下载文件，避免无限重启。实际载体恢复成功的证据才结束该事故预算，新 turn 或证据文件刷新不清预算；之后新的独立故障可再次恢复。权限缺省和真实 denial 不是授权。
+恢复最多连续尝试两次；各入口先读主 state 与最新同业务 Luna ledger 的已用次数，切换 Controller/observer、owner/turn 不增加机会。仍失败先诊断实际 app/tool 状态并使用已有 DOM/下载文件，避免无限重启。实际载体恢复成功的证据才结束该事故预算，证据文件刷新不清预算；之后新的独立故障可再次恢复。权限缺省和真实 denial 不是授权。
 
 ## 准备与发送
 
@@ -22,12 +22,12 @@ Astra 冻结 prompt SHA、run/round/source/token、scope、源码入口、附件
 
 每次只获取决策所需状态：原请求是否在、其后的新助手消息 ID、生成/错误信号、完整正文长度/SHA、观察时间、证据路径。完整正文写独立 UTF-8 文件；不能把 viewport 截断内容标为完整。只有无生成中和错误、完成操作区可见、同一消息非空正文两次观测指纹相同且间隔至少十秒，才交 Astra 核实。正文变化时观察时间也必须单调。旧回复、按钮暂消失、网页自称“完成”都不足以验收。
 
-若网页给文件，先按 ego-browser 文档在触发点击前监听 download event，`saveAs()` 到 `artifact_root` 内的独立文件。调用 `verify_artifacts.py` 检查本轮 required/optional 合同，保存完整 JSON 回执。真实下载失败、CRC/PNG 解码失败、缺依赖/不支持格式均报告 missing/invalid/unverified；不得把网页自报文件名或选择文件成功当已收到。无预期原件哈希时只报告本次接收 SHA。必需缺件继续补取，不阻止独立文本核实；可选缺件记录即可。
+若网页给文件，先按 ego-browser 文档在触发点击前监听 download event，`saveAs()` 到 `artifact_root` 内的独立文件。review_ready/repairing/validating 补件和 waiting_web 使用同一故障/人类门与临时退避；不能跳过分类，错误小回执可由 Controller 保留原阶段直接处理，正常补件保留已收正文。调用 `verify_artifacts.py` 检查本轮 required/optional 合同，保存完整 JSON 回执。真实下载失败、CRC/PNG 解码失败、缺依赖/不支持格式均报告 missing/invalid/unverified；不得把网页自报文件名或选择文件成功当已收到。无预期原件哈希时只报告本次接收 SHA。必需缺件继续补取，不阻止独立文本核实；可选缺件记录即可。
 
-Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍交小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐后只核对未收讫通知，不重复打开网页；采集和 Controller 收讫均闭合才暂停本 run 同一 heartbeat 并回读。缺 required 文件继续 capture；项目级 watcher 的开发等待独立保留。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话和当前可用载体。inline 收齐直接交回 Controller，一次处理记收讫，不要求后台任务。
+Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍交小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐后只核对未收讫通知，不重复打开网页；采集和 Controller 收讫均闭合才暂停本 run 同一 heartbeat 并回读。仅登记已读、尚未处理的原事件由 Controller 据同一最新 ledger 本地 process_saved_result，不因旧 waiting_web 再启表，也不让 Luna 裁决。缺 required 文件继续 capture；项目级 watcher 的开发等待独立保留。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话和当前可用载体。inline 收齐直接交回 Controller，一次处理记收讫，不要求后台任务。
 
 ## 临时故障
 
-正常生成等待不刷新。服务器繁忙/网络/加载失败保存证据、确认草稿/上传后刷新原 URL 并核对请求，连续最多三次，退避至少 30/60/120 秒；正常清零。预算用尽停反复刷新、保留较低频 Luna 观察；已知额度恢复等待静默去重，不永久取消监测。旧错误无内容/状态转变不重复通知 Astra。请求在就观察，未知核对历史，明确不存在才按发送门补发；已完成上传/下载不重复传取。空间丢失或崩溃用 `browser_fault/browser_recovered` 继续原流程，不当外部终态。旧 missing-space blocked 可凭实际恢复证据回到保存阶段；过期 inline 绑定由当前真实 Luna 执行/turn/期限续接，保留原未收讫队列，不让用户配置调度。真实登录/验证码/权限拒绝/用户控制才停对应动作，Controller 核实独立工作和外部条件后记阻碍；解除后按正常 resume 清除该门标记。跨回合等待需真实 Luna 调度，缺则准确报告，不用 sleep 冒充常驻。
+正常生成等待不刷新。服务器繁忙/网络/加载失败保存证据、确认草稿/上传后刷新原 URL 并核对请求，连续最多三次，退避至少 30/60/120 秒；正常清零。预算用尽停反复刷新、保留较低频 Luna 观察；已知额度恢复等待静默去重，不永久取消监测。旧错误无内容/状态转变不重复通知 Astra。请求在就观察，未知核对历史，明确不存在才按发送门补发；已完成上传/下载不重复传取。空间丢失或崩溃用 `browser_fault/browser_recovered` 恢复载体，不当外部终态；只自动解除原始证据已确认并标记的载体 blocker，材料/源码等无关或未分类 blocker 保留，独立恢复浏览器后仍核对其真实解除条件。旧证据不清先读原记录或正常 resume+resolution_ref，不新增用户恢复许可。过期 inline 绑定由当前真实 Luna 执行/turn/期限续接，保留原未收讫队列，不让用户配置调度。真实登录/验证码/权限拒绝/用户控制才停对应动作，Controller 核实独立工作和外部条件后记阻碍；解除后按正常 resume 清除该门标记。跨回合等待需真实 Luna 调度，缺则准确报告，不用 sleep 冒充常驻。
 
 整体验收完成或用户叫停时按浏览器 Skill 的 finish 合同收尾；临时错误、用户接管或暂停时不误报成功。

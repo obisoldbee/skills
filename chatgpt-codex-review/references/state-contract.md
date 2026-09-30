@@ -40,7 +40,7 @@ v1 没有附件门槛，helper 明确拒绝 `schema_version=1`。迁移时读取
 }
 ```
 
-示例值不可执行。`execution_scope` 取 `review_only/repair_loop/materials_only`，从原始用户要求绑定；旧 v2 缺省 repair_loop 是兼容值，恢复时仍须核对真实修复授权。review_only（包括 audit-only）允许网页发送/收取，完整报告可保留确认缺陷与未核实建议，不自动派修。materials_only 只交冻结请求。`followup_mode=inline` 只在当前 turn 有界收取；`durable` 要实际 Luna heartbeat。用户明确要求 durable 时保存 `durable_followup_requested=true`，helper 拒绝改 inline；旧 v2 缺省 durable，不把缺调度自动变成本回合模式。
+示例值不可执行。`execution_scope` 取 `review_only/repair_loop/materials_only`，从原始用户要求绑定；旧 v2 缺省 repair_loop 是兼容值，恢复时仍须核对真实修复授权。review_only（包括 audit-only）允许网页发送/收取，完整报告可保留确认缺陷与未核实建议，不自动派修。materials_only 只交冻结请求。`followup_mode=inline` 只在当前 turn 有界收取；`durable` 要实际 Luna heartbeat。用户明确要求 durable 时保存 `durable_followup_requested=true`，helper 拒绝改 inline；旧 v2 缺省 durable，不把缺调度自动变成本回合模式。把旧缺省显式补成相同 repair_loop/durable 只确认原语义，保留 ledger 原 binding/key/payload/SHA/状态与预算；真正 scope/mode 改变仍是新业务边界，不能重写旧结果冒充新结果。
 
 已有 state 保留 phase 和原件；无 Skill 历史的已有修复可直接 ready_to_submit，不重做初轮研究或默认派 Sol。缺 Controller 绑定时用 `bind_controller` 补真实 thread/host/绝对 state_path。首条尚未发送可以 URL=null；已发送必须由 UI 读回实际 `/c/id`，不编造。prepared_request 和 followup 都只由 Controller 核实真实事件后写入。
 
@@ -66,14 +66,14 @@ Luna 的 `artifact_receipt` 保存完整 JSON 到独立文件，回 Astra 小回
 | `followup_readback` | `followup` 为真实 heartbeat view 回执 | 记录本 run ACTIVE ID；不同 ID 仅在旧任务已删除/不存在的工具证据与替代 ACTIVE view 齐全时换绑 |
 | `submission` | URL 可在首次 not_sent 为 null，status=sent/not_sent/unknown；sent 需 request_present、user_message_id、ui_model_verified、prompt_sha256 | 未发须冻结请求及所选模式门槛：durable 新鲜 ACTIVE view，inline 本 turn 实际执行绑定；已发失效只补观察不重发 |
 | `adopt_submission` | 实际 URL、user message ID、原文 SHA/路径、源码身份及绑定 digest 的读回；无网页 token 时另记 `local_import_id` 且标明原文没有它 | 原请求绑定后接管观察，未知先 reconcile，绝不因本地导入而重发 |
-| `observation` | URL、时区时间、UI 错误/生成状态、请求与新消息身份、正文长度/SHA/保存路径、完成控件 | 两次完整稳定观测相隔 ≥10 秒才 triage；变化正文的观察时间也不可倒退；普通空间故障返回恢复动作 |
+| `observation` | URL、时区时间、UI 错误/生成状态、请求与新消息身份、正文长度/SHA/保存路径、完成控件 | waiting_web 两次完整稳定观测相隔 ≥10 秒才 triage；review_ready/repairing/validating 的必需补件也先分类故障/人类门/临时退避，保留原阶段与正文；无错误才正常补件 |
 | `browser_fault` | `reason_code=space_missing/space_closed/browser_crash/connection_failed` 与实际 evidence；若同时有真实 auth/user_control/permission_denied 则优先人类门 | 按原任务授权恢复本任务载体/原 URL；连续两次仍失败诊断，不直接 blocked 或重复索取许可 |
 | `browser_recovered` | 同一 URL、实际 observed_at、old_space_id、browser_context={space_id,page_label,ownership:"agent"}、recovery_evidence_ref、request_status=present/absent/unknown；已发另核对原 user_message_id/prompt_sha256 与已知 assistant_message_id | 保存旧→新映射后继续原收件/发送门；未知/身份不符先 reconcile，不重发；actual 恢复才结束事故预算，不能绕过用户 pause/人类门 |
 | `scheduled_observation` / `inline_observation` | 与 observation 同样的原始字段；durable 需新鲜 followup_view，inline 需 turn 执行绑定；错误需 error_fingerprint | Luna 独立去重/稳定性门禁，返回 observer_updates，主 state_updates 为空；无变化静默 |
 | `scheduled_artifacts` / `inline_artifacts` | 当前绑定的完整 receipt 与时间、模式回读 | 必需缺件仅继续 capture；收齐后产生一次 artifact_receipt 小回执 |
 | `observer_delivery` | notification_key、delivery_status=delivered/not_delivered/unknown/active_writer、实际 observed_at/delivery_evidence_ref、destination_thread_id/destination_host | 同 Controller 目的地的真实投递回执，仅写 Luna 独立记录；delivered 不等于 received |
 | `notification_check` | 实际 observed_at 与模式执行/readback；可带 notification_key、delivery_readback=present/absent/unknown、destination_status=idle/active_writer/unknown | 只查收讫/投递，不开已收齐网页；非 unknown 的读回须目标匹配、readback_evidence_ref/readback_observed_at 新鲜且不早于上次投递 |
-| `controller_received` | 已读 notification_key、notification_receipt_sha256 及真实读取 evidence | Controller 同次 state 更新记录收讫，不代替内容裁决/整合 |
+| `controller_received` | 已读 notification_key、notification_receipt_sha256 及真实读取 evidence；传最新 Luna record | 同次记收讫；采集已闭合且原事件尚未处理时 process_saved_result 返回原 payload 供 Controller 本地应用，不能以再启表代替处理 |
 | `web_progress` | 当前 URL/请求及 actionable_progress=true、actionable_progress_ref | Controller 核实新可行动证据，不误报完成或自动派修 |
 | `artifact_receipt` | `receipt`（helper 原始 JSON） | 绑定且必需文件 ready 后解锁依赖文件的修复或继续验收 |
 | `assessment` | review_message_id、coverage_complete；完整时 confirmed_findings、unresolved_claims、file_dependent_findings | review_only 保留问题后交报告；repair_loop 才派允许的确认修复，缺件仅挡依赖文件项 |
@@ -82,11 +82,11 @@ Luna 的 `artifact_receipt` 保存完整 JSON 到独立文件，回 Astra 小回
 | `delivery` | `delivered_source_id`, `complete` | 同一源码约定交付门槛 |
 | `external_blocker` | `reason`, `attempts`, `requires_external_change`, `independent_work_remaining` | 普通空间丢失/崩溃转恢复；其余先完成独立工作，确需外部改变才 blocked |
 | `pause` / `resume` | 用户停止/明确预算指令引用，或阻碍解除证据 | 保留同一 run 的恢复入口 |
-| `followup_closed` | 同一 automation ID 的真实 PAUSED view，并传最新 Luna record | 采集和已排队收讫均闭合才继续；仍未收讫则恢复 Luna 跟进；用户停止/阻碍保存检查点，旧无调度不先建再关 |
+| `followup_closed` | 同一 automation ID 的真实 PAUSED view，并传最新 Luna record | 采集和收讫均闭合但尚未处理时返回 process_saved_result，不因旧 waiting_web 再启表；仍需采集/收讫才恢复 Luna，用户停止/阻碍保存检查点，旧无调度不先建再关 |
 
 `followup` 的真实 heartbeat view 回执保留 automation_id、ACTIVE/PAUSED、run_id、state_path、prompt_binding_verified、实际 cadence_minutes、checked_at、next_check_at、evidence_ref。增加 `owner_role="web_io"`、`owner_thread_id/target_thread_id/owner_host/owner_model/owner_reasoning`，均匹配 web_io_binding；`owner_model_readback_ref/owner_reasoning_readback_ref` 匹配其实际证据；另存 `controller_thread_id/controller_host`，不把 Controller 当 owner。宿主调用字段是 targetThreadId；这里只是归一化回执，model/effort 继承目标聊天，不能发明 heartbeat model 参数。
 
-`browser_context` 只记录当前载体和恢复证据，不是服务端会话身份。先恢复可用的本任务空间，确认失效后重建并打开原 URL；没有 URL 的未发送首轮不伪造 URL。`browser_recovered` 核对已发原请求；尚未发送需真实 definitive_absence=true 才回原发送门，unknown 不允许补发。可在该事件带当前实际 inline_observer_binding 与匹配的执行/turn 字段续接过期窗口，不能仅在 prompt 自称新执行者。已保存正文/附件和未收讫原 payload/evidence 保留。`browser_recovery_attempts` 最多两次连续载体恢复，实际成功的 recovery_evidence_ref 才清零；换 turn/verified_at/读回路径不会清预算。旧 missing-space blocked 可用 browser_recovered，或带同等恢复字段的 resume 续保存阶段；真实 auth/user_control/permission_denied 门先实际解除并走正常 resume，清除 blocker_reason_code 后才允许后续普通恢复。显式用户暂停、inactive/unassigned 所有权和真正工具拒绝不可被失效标签遮盖。
+`browser_context` 只记录当前载体和恢复证据，不是服务端会话身份。先恢复可用的本任务空间，确认失效后重建并打开原 URL；没有 URL 的未发送首轮不伪造 URL。`browser_recovered` 核对已发原请求；尚未发送需真实 definitive_absence=true 才回原发送门，unknown 不允许补发。可在该事件带当前实际 inline_observer_binding 与匹配的执行/turn 字段续接过期窗口，不能仅在 prompt 自称新执行者。已保存正文/附件和未收讫原 payload/evidence 保留。`browser_recovery_attempts` 最多两次连续载体恢复；各入口读取主 state 与最新同业务 ledger 的已用次数，切换 Controller/observer、owner/turn 或刷新证明不重新计数，只有绑定当前业务的实际成功 recovery_evidence_ref 才复位。旧 blocked 仅在原始阻碍证据已核实为载体故障并记录 blocker_reason_code 时，browser_recovered 或同等恢复字段的 resume 自动续保存阶段；其他或未分类 blocker 保留 blocked/原 marker，仍可独立恢复载体并 continue_independent_work，但恢复浏览器不证明材料主机/源码发布等条件已解除。无法确认原阻碍时读取本 run 原证据或走已有正常 resume+resolution_ref，不新增用户审批。真实 auth/user_control/permission_denied 门先实际解除并走正常 resume，清除 marker 后才允许后续普通恢复。显式用户暂停、inactive/unassigned 所有权和真正工具拒绝不可被失效标签遮盖。
 
 以 `schedule_inventory_ref` 绑定本 run 全部实际调度的读取证据；`active_automation_ids` 在 ACTIVE 时必须仅含本 automation_id，PAUSED 时为空。默认建议 10 分钟，宿主实际节奏优先。ACTIVE 要下一次检查；PAUSED next_check_at=null。跨轮保留 ID，换绑需旧 ID 已删除/不存在的工具证据和替代 ACTIVE view。旧 Controller heartbeat 先用宿主工具暂停/删除并保存原始 readback，再迁移绑定并检查去重；不能假称旧 owner 是 Luna 才关它。
 
@@ -96,7 +96,7 @@ Luna 执行只读 CLI `next_action.py --state <state> --event <observation> --ob
 
 只有新可行动进展、完整回复或实质阻碍才生成 Controller 事件。稳定完成事件携带两个相隔 ≥10 秒的原始观测，Controller 核实 prior_observation 的绑定和完整性后一次 triage；prior_observation 必须显式带当前 execution_scope（如 review_only），缺省会按 repair_loop 判 stale/unbound。正文收齐但 required 文件未验时 keep_active，只补取当前缺件。跨可见聊天通知需 `controller_notification_authorization={authorized:true,user_instruction_ref,destination_thread_id,destination_host}`；授权必须直接来自用户且匹配 Controller。转发 prompt 不授予回发权限；无授权返回 save_receipt_for_controller，保留工件供等待/读取。inline 内部观察完成可 return_to_controller，不发跨聊天消息；Controller 一次应用原 observation 即可记收讫，schedule_action 一律 none，不新增 durable 门槛。两条模式都不直接激活 Developer。
 
-采集完成、通知投递和 Controller 收讫是三件事。notifications 每项保存 key、原 controller_event、receipt_sha256、status、attempts、attempted_at/next_check_at 和实际投递证据；payload SHA 是原事件（含 notification_key）的规范 JSON SHA，排除 notification_receipt_sha256/controller_received_at。pending、not_delivered、unknown、active_writer、delivered 都未结束收讫义务；同内容去重不清掉待交记录。采集已齐时 scheduled_observation 或 notification_check 返回 observe_webpage=false，仅查独立回执和 Controller state，未收讫保持 keep_active，不反复打开原网页。
+采集完成、通知投递、Controller 收讫与处理各自核实。notifications 每项保存 key、原 controller_event、receipt_sha256、status、attempts、attempted_at/next_check_at 和实际投递证据；payload SHA 是原事件（含 notification_key）的规范 JSON SHA，排除 notification_receipt_sha256/controller_received_at。pending、not_delivered、unknown、active_writer、delivered 都未结束收讫义务；同内容去重不清掉待交记录。采集已齐时 scheduled_observation 或 notification_check 返回 observe_webpage=false，仅查独立回执和 Controller state，未收讫保持 keep_active，不反复打开原网页。全部已收讫时 Luna 可 pause_followup；Controller 的 controller_received/followup_readback/followup_closed 根据同一最新 ledger 给 process_saved_result 和未改写的原 controller_event，本地应用后仍走正常 triage/附件处理/交付动作，不再启网页表或让 Luna 做裁决。没有完整原 payload 的历史记录给 read_saved_result，从原件核实恢复，不能制造新 key/SHA。收讫状态沿用已有记录，处理状态沿用主 phase/review/原件与附件回执，不建第二套账本。
 
 unknown 先核对足够覆盖原请求 key/payload 的目的地历史；最近几条或可能截断的 read_thread 输出只能保留 unknown。非 unknown 的 presence/absence 和用于恢复的 idle 证据绑定真实 destination_thread_id/destination_host，readback_observed_at 在本次 observed_at 前 60 秒内且不早于上次投递。已知 not_delivered/active_writer 或已确证 absent 时，目标 idle、直接通讯授权仍有效、冷却至少 60 秒才 retry_notification；原 key、payload、source/token/原网页请求身份保持不变。总投递机会最多三次，耗尽返回 delivery_recovery_checkpoint，保留低成本核对和可读原件；Controller 可主动 wait/read/读共享回执收取，不要求先成功反向消息。Controller 当前 turn 的 active writer 尤其应由当前 Controller 直接读结果。无授权不重试。
 

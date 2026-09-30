@@ -26,7 +26,7 @@ Astra Controller 单写 `RUN_ROOT/state.json` 和 `events.jsonl`，核实 Luna �
 
 `RUN_ROOT` 至少保存：原始需求、权限/披露范围、验收合同、各角色的通讯/执行/材料位置绑定、source route 及证据、state/events、每轮冻结 prompt、Luna 完整正文/附件/观测与小回执、Astra 逐项裁决、Sol 固定交付和本地检查。文件按 run/round 命名，不覆盖旧轮。Astra 用同目录临时文件原子替换 state，再追加事件；Luna/Sol 不追加主事件流。压缩上下文后先读取实际 state、当前 round 和原始资料。
 
-已有 state 按真实 phase、原件和当前授权恢复；旧 v2 的缺省 `repair_loop/durable` 是兼容解释，不替代用户原始范围，接续前补录实际 scope/mode。已有代码/修复记录但无 Skill 历史时可直接 `ready_to_submit`，只补缺失/失效检查，不强行初次研究或派 Sol。Astra 保存请求与原始要求、逐项处置、固定源码/diff、真实测试、未验项；Luna 原样收发。`materials_only` 只交冻结材料；`review_only` 可真实发送并收取，但结束于完整审查报告、核实建议及所需材料，不自动采纳建议或要求开放建议归零。只有 `repair_loop` 且原授权包含返修才派 Sol。旧网页请求须核对真实对话、user message ID、原文 SHA 与 source，再记录 `adopt_submission`；本地 token 与网页原文分开，绑定不清先 reconcile，不为接管重发。
+已有 state 按真实 phase、原件和当前授权恢复；旧 v2 的缺省 `repair_loop/durable` 是兼容解释，不替代用户原始范围，接续前补录实际 scope/mode。补成相同默认语义保留旧 ledger/key/payload/SHA/状态与预算，真实 scope/mode 改变才按新业务绑定。Controller 接续恢复同样传最新 Luna record，沿用已用事故预算；载体恢复只解除证据已确认的载体 blocker，无关或未分类业务条件保留，独立恢复仍可做。已有代码/修复记录但无 Skill 历史时可直接 `ready_to_submit`，只补缺失/失效检查，不强行初次研究或派 Sol。Astra 保存请求与原始要求、逐项处置、固定源码/diff、真实测试、未验项；Luna 原样收发。`materials_only` 只交冻结材料；`review_only` 可真实发送并收取，但结束于完整审查报告、核实建议及所需材料，不自动采纳建议或要求开放建议归零。只有 `repair_loop` 且原授权包含返修才派 Sol。旧网页请求须核对真实对话、user message ID、原文 SHA 与 source，再记录 `adopt_submission`；本地 token 与网页原文分开，绑定不清先 reconcile，不为接管重发。
 
 Astra 给 Luna 的输入是冻结的 run/round/source/token、prompt SHA、合同 digest、consumer host、精确网页对话和文件清单、实际权限。Luna 的常态回执只含状态、原文/附件路径、字节数/SHA、下载验证状态、消息 ID 与异常；正文和页面快照不反复粘给 Astra。Astra 必要时读原文件裁决，不把 Luna 总结当完整审查。新一轮沿用已核准的路由、模型和权限；只有身份/范围/权限变化才复核。GitHub 复审用新完整 SHA、diff 入口、测试回执、待复审点，完整源码仍可取；Luna 不重传整个源码 ZIP。
 
@@ -40,7 +40,7 @@ Astra 给 Luna 的输入是冻结的 run/round/source/token、prompt SHA、合�
 
 每次 heartbeat 直接唤醒 Luna：先读主 state，再写独立 observer record。`waiting_web` 只观察本轮新回复；正文稳定后若必需附件仍缺，只继续 capture，repairing/validating 也只补该轮缺件。无变化、普通流式变化、同一旧错误保持静默，不激活 Astra。新可行动进展、稳定回复或实质错误转变由门禁产生一条小回执；去重绑定 source/round/message+内容 SHA 或错误转变。先保存原 payload、通知 key/SHA 与待交记录，再按直接用户通讯授权通知。投递成功不等于 Controller 收讫；采集后只核对独立回执/Controller state，不重开已收齐页面。unknown 要足够覆盖原消息的读回，最近几条或可能截断的摘要不能证明缺席。明确未送达/active writer 才在同目标新鲜 idle 证据、冷却和仍有效授权下有界重试原 payload；预算耗尽留可读检查点和低成本收讫核对，Controller 主动读取即可收敛。无通讯授权也保留原件供读取。
 
-Astra 处理 observation、artifact_receipt 或 assessment 时可在同次 state 更新记收讫，无需额外往返/审批；直接读取共享回执也可记 controller_received。既有 state 已核实处理同一 message/body SHA 或相同附件回执时，亦是收讫证据。处理结果和关闭本 run 跟进时将最新 Luna record 传给 helper；缺旧 record 不伪造空记录，按原件核对。消息仅提示，Controller 仍负责核实原件、收件和获准 repair_loop 的后续派修。
+Astra 处理 observation、artifact_receipt 或 assessment 时可在同次 state 更新记收讫，无需额外往返/审批；直接读取共享回执也可记 controller_received。采集和收讫已闭合但尚未应用原事件时，Controller 从最新 ledger 的 process_saved_result 取得原 payload 本地处理；Luna 只 pause_followup，不承担裁决，不因旧 waiting_web 再启网页轮询。处理后正常 triage/附件处理/交付动作保持。既有 state 已核实处理同一 message/body SHA 或相同附件回执时，亦是收讫证据。处理结果、接续恢复和关闭本 run 跟进时将最新 Luna record 传给 helper；缺旧 record 不伪造空记录，按原件核对。消息仅提示，Controller 仍负责核实原件、收件和获准 repair_loop 的后续派修。
 
 本 run 的正文/必需文件和已排队收讫义务均闭合、用户停止或已确认必须人工处理时，暂停**同一现有** heartbeat 并 view 读回 PAUSED；暂时忙碌、额度恢复等待和刷新预算耗尽不取消低成本观察。Luna 可执行已获准的本 run 暂停并写独立 readback，Controller 后续核对并更新主 state。项目级 Luna watcher 尚有开发/构建等待时仅关闭网页子义务，不能暂停整个 watcher。暂停保存未收讫 payload/检查点；恢复时核实同一 Luna owner 的 ACTIVE 状态后继续核对，不改用 Controller heartbeat。下一次发送前 re-arm。模型/host 无法验证时保留恢复入口并报告能力缺口；durable 请求仍待满足。旧工作无调度则直接验收，不先建再关。离线 helper 只校验声明结构与决策，不证明真实调度/模型/browser 执行。
 
