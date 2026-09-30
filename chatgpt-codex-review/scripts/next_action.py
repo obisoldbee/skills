@@ -320,11 +320,40 @@ def web_capture_required(state, observer_record=None):
     if (observer_record and observer_record.get("validator") == "luna-observer/v1"
             and observer_binding(observer_record.get("binding") or {}) == observer_binding(state)
             and observer_record.get("text_complete") is True
-            and observer_record.get("required_artifacts_ready") is True):
+            and captured_artifacts_ready(state, observer_record)):
         return False
     return (state["phase"] == "waiting_web"
             or (state["phase"] in {"review_ready", "repairing", "validating"}
-                and nonempty(state.get("raw_reply_path")) and not artifact_ready(state)))
+                and nonempty(state.get("raw_reply_path")) and not captured_artifacts_ready(state, observer_record)))
+
+
+def captured_artifacts_ready(state, ledger):
+    if not ledger or observer_binding(ledger.get("binding") or {}) != observer_binding(state):
+        return artifact_ready(state)
+    latest = ledger.get("artifact_observation")
+    if latest is not None:
+        if not isinstance(latest, dict) or not isinstance(latest.get("payload"), dict):
+            return False
+        payload = latest.get("payload") or {}
+        return (payload.get("type") in {"scheduled_artifacts", "inline_artifacts", "artifact_receipt"}
+                and bound(payload, state, token=True) and payload.get("artifact_root") == state["artifact_root"]
+                and evidence(payload.get("evidence")) and notification_digest(payload) == latest.get("sha256")
+                and artifact_ready({**state, "artifact_receipt": payload.get("receipt")}))
+    if artifact_ready(state):
+        return True
+    for item in reversed(ledger.get("notifications", [])):
+        payload = item.get("controller_event") or {}
+        if not isinstance(payload, dict):
+            return False
+        if payload.get("type") != "artifact_receipt":
+            continue
+        receipt = payload.get("receipt")
+        return (bound(payload, state, token=True)
+                and payload.get("artifact_root") == state["artifact_root"] and evidence(payload.get("evidence"))
+                and notification_digest(payload) == item.get("receipt_sha256") == payload.get("notification_receipt_sha256")
+                and notification_key(ledger["binding"], {"kind": "artifacts", "receipt": receipt}) == item.get("key")
+                and artifact_ready({**state, "artifact_receipt": receipt}))
+    return False
 
 
 def next_round(state, event, next_source):
@@ -358,15 +387,26 @@ def next_round(state, event, next_source):
                   refresh_count=0, next_refresh_at=None)
 
 
-def completion(state):
+def completion(state, observer_record=None):
     review = state.get("review") or {}
     checks = state.get("validation") or {}
     delivery = state.get("delivery") or {}
+    files_ready = artifact_ready(state) and captured_artifacts_ready(state, observer_record)
+    if (state["artifact_contract"]["required"] and captured_artifacts_ready(state, observer_record)
+            and observer_record and observer_binding(observer_record.get("binding") or {}) == observer_binding(state)):
+        pending = saved_result(state, observer_record)
+        required = [item["name"] for item in state["artifact_contract"]["required"]]
+        if pending and pending.get("type") == "artifact_receipt" and any(
+                ((state.get("artifact_receipt") or {}).get("files") or {}).get(name)
+                != (pending["receipt"].get("files") or {}).get(name) for name in required):
+            answer = result(state, "process_saved_result", "Apply the received original current required-artifact event before final delivery; capture is already closed.")
+            answer["controller_event"] = pending
+            return answer
     if state.get("pending_file_findings", 0):
-        return result(state, "obtain_required_artifacts" if not artifact_ready(state)
+        return result(state, "obtain_required_artifacts" if not files_ready
                       else "continue_repair_with_files",
                       "File-dependent confirmed findings remain open.")
-    if not artifact_ready(state):
+    if not files_ready:
         return result(state, "obtain_required_artifacts", "Required saved artifacts need current verification.")
     review_only = state.get("execution_scope") == "review_only"
     if not (bound(review, state, token=True)
@@ -412,6 +452,16 @@ def browser_fault_code(event):
     return event.get("reason_code") or event.get("ui_error")
 
 
+def browser_fault_record(state, observer_record=None):
+    candidates = [state.get("browser_recovery_fault")]
+    if observer_record and observer_binding(observer_record.get("binding") or {}) == observer_binding(state):
+        candidates.append(observer_record.get("browser_recovery_fault"))
+    current = [item for item in candidates if bound(item, state, token=True)
+               and evidence(item.get("evidence")) and item.get("reason_code") in BROWSER_FAULTS]
+    return max(current, key=lambda item: timestamp(item["observed_at"]) if item.get("observed_at")
+               else datetime.min.replace(tzinfo=timezone.utc), default=None)
+
+
 def recovery_attempts(state, observer_record=None):
     count = state.get("browser_recovery_attempts", 0)
     require(type(count) is int and 0 <= count <= 2, "invalid browser recovery attempts")
@@ -419,9 +469,12 @@ def recovery_attempts(state, observer_record=None):
         prior = observer_record.get("browser_recovery_attempts", 0)
         require(type(prior) is int and 0 <= prior <= 2, "invalid observer browser recovery attempts")
         context = state.get("browser_context") or {}
+        fault = observer_record.get("browser_recovery_fault") or {}
         recovered = (bound(context, state, token=True) and evidence(context.get("evidence"))
-                     and nonempty(context.get("recovery_evidence_ref"))
-                     and context["recovery_evidence_ref"] != observer_record.get("browser_recovery_evidence_ref"))
+                     and nonempty(context.get("recovery_event_sha256"))
+                     and context["recovery_event_sha256"] != observer_record.get("browser_recovery_event_sha256")
+                     and (not fault.get("observed_at") or context.get("observed_at")
+                          and timestamp(context["observed_at"]) >= timestamp(fault["observed_at"])))
         if not recovered:
             count = max(count, prior)
     return count
@@ -441,20 +494,27 @@ def recover_browser(state, event, code, observer_record=None):
     phase = browser_resume_phase(state)
     require(phase in PHASES - {"paused", "completed"}, "missing resumable browser phase")
     count = recovery_attempts(state, observer_record)
+    pending = browser_fault_record(state, observer_record) or {}
+    observed = event.get("observed_at") or pending.get("observed_at")
+    if observed:
+        when = timestamp(observed)
+        require(not pending.get("observed_at") or when >= timestamp(pending["observed_at"]),
+                "browser fault observations moved backwards")
+    fault = record(state, event, reason_code=code, observed_at=observed)
     if count == 2:
         return result(state, "diagnose_browser_recovery", "Stop repeated restarts; diagnose the actual tool/app condition and reuse saved material.",
-                      phase=phase, browser_recovery_attempts=count)
+                      phase=phase, browser_recovery_attempts=count, browser_recovery_fault=fault)
     return result(state, "recover_browser_context", "Reuse task authority: restore the owned space, then rebuild it if confirmed lost; reopen the same URL and reconcile the original request. Never resend or replace the server conversation.",
-                  phase=phase, browser_recovery_attempts=count + 1)
+                  phase=phase, browser_recovery_attempts=count + 1, browser_recovery_fault=fault)
 
 
-def browser_recovered(state, event):
+def browser_recovered(state, event, observer_record=None):
     code = browser_fault_code(event)
     require(code in BROWSER_FAULTS, "browser recovery needs the actual recoverable fault classification")
     require(state["phase"] != "paused" and state.get("blocker_reason_code") not in HUMAN_BROWSER_GATES,
             "browser recovery cannot bypass user pause or a human browser gate")
     require(event.get("conversation_url") == state.get("conversation_url"), "recovery changed the server conversation")
-    timestamp(event.get("observed_at"))
+    when = timestamp(event.get("observed_at"))
     context = event.get("browser_context") or {}
     space_ids = (context.get("space_id"), event.get("old_space_id"))
     require(context.get("ownership") == "agent" and all(nonempty(value) or type(value) is int and value > 0 for value in space_ids)
@@ -462,11 +522,20 @@ def browser_recovered(state, event):
             and nonempty(event.get("recovery_evidence_ref")), "recovery needs owned old/new space mapping and actual evidence")
     prior = state.get("browser_context") or {}
     require(not prior or prior.get("space_id") == event["old_space_id"], "wrong prior browser space")
+    if bound(prior, state, token=True) and prior.get("recovery_evidence_ref"):
+        if (notification_digest(event) == prior.get("recovery_event_sha256")
+                or prior.get("observed_at") and when <= timestamp(prior["observed_at"])):
+            return result(state, "ignore_replayed_browser_recovery", "This success is already recorded or stale; preserve the current context and incident budget.")
+    fault = browser_fault_record(state, observer_record) or {}
+    require(not fault.get("observed_at") or when >= timestamp(fault["observed_at"]),
+            "browser recovery success predates the current fault")
     phase = browser_resume_phase(state)
     require(phase in PHASES - {"paused", "completed"}, "missing browser recovery phase")
     updates = {"phase": phase, "browser_recovery_attempts": 0,
                "blocker_reason_code": state.get("blocker_reason_code") if phase == "blocked" else None,
                "browser_context": record(state, event, **context, old_space_id=event["old_space_id"],
+                                                        observed_at=stamp(when),
+                                                        recovery_event_sha256=notification_digest(event),
                                                         recovery_evidence_ref=event["recovery_evidence_ref"])}
     candidate = {**state, **updates}
     renewed = event.get("inline_observer_binding")
@@ -500,7 +569,8 @@ def browser_recovered(state, event):
 
 
 def observe(state, event, observer_record=None):
-    require(web_capture_required(state), "observations require a current reply or required artifact wait")
+    require(state["phase"] == "waiting_web" or web_capture_required(state, observer_record),
+            "observations require a current reply or required artifact wait")
     require(event.get("conversation_url") == state["conversation_url"], "wrong conversation URL")
     now = timestamp(event.get("observed_at"))
     code = browser_fault_code(event)
@@ -599,6 +669,14 @@ def notification_key(binding, change):
                                     ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
+def notification_applied(state, key, digest):
+    saved = (state.get("received_notifications") or {}).get(key) or {}
+    return (saved.get("applied") is True and saved.get("receipt_sha256") == digest
+            and saved.get("artifact_root") == state["artifact_root"]
+            and saved.get("followup_mode") == state.get("followup_mode", "durable")
+            and bound(saved, state, token=True) and evidence(saved.get("evidence")))
+
+
 def notification_received(state, item, ledger):
     payload = item.get("controller_event") or {}
     saved = (state.get("received_notifications") or {}).get(item["key"]) or {}
@@ -636,6 +714,8 @@ def saved_result(state, ledger):
     for item in ledger.get("notifications", []):
         payload = item.get("controller_event")
         if (not isinstance(payload, dict) or notification_digest(payload) != item.get("receipt_sha256")
+                or not bound(payload, state, token=True) or payload.get("artifact_root") != state["artifact_root"]
+                or notification_applied(state, item["key"], item.get("receipt_sha256"))
                 or not notification_received(state, item, ledger)):
             continue
         kind = payload.get("type")
@@ -671,9 +751,13 @@ def scheduled_observation(state, event, saved):
         ledger["last_completion"] = ledger["completion_observation"] = None
     ledger.update(observer_identity=owner, inline_turn_id=turn)
     ledger["browser_recovery_attempts"] = recovery_attempts(state, ledger)
+    ledger["browser_recovery_fault"] = browser_fault_record(state, ledger)
     recovery = (state.get("browser_context") or {}).get("recovery_evidence_ref")
     if recovery and recovery != ledger.get("browser_recovery_evidence_ref"):
         ledger["browser_recovery_evidence_ref"] = recovery
+    recovery_event = (state.get("browser_context") or {}).get("recovery_event_sha256")
+    if recovery_event:
+        ledger["browser_recovery_event_sha256"] = recovery_event
     when = timestamp(event.get("observed_at"))
     previous_time = ledger.get("last_observed_at")
     require(previous_time is None or when >= timestamp(previous_time), "observer timestamps moved backwards")
@@ -694,6 +778,11 @@ def scheduled_observation(state, event, saved):
     inline = state.get("followup_mode", "durable") == "inline"
     require(kind in {"observer_delivery", "notification_check"}
             or inline == (kind in {"inline_observation", "inline_artifacts"}), "observer surface disagrees with followup_mode")
+    if kind in {"scheduled_artifacts", "inline_artifacts"}:
+        require(receipt_bound(state, event.get("receipt")), "scheduled artifacts have stale or invalid binding")
+        payload = {**event, "execution_scope": state.get("execution_scope", "repair_loop")}
+        ledger["artifact_observation"] = {"payload": payload, "sha256": notification_digest(payload)}
+    ledger["required_artifacts_ready"] = captured_artifacts_ready(state, ledger)
     ledger["notifications"] = [({**item, "status": "received"} if notification_received(state, item, ledger) else item)
                                for item in ledger["notifications"]]
     if kind == "observer_delivery":
@@ -719,10 +808,11 @@ def scheduled_observation(state, event, saved):
     if state["phase"] in {"paused", "blocked"}:
         return answer("pause_followup", "Preserve unreceived results and their checkpoint while this run is stopped or blocked.",
                       schedule_action="pause_if_active")
-    if kind == "notification_check" or ((not web_capture_required(state) or
+    if kind == "notification_check" or (kind not in {"scheduled_artifacts", "inline_artifacts"} and
+            (not web_capture_required(state, ledger) or
             (ledger.get("text_complete") and ledger.get("required_artifacts_ready"))) and outstanding):
         if outstanding is None:
-            capture = web_capture_required(state) and not (ledger.get("text_complete") and ledger.get("required_artifacts_ready"))
+            capture = web_capture_required(state, ledger)
             armed = state.get("awaiting_send") is True and state["phase"] in {"ready_to_submit", "submitting"}
             if capture or armed:
                 if submission_observer(state, event) is None:
@@ -777,7 +867,7 @@ def scheduled_observation(state, event, saved):
                               controller_event=payload, key=key)
         return answer("check_controller_receipt", "Read delivery history, Controller state or the shared receipt; unknown is not non-delivery and delivered is not received.", key=key)
 
-    if not web_capture_required(state) or (ledger.get("text_complete") and ledger.get("required_artifacts_ready")):
+    if (kind not in {"scheduled_artifacts", "inline_artifacts"} or state["phase"] == "completed") and not web_capture_required(state, ledger):
         if state.get("awaiting_send") is True and state["phase"] in {"ready_to_submit", "submitting"}:
             if submission_observer(state, event) is not None:
                 return answer("keep_quiet", "The same observer is armed for the imminent send; Luna must reconcile before sending.")
@@ -811,7 +901,7 @@ def scheduled_observation(state, event, saved):
                  "browser_recovery_attempts": ledger["browser_recovery_attempts"]}
         observed = observe(local, event, ledger)
         ledger.update({key: value for key, value in observed["state_updates"].items()
-                       if key in {"last_completion", "refresh_count", "next_refresh_at", "browser_recovery_attempts"}})
+                       if key in {"last_completion", "refresh_count", "next_refresh_at", "browser_recovery_attempts", "browser_recovery_fault"}})
         if observed["state_updates"].get("last_completion"):
             ledger["completion_observation"] = {**event, "execution_scope": state.get("execution_scope", "repair_loop")}
         elif "last_completion" in observed["state_updates"]:
@@ -833,9 +923,8 @@ def scheduled_observation(state, event, saved):
             controller_event = {**event, "type": "observation", "prior_observation": prior_completion}
             notification_material = {"kind": "reply", "message": event["assistant_message_id"],
                                      "sha256": event["body_sha256"]}
-            schedule_action = "pause_if_active" if artifact_ready(state) else "keep_active"
+            schedule_action = "pause_if_active" if ledger["required_artifacts_ready"] else "keep_active"
             ledger["text_complete"] = True
-            ledger["required_artifacts_ready"] = artifact_ready(state)
         elif observed["action"] == "backoff_and_diagnose" or (
                 error in {"quota", "provider"} and event.get("recovery_expected") is True):
             return answer("keep_quiet", "Stop repeated refreshes; keep low-cost observation for recovery without waking Controller.")
@@ -926,6 +1015,10 @@ def _decide(state, event, observer_record=None):
                 "consumer_host", "artifact_root"):
         require(event.get(key) == state[key], "stale or mismatched " + key)
     kind = event.get("type")
+    if kind in {"observation", "artifact_receipt", "web_progress"} and event.get("notification_key"):
+        require(event.get("notification_receipt_sha256") == notification_digest(event), "Controller receipt payload SHA mismatch")
+        if notification_applied(state, event["notification_key"], event["notification_receipt_sha256"]):
+            return result(state, "already_applied_notification", "This exact bound original event is already applied; preserve current work.")
     if kind in {"scheduled_observation", "scheduled_artifacts", "inline_observation", "inline_artifacts", "observer_delivery", "notification_check"}:
         return scheduled_observation(state, event, observer_record)
     if kind == "controller_received":
@@ -937,7 +1030,7 @@ def _decide(state, event, observer_record=None):
     if kind == "browser_fault":
         return recover_browser(state, event, browser_fault_code(event), observer_record)
     if kind == "browser_recovered":
-        return browser_recovered(state, event)
+        return browser_recovered(state, event, observer_record)
     if kind == "external_blocker" and browser_fault_code(event) in BROWSER_FAULTS:
         return recover_browser(state, event, browser_fault_code(event), observer_record)
     if kind == "bind_controller":
@@ -993,12 +1086,12 @@ def _decide(state, event, observer_record=None):
         if not web_capture_required(state, observer_record):
             candidate = {**state, "followup": receipt}
             if state["phase"] == "validating":
-                answer = completion(candidate)
+                answer = completion(candidate, observer_record)
                 answer["state_updates"]["followup"] = receipt
                 return answer
             return result(state, "continue_current_step", "Polling is paused outside webpage wait; preserve this phase and re-arm before the next send.",
                           followup=receipt)
-        answer = completion({**state, "followup": receipt})
+        answer = completion({**state, "followup": receipt}, observer_record)
         answer["state_updates"]["followup"] = receipt
         if answer["action"] != "complete":
             answer["action"] = "ensure_followup"
@@ -1016,7 +1109,7 @@ def _decide(state, event, observer_record=None):
         phase = state.get("resume_phase")
         require(phase in PHASES - {"completed", "paused", "blocked"}, "missing resumable phase")
         if browser_fault_code(event) in BROWSER_FAULTS:
-            return browser_recovered(state, event) if event.get("recovery_evidence_ref") else recover_browser(state, event, browser_fault_code(event), observer_record)
+            return browser_recovered(state, event, observer_record) if event.get("recovery_evidence_ref") else recover_browser(state, event, browser_fault_code(event), observer_record)
         require(nonempty(event.get("resolution_ref")), "resume needs user resumption or resolved-condition evidence")
         view = submission_observer(state, event, fresh_view=True)
         if view is None and web_capture_required({**state, "phase": phase}):
@@ -1188,7 +1281,7 @@ def _decide(state, event, observer_record=None):
             return result(state, "watch", "Files verified; the complete reply still needs stable observation.",
                           artifact_receipt=receipt)
         if state.get("execution_scope") == "review_only":
-            answer = completion(candidate)
+            answer = completion(candidate, observer_record)
             answer["state_updates"]["artifact_receipt"] = receipt
             return answer
         if state["phase"] in {"repairing", "validating"}:
@@ -1203,7 +1296,7 @@ def _decide(state, event, observer_record=None):
             return result(state, "dispatch_repair", "Verified files now permit dependent repair.",
                           phase="repairing", artifact_receipt=receipt)
         if review.get("clean") is True:
-            answer = completion(candidate)
+            answer = completion(candidate, observer_record)
             answer["state_updates"]["artifact_receipt"] = receipt
             return answer
         return result(state, "investigate_review", "Files are ready; resolve remaining claims.",
@@ -1228,7 +1321,7 @@ def _decide(state, event, observer_record=None):
                         confirmed_findings=event["confirmed_findings"],
                         unresolved_claims=event["unresolved_claims"], file_dependent_findings=dependent)
         if state.get("execution_scope") == "review_only":
-            answer = completion({**state, "review": review, "pending_file_findings": 0})
+            answer = completion({**state, "review": review, "pending_file_findings": 0}, observer_record)
             answer["state_updates"].update(review=review, pending_file_findings=0, dispatchable_findings=0)
             return answer
         if event["confirmed_findings"]:
@@ -1243,7 +1336,7 @@ def _decide(state, event, observer_record=None):
         if event["unresolved_claims"]:
             return result(state, "investigate_review", "Resolve disputed claims with evidence.",
                           review=review, pending_file_findings=0, dispatchable_findings=0)
-        answer = completion({**state, "review": review, "pending_file_findings": 0})
+        answer = completion({**state, "review": review, "pending_file_findings": 0}, observer_record)
         answer["state_updates"]["review"] = review
         answer["state_updates"]["pending_file_findings"] = 0
         answer["state_updates"]["dispatchable_findings"] = 0
@@ -1299,7 +1392,7 @@ def _decide(state, event, observer_record=None):
         if checked != state["source_id"] or not current_review:
             answer = next_round(state, event, checked)
         else:
-            answer = completion({**state, "validation": validation})
+            answer = completion({**state, "validation": validation}, observer_record)
         answer["state_updates"]["validation"] = validation
         return answer
     if kind == "delivery":
@@ -1307,7 +1400,7 @@ def _decide(state, event, observer_record=None):
         require(event.get("delivered_source_id") == state["source_id"], "delivery source mismatch")
         require(type(event.get("complete")) is bool, "declare delivery completion")
         delivery = record(state, event, complete=event["complete"])
-        answer = completion({**state, "delivery": delivery})
+        answer = completion({**state, "delivery": delivery}, observer_record)
         answer["state_updates"]["delivery"] = delivery
         return answer
     raise ValueError("unsupported event type")
@@ -1319,13 +1412,24 @@ def decide(state, event, observer_record=None):
             and event.get("notification_key")):
         key, digest = event["notification_key"], event.get("notification_receipt_sha256")
         require(SHA256.fullmatch(str(key)) and SHA256.fullmatch(str(digest)), "invalid Controller notification receipt")
+        previous = (state.get("received_notifications") or {}).get(key) or {}
+        require(not bound(previous, state, token=True) or previous.get("receipt_sha256") == digest,
+                "notification key already has a different payload SHA")
         if event["type"] in {"observation", "artifact_receipt", "web_progress"}:
             require(digest == notification_digest(event), "Controller receipt payload SHA mismatch")
-        received = record(state, event, receipt_sha256=digest, received_at=event.get("controller_received_at"))
+        received = record(state, event, receipt_sha256=digest, received_at=event.get("controller_received_at"),
+                          artifact_root=state["artifact_root"], followup_mode=state.get("followup_mode", "durable"))
+        received["applied"] = (event["type"] in {"observation", "artifact_receipt", "web_progress"}
+                               or notification_applied(state, key, digest))
         answer["state_updates"]["received_notifications"] = {**(state.get("received_notifications") or {}), key: received}
     # Controller reads the independent observer record before closing its own
     # Web follow-up. Processing a primary event can acknowledge it in this update.
     candidate = {**state, **answer["state_updates"]}
+    if ("observer_updates" not in answer and observer_record
+            and observer_binding(observer_record.get("binding") or {}) == observer_binding(candidate)
+            and candidate["phase"] not in {"paused", "blocked"}
+            and web_capture_required(candidate, observer_record)):
+        answer["schedule_action"] = "none" if candidate.get("followup_mode") == "inline" else "keep_active"
     if (observer_record and observer_binding(observer_record.get("binding") or {}) == observer_binding(candidate)
             and candidate["phase"] not in {"paused", "blocked"}
             and any(item.get("status") != "received" and not notification_received(candidate, item, observer_record)

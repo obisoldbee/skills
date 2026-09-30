@@ -2,16 +2,19 @@
 
 import copy
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 from test_review_cycle import (A, HELPER, ROOT, apply, closed_followup, event, followup,
                                observation, preparation, ready_review, receipt, state,
                                submission, with_required)
+from test_source_and_artifacts import FILES
 
 
 def authorized(current):
@@ -80,6 +83,340 @@ def recovery(current, seconds=5, **fields):
         "user_message_id": current.get("submitted_user_message_id"),
         "prompt_sha256": current.get("submitted_prompt_sha256"), "assistant_message_id": "message-1",
         **view, **fields})
+
+
+class IntegrationOrderTests(unittest.TestCase):
+    def submitted(self, required=False, artifact_root=None):
+        current = with_required(state("submitting")) if required else state("submitting")
+        if artifact_root is not None:
+            current["artifact_root"] = str(artifact_root)
+        current["execution_scope"] = "review_only"
+        current["prepared_request"].update(execution_scope="review_only", contract_digest=current["contract_digest"])
+        return apply(current, HELPER.decide(current, submission(current)))
+
+    def complete(self, current, ledger, seconds=10):
+        first = HELPER.decide(current, scheduled(current, seconds), ledger)
+        return HELPER.decide(current, scheduled(current, seconds + 10), first["observer_updates"])
+
+    def acknowledge(self, current, item, ledger):
+        return HELPER.decide(current, event(current, "controller_received", notification_key=item["key"],
+                            notification_receipt_sha256=item["receipt_sha256"]), ledger)
+
+    def test_two_applied_progress_events_cannot_revive_or_preempt_a_complete_report(self):
+        current, ledger = self.submitted(), None
+        progress = []
+        for number in (1, 2):
+            observed = HELPER.decide(current, scheduled(current, number, completion_controls=False,
+                                    body_sha256=str(number) * 64, actionable_progress=True,
+                                    actionable_progress_ref=f"ui/progress-{number}.json"), ledger)
+            ledger = observed["observer_updates"]
+            progress.append(copy.deepcopy(observed["controller_event"]))
+            current = apply(current, HELPER.decide(current, progress[-1], ledger))
+        full = self.complete(current, ledger)
+        ledger, payload = full["observer_updates"], copy.deepcopy(full["controller_event"])
+        read = self.acknowledge(current, ledger["notifications"][-1], ledger)
+        self.assertEqual(read["controller_event"], payload)
+        current = apply(current, read)
+        for original in progress:
+            again = HELPER.decide(current, original, ledger)
+            self.assertEqual(apply(current, again)["web_progress"], current["web_progress"])
+        closed = HELPER.decide(current, closed_followup(current), ledger)
+        self.assertEqual(closed["controller_event"], payload)
+        current = apply(current, closed)
+        processed = HELPER.decide(current, payload, ledger)
+        self.assertEqual(processed["action"], "triage_review")
+        current = apply(current, processed)
+        for original in [*progress, payload]:
+            again = HELPER.decide(current, original, ledger)
+            self.assertEqual(apply(current, again), current)
+        self.assertEqual(ledger["notifications"][-1]["controller_event"], payload)
+
+    def test_required_artifacts_first_then_text_closes_capture_before_controller_application(self):
+        current = self.submitted(required=True)
+        captured = HELPER.decide(current, event(current, "scheduled_artifacts", receipt=receipt(current),
+                                observed_at="2026-01-01T00:00:01+00:00",
+                                followup_view=followup(current, checked_seconds=1)))
+        full = self.complete(current, captured["observer_updates"])
+        ledger = full["observer_updates"]
+        self.assertTrue(ledger["required_artifacts_ready"])
+        self.assertFalse(HELPER.artifact_ready(current))
+        for item in ledger["notifications"]:
+            current = apply(current, self.acknowledge(current, item, ledger))
+        checked = HELPER.decide(current, notification_check(current, 20), ledger)
+        self.assertFalse(checked["observe_webpage"])
+        self.assertEqual(checked["action"], "pause_followup")
+        closed = HELPER.decide(current, closed_followup(current), checked["observer_updates"])
+        self.assertEqual(closed["action"], "process_saved_result")
+        current = apply(current, closed)
+        artifact = HELPER.decide(current, closed["controller_event"], ledger)
+        self.assertTrue(HELPER.artifact_ready(apply(current, artifact)))
+        current = apply(current, artifact)
+        remaining = HELPER.decide(current, event(current, "followup_readback", followup=current["followup"]), ledger)
+        self.assertEqual(remaining["controller_event"], full["controller_event"])
+        processed = HELPER.decide(current, remaining["controller_event"], ledger)
+        self.assertEqual(processed["action"], "triage_review")
+        self.assertEqual(processed["schedule_action"], "pause_if_active")
+        self.assertEqual(captured["controller_event"], ledger["notifications"][0]["controller_event"])
+
+    def test_replayed_same_space_success_cannot_clear_a_later_incident(self):
+        current = self.submitted()
+        current["browser_context"] = {"space_id": "same-space", "page_label": "p1", "ownership": "agent"}
+        fault = event(current, "browser_fault", reason_code="connection_failed", observed_at="2026-01-01T00:00:01+00:00")
+        current = apply(current, HELPER.decide(current, fault))
+        success = recovery(current, 3, reason_code="connection_failed", old_space_id="same-space",
+                           browser_context={"space_id": "same-space", "page_label": "p1", "ownership": "agent"})
+        current = apply(current, HELPER.decide(current, success))
+        for seconds in (10, 11):
+            current = apply(current, HELPER.decide(current, event(current, "browser_fault", reason_code="connection_failed",
+                            observed_at=f"2026-01-01T00:00:{seconds}+00:00")))
+        self.assertEqual(current["browser_recovery_attempts"], 2)
+        replayed = HELPER.decide(current, success)
+        self.assertEqual(apply(current, replayed), current)
+        self.assertEqual(HELPER.decide(current, event(current, "browser_fault", reason_code="connection_failed",
+                         observed_at="2026-01-01T00:00:12+00:00"))["action"], "diagnose_browser_recovery")
+
+    def test_receipt_only_progress_stays_unapplied_until_each_original_event_is_consumed(self):
+        current, ledger = self.submitted(), None
+        payloads = []
+        for number in (1, 2):
+            observed = HELPER.decide(current, scheduled(current, number, completion_controls=False,
+                                    body_sha256=str(number) * 64, actionable_progress=True,
+                                    actionable_progress_ref=f"ui/unapplied-{number}.json"), ledger)
+            ledger = observed["observer_updates"]
+            payloads.append(copy.deepcopy(observed["controller_event"]))
+            current = apply(current, self.acknowledge(current, ledger["notifications"][-1], ledger))
+            self.assertFalse(current["received_notifications"][observed["notification_key"]]["applied"])
+        full = self.complete(current, ledger)
+        ledger = full["observer_updates"]
+        current = apply(current, self.acknowledge(current, ledger["notifications"][-1], ledger))
+        for number, original in enumerate([*payloads, full["controller_event"]]):
+            check = closed_followup(current) if number == 0 else event(current, "followup_readback", followup=current["followup"])
+            saved = HELPER.decide(current, check, ledger)
+            self.assertEqual(saved["controller_event"], original)
+            current = apply(current, saved)
+            current = apply(current, HELPER.decide(current, original, ledger))
+            item = next(item for item in ledger["notifications"] if item["key"] == original["notification_key"])
+            current = apply(current, self.acknowledge(current, item, ledger))
+            self.assertTrue(current["received_notifications"][item["key"]]["applied"])
+        self.assertEqual(current["phase"], "review_ready")
+        self.assertNotEqual(HELPER.decide(current, event(current, "followup_readback", followup=current["followup"]), ledger)["action"], "process_saved_result")
+
+    def test_same_key_with_wrong_sha_or_business_cannot_claim_an_event_was_applied(self):
+        current = self.submitted()
+        observed = HELPER.decide(current, scheduled(current, 1, completion_controls=False,
+                                actionable_progress=True, actionable_progress_ref="ui/one.json"))
+        payload, ledger = observed["controller_event"], observed["observer_updates"]
+        current = apply(current, HELPER.decide(current, payload, ledger))
+        wrong = {**payload, "body_sha256": "f" * 64}
+        with self.assertRaisesRegex(ValueError, "payload SHA"):
+            HELPER.decide(current, wrong, ledger)
+        with self.assertRaisesRegex(ValueError, "different payload SHA"):
+            HELPER.decide(current, event(current, "controller_received", notification_key=payload["notification_key"],
+                          notification_receipt_sha256="f" * 64), ledger)
+        other = copy.deepcopy(current)
+        other.update(round=2, request_token="different-round")
+        other["used_request_tokens"].append("different-round")
+        with self.assertRaisesRegex(ValueError, "stale or mismatched"):
+            HELPER.decide(other, payload, ledger)
+        self.assertEqual(current["web_progress"]["evidence_ref"], "ui/one.json")
+
+    def test_unverified_boolean_and_old_or_corrupt_artifact_proofs_do_not_close_capture(self):
+        current = self.submitted(required=True)
+        captured = HELPER.decide(current, event(current, "scheduled_artifacts", receipt=receipt(current),
+                                observed_at="2026-01-01T00:00:01+00:00", followup_view=followup(current, checked_seconds=1)))
+        full = self.complete(current, captured["observer_updates"])
+        ledger = full["observer_updates"]
+        self.assertFalse(HELPER.web_capture_required(current, ledger))
+        old = copy.deepcopy(ledger)
+        del old["artifact_observation"]
+        self.assertFalse(HELPER.web_capture_required(current, old))
+        for mutation in ("boolean_only", "wrong_sha", "old_contract", "failed_file"):
+            with self.subTest(mutation=mutation):
+                invalid = copy.deepcopy(ledger)
+                if mutation == "boolean_only":
+                    invalid.pop("artifact_observation")
+                    invalid["notifications"] = []
+                elif mutation == "wrong_sha":
+                    invalid["artifact_observation"]["sha256"] = "f" * 64
+                else:
+                    original = invalid["artifact_observation"]["payload"]
+                    if mutation == "old_contract":
+                        original["receipt"]["contract_digest"] = "f" * 64
+                    else:
+                        original["receipt"]["files"]["report"]["status"] = "invalid"
+                    invalid["artifact_observation"]["sha256"] = HELPER.notification_digest(original)
+                self.assertTrue(HELPER.web_capture_required(current, invalid))
+        other = with_required(state())
+        other["artifact_contract"]["required"].append({"name": "new-report", "kind": "utf8"})
+        other["contract_digest"] = HELPER.contract_digest(other["artifact_contract"])
+        self.assertTrue(HELPER.web_capture_required(other, ledger))
+
+    def test_actual_file_revalidation_revokes_capture_and_final_delivery_until_restored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "report.txt"
+            good = b"complete original report\n"
+            path.write_bytes(good)
+            current = state("submitting")
+            current.update(execution_scope="review_only", artifact_root=str(root),
+                           artifact_contract={"required": [{"name": "report", "kind": "utf8",
+                                              "sha256": hashlib.sha256(good).hexdigest()}], "optional": []})
+            current["contract_digest"] = HELPER.contract_digest(current["artifact_contract"])
+            current["prepared_request"].update(execution_scope="review_only", contract_digest=current["contract_digest"])
+            current = apply(current, HELPER.decide(current, submission(current)))
+            request = {"binding": {key: current[key] for key in ("run_id", "round", "source_id", "request_token", "consumer_host", "artifact_root")},
+                       "artifact_contract": current["artifact_contract"], "files": {"report": str(path)}}
+            def capture(seconds, ledger=None):
+                verified = FILES.verify(request)
+                observed = event(current, "scheduled_artifacts", receipt=verified,
+                                 observed_at=(datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)).isoformat(),
+                                 followup_view=followup(current, checked_seconds=seconds))
+                return verified, HELPER.decide(current, observed, ledger)
+            valid, saved = capture(1)
+            self.assertEqual(valid["files"]["report"]["status"], "verified")
+            original_artifact = copy.deepcopy(saved["controller_event"])
+            current = apply(current, HELPER.decide(current, original_artifact, saved["observer_updates"]))
+            full = self.complete(current, saved["observer_updates"])
+            ledger = full["observer_updates"]
+            current = apply(current, HELPER.decide(current, full["controller_event"], ledger))
+            current = apply(current, HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
+                            coverage_complete=True, confirmed_findings=0, unresolved_claims=0, file_dependent_findings=0), ledger))
+            current = apply(current, HELPER.decide(current, event(current, "validation", checked_source_id=A,
+                            passed=True, required_unverified=[]), ledger))
+            self.assertEqual(current["phase"], "validating")
+            path.write_bytes(b"changed bytes after verification\n")
+            failed, invalid = capture(30, ledger)
+            ledger = invalid["observer_updates"]
+            self.assertEqual(failed["files"]["report"]["status"], "invalid")
+            self.assertFalse(ledger["required_artifacts_ready"])
+            self.assertTrue(HELPER.artifact_ready(current))
+            delivery_event = event(current, "delivery", delivered_source_id=A, complete=True)
+            blocked = HELPER.decide(current, delivery_event, ledger)
+            self.assertEqual(blocked["action"], "obtain_required_artifacts")
+            self.assertFalse(blocked["terminal"])
+            self.assertEqual(blocked["schedule_action"], "keep_active")
+            current = apply(current, blocked)
+            refused_close = HELPER.decide(current, event(current, "followup_closed",
+                                         followup=followup(current, checked_seconds=51, status="PAUSED")), ledger)
+            self.assertFalse(refused_close["terminal"])
+            self.assertNotEqual(refused_close["action"], "complete")
+            path.write_bytes(good)
+            restored, ready = capture(60, ledger)
+            ledger = ready["observer_updates"]
+            self.assertEqual(restored["files"]["report"]["status"], "verified")
+            self.assertTrue(ledger["required_artifacts_ready"])
+            delivered = HELPER.decide(current, delivery_event, ledger)
+            self.assertEqual(delivered["action"], "disable_followup")
+            current = apply(current, delivered)
+            complete = HELPER.decide(current, event(current, "followup_closed",
+                                    followup=followup(current, checked_seconds=70, status="PAUSED")), ledger)
+            self.assertTrue(complete["terminal"])
+            self.assertEqual(complete["phase"], "completed")
+            self.assertEqual(ledger["notifications"][0]["controller_event"], original_artifact)
+
+    def test_new_same_space_success_with_same_reference_is_fresh_and_resets_only_the_current_incident(self):
+        current = self.submitted()
+        current["browser_context"] = {"space_id": "same-space", "page_label": "p1", "ownership": "agent"}
+        current = apply(current, HELPER.decide(current, event(current, "browser_fault", reason_code="connection_failed",
+                        observed_at="2026-01-01T00:00:01+00:00")))
+        first = recovery(current, 3, reason_code="connection_failed", old_space_id="same-space",
+                         browser_context={"space_id": "same-space", "page_label": "p1", "ownership": "agent"})
+        current = apply(current, HELPER.decide(current, first))
+        duplicate = HELPER.decide(current, first)
+        self.assertEqual(apply(current, duplicate), current)
+        fault = HELPER.decide(current, scheduled(current, 10, ui_error="connection_failed", error_fingerprint="new-incident"))
+        second = HELPER.decide(current, scheduled(current, 11, ui_error="connection_failed", error_fingerprint="new-incident"), fault["observer_updates"])
+        ledger = second["observer_updates"]
+        self.assertEqual(HELPER.recovery_attempts(current, ledger), 2)
+        replayed = HELPER.decide(current, first, ledger)
+        self.assertEqual(apply(current, replayed), current)
+        self.assertEqual(HELPER.recovery_attempts(current, ledger), 2)
+        fresh = recovery(current, 15, reason_code="connection_failed", old_space_id="same-space",
+                         browser_context={"space_id": "same-space", "page_label": "p1", "ownership": "agent"},
+                         recovery_evidence_ref=first["recovery_evidence_ref"])
+        restored = HELPER.decide(current, fresh, ledger)
+        self.assertEqual(restored["action"], "watch")
+        current = apply(current, restored)
+        self.assertEqual(HELPER.recovery_attempts(current, ledger), 0)
+        future = HELPER.decide(current, event(current, "browser_fault", reason_code="connection_failed",
+                              observed_at="2026-01-01T00:00:20+00:00"), ledger)
+        self.assertEqual(future["state_updates"]["browser_recovery_attempts"], 1)
+        current = apply(current, future)
+        continued = HELPER.decide(current, scheduled(current, 21, ui_error="connection_failed",
+                                  error_fingerprint="new-incident"), ledger)
+        self.assertEqual(continued["action"], "recover_browser_context")
+        self.assertEqual(continued["observer_updates"]["browser_recovery_attempts"], 2)
+        exhausted = HELPER.decide(current, scheduled(current, 22, ui_error="connection_failed",
+                                 error_fingerprint="new-incident"), continued["observer_updates"])
+        self.assertEqual(exhausted["action"], "diagnose_browser_recovery")
+
+    def test_renamed_or_cross_turn_old_success_cannot_precede_a_new_fault(self):
+        current = self.submitted()
+        current["browser_context"] = {"space_id": "same-space", "page_label": "p1", "ownership": "agent"}
+        current = apply(current, HELPER.decide(current, event(current, "browser_fault", reason_code="connection_failed",
+                        observed_at="2026-01-01T00:00:01+00:00")))
+        first = recovery(current, 3, reason_code="connection_failed", old_space_id="same-space",
+                         browser_context={"space_id": "same-space", "page_label": "p1", "ownership": "agent"})
+        current = apply(current, HELPER.decide(current, first))
+        for seconds in (10, 11):
+            current = apply(current, HELPER.decide(current, event(current, "browser_fault", reason_code="connection_failed",
+                            observed_at=f"2026-01-01T00:00:{seconds}+00:00")))
+        renamed = {**first, "recovery_evidence_ref": "ui/renamed-old-success.json", "request_status": "unknown"}
+        self.assertEqual(apply(current, HELPER.decide(current, renamed)), current)
+        premature = {**recovery(current, 4, reason_code="connection_failed", old_space_id="same-space",
+                      browser_context={"space_id": "same-space", "page_label": "p1", "ownership": "agent"}),
+                     "request_status": "unknown"}
+        with self.assertRaisesRegex(ValueError, "predates the current fault"):
+            HELPER.decide(current, premature)
+        current = inline(current)
+        current["inline_observer_binding"]["turn_id"] = "later-turn"
+        current["inline_observer_binding"]["execution_ref"] = "tasks/later-luna.json"
+        replayed = HELPER.decide(current, first)
+        self.assertEqual(apply(current, replayed), current)
+        self.assertEqual(replayed["schedule_action"], "none")
+
+    def test_received_updated_required_file_is_applied_locally_before_final_delivery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "report.zip"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("report.txt", "original complete report")
+            current = self.submitted(required=True, artifact_root=directory)
+            request = {"binding": {key: current[key] for key in ("run_id", "round", "source_id", "request_token", "consumer_host", "artifact_root")},
+                       "artifact_contract": current["artifact_contract"], "files": {"report": str(path)}}
+            original_receipt = FILES.verify(request)
+            saved = HELPER.decide(current, event(current, "scheduled_artifacts", receipt=original_receipt,
+                                 observed_at="2026-01-01T00:00:01+00:00", followup_view=followup(current, checked_seconds=1)))
+            original_payload = copy.deepcopy(saved["controller_event"])
+            current = apply(current, HELPER.decide(current, original_payload, saved["observer_updates"]))
+            full = self.complete(current, saved["observer_updates"])
+            ledger = full["observer_updates"]
+            current = apply(current, HELPER.decide(current, full["controller_event"], ledger))
+            current = apply(current, HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
+                            coverage_complete=True, confirmed_findings=0, unresolved_claims=0, file_dependent_findings=0), ledger))
+            current = apply(current, HELPER.decide(current, event(current, "validation", checked_source_id=A,
+                            passed=True, required_unverified=[]), ledger))
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("report.txt", "updated complete report")
+            updated_receipt = FILES.verify(request)
+            self.assertTrue(updated_receipt["required_ready"])
+            self.assertNotEqual(updated_receipt["files"]["report"]["sha256"], original_receipt["files"]["report"]["sha256"])
+            updated = HELPER.decide(current, event(current, "scheduled_artifacts", receipt=updated_receipt,
+                                   observed_at="2026-01-01T00:00:30+00:00", followup_view=followup(current, checked_seconds=30)), ledger)
+            ledger = updated["observer_updates"]
+            current = apply(current, self.acknowledge(current, ledger["notifications"][-1], ledger))
+            self.assertEqual(current["artifact_receipt"], original_receipt)
+            self.assertFalse(current["received_notifications"][updated["notification_key"]]["applied"])
+            delivery_event = event(current, "delivery", delivered_source_id=A, complete=True)
+            deliver = HELPER.decide(current, delivery_event, ledger)
+            self.assertEqual(deliver["action"], "process_saved_result")
+            self.assertEqual(deliver["controller_event"], updated["controller_event"])
+            self.assertEqual(deliver["schedule_action"], "pause_if_active")
+            self.assertFalse(deliver["terminal"])
+            current = apply(current, deliver)
+            applied = HELPER.decide(current, deliver["controller_event"], ledger)
+            self.assertEqual(applied["action"], "disable_followup")
+            self.assertEqual(applied["state_updates"]["artifact_receipt"], updated_receipt)
+            self.assertEqual(ledger["notifications"][0]["controller_event"], original_payload)
 
 
 class RecoveryTests(unittest.TestCase):

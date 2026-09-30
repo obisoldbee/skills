@@ -10,7 +10,7 @@
 | 请求或发送状态未知 | 核对原历史、草稿和上传状态；不重发、不 Retry/Regenerate |
 | 登录/验证码、真实工具拒绝、用户接管或 inactive/unassigned 所有权 | 停对应操作并交接；不以重建空间、换账号或别的工具绕过 |
 
-恢复最多连续尝试两次；各入口先读主 state 与最新同业务 Luna ledger 的已用次数，切换 Controller/observer、owner/turn 不增加机会。仍失败先诊断实际 app/tool 状态并使用已有 DOM/下载文件，避免无限重启。实际载体恢复成功的证据才结束该事故预算，证据文件刷新不清预算；之后新的独立故障可再次恢复。权限缺省和真实 denial 不是授权。
+恢复最多连续尝试两次；各入口先读主 state 与最新同业务 Luna ledger 的已用次数，切换 Controller/observer、owner/turn 不增加机会。仍失败先诊断实际 app/tool 状态并使用已有 DOM/下载文件，避免无限重启。保存故障和成功的实际 observed_at 与成功原事件 SHA；当前事故之后的真实成功才结束预算，旧成功重放或文件改名不清预算。已解决旧事故的 ledger 次数不带入后来新事故；同空间恢复及同引用下的新实际成功仍可用。权限缺省和真实 denial 不是授权。
 
 ## 准备与发送
 
@@ -24,7 +24,7 @@ Astra 冻结 prompt SHA、run/round/source/token、scope、源码入口、附件
 
 若网页给文件，先按 ego-browser 文档在触发点击前监听 download event，`saveAs()` 到 `artifact_root` 内的独立文件。review_ready/repairing/validating 补件和 waiting_web 使用同一故障/人类门与临时退避；不能跳过分类，错误小回执可由 Controller 保留原阶段直接处理，正常补件保留已收正文。调用 `verify_artifacts.py` 检查本轮 required/optional 合同，保存完整 JSON 回执。真实下载失败、CRC/PNG 解码失败、缺依赖/不支持格式均报告 missing/invalid/unverified；不得把网页自报文件名或选择文件成功当已收到。无预期原件哈希时只报告本次接收 SHA。必需缺件继续补取，不阻止独立文本核实；可选缺件记录即可。
 
-Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍交小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐后只核对未收讫通知，不重复打开网页；采集和 Controller 收讫均闭合才暂停本 run 同一 heartbeat 并回读。仅登记已读、尚未处理的原事件由 Controller 据同一最新 ledger 本地 process_saved_result，不因旧 waiting_web 再启表，也不让 Luna 裁决。缺 required 文件继续 capture；项目级 watcher 的开发等待独立保留。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话和当前可用载体。inline 收齐直接交回 Controller，一次处理记收讫，不要求后台任务。
+Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍交小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐后只核对未收讫通知，不重复打开网页；采集和 Controller 收讫均闭合才暂停本 run 同一 heartbeat 并回读。仅登记已读、尚未处理的原事件由 Controller 据同一最新 ledger 本地 process_saved_result；已应用同 key/SHA/业务事件重放不再处理，不让旧进展抢占完整报告。正文/附件先后无关，最新实际附件重验失败则恢复缺件采集；新有效必需回执先本地应用，不能用主 state 的旧成功完成交付。项目级 watcher 的开发等待独立保留。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话和当前可用载体。inline 收齐直接交回 Controller，一次处理记收讫，不要求后台任务。
 
 ## 临时故障
 
