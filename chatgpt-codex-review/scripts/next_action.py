@@ -328,32 +328,111 @@ def web_capture_required(state, observer_record=None):
 
 
 def captured_artifacts_ready(state, ledger):
-    if not ledger or observer_binding(ledger.get("binding") or {}) != observer_binding(state):
-        return artifact_ready(state)
-    latest = ledger.get("artifact_observation")
-    if latest is not None:
-        if not isinstance(latest, dict) or not isinstance(latest.get("payload"), dict):
-            return False
-        payload = latest.get("payload") or {}
-        return (payload.get("type") in {"scheduled_artifacts", "inline_artifacts", "artifact_receipt"}
-                and bound(payload, state, token=True) and payload.get("artifact_root") == state["artifact_root"]
-                and evidence(payload.get("evidence")) and notification_digest(payload) == latest.get("sha256")
-                and artifact_ready({**state, "artifact_receipt": payload.get("receipt")}))
-    if artifact_ready(state):
-        return True
-    for item in reversed(ledger.get("notifications", [])):
-        payload = item.get("controller_event") or {}
-        if not isinstance(payload, dict):
-            return False
-        if payload.get("type") != "artifact_receipt":
+    proof = current_artifact_observation(state, ledger)
+    return (artifact_ready(state) if proof is None else bool(proof)
+            and artifact_ready({**state, "artifact_receipt": proof["payload"].get("receipt")}))
+
+
+def event_followup_mode(event):
+    return event.get("followup_mode", "inline" if event.get("inline_execution_ref")
+                     or event.get("type") in {"inline_observation", "inline_artifacts"} else "durable")
+
+
+def artifact_observation(state, event):
+    payload = dict(event)
+    # Unsigned Controller inputs inherit this invocation's scope; an original
+    # notification's payload/SHA is never rewritten.
+    if not payload.get("notification_key"):
+        payload.setdefault("execution_scope", state.get("execution_scope", "repair_loop"))
+        payload.setdefault("followup_mode", state.get("followup_mode", "durable"))
+    return {"payload": payload, "sha256": notification_digest(payload)}
+
+
+def required_artifact_snapshot(state, receipt):
+    return ({item["name"]: receipt["files"][item["name"]]
+             for item in state["artifact_contract"]["required"]} if receipt_bound(state, receipt) else None)
+
+
+def current_artifact_observation(state, ledger):
+    """One current proof across both writers; absence retains legacy receipts."""
+    candidates = [state.get("artifact_observation")]
+    if ledger and observer_binding(ledger.get("binding") or {}) == observer_binding(state):
+        latest = ledger.get("artifact_observation")
+        if latest is None:
+            # Old ledgers have original notifications but no current snapshot.
+            for item in reversed(ledger.get("notifications", [])):
+                payload = item.get("controller_event") or {}
+                if isinstance(payload, dict) and payload.get("type") == "artifact_receipt":
+                    if (notification_digest(payload) != item.get("receipt_sha256")
+                            or payload.get("notification_receipt_sha256") != item.get("receipt_sha256")
+                            or notification_key(ledger["binding"], {"kind": "artifacts", "receipt": payload.get("receipt")}) != item.get("key")):
+                        return {}
+                    latest = {"payload": payload, "sha256": item["receipt_sha256"]}
+                    break
+        candidates.append(latest)
+    proofs = []
+    for proof in candidates:
+        if proof is None:
             continue
-        receipt = payload.get("receipt")
-        return (bound(payload, state, token=True)
-                and payload.get("artifact_root") == state["artifact_root"] and evidence(payload.get("evidence"))
-                and notification_digest(payload) == item.get("receipt_sha256") == payload.get("notification_receipt_sha256")
-                and notification_key(ledger["binding"], {"kind": "artifacts", "receipt": receipt}) == item.get("key")
-                and artifact_ready({**state, "artifact_receipt": receipt}))
-    return False
+        proofs.append(proof)
+        if isinstance(proof, dict) and "conflicting_proof" in proof:
+            proofs.append(proof["conflicting_proof"])
+    verified = []
+    for proof in proofs:
+        payload = proof.get("payload") if isinstance(proof, dict) else None
+        if not (isinstance(payload, dict) and payload.get("type") in {"scheduled_artifacts", "inline_artifacts", "artifact_receipt"}
+                and bound(payload, state, token=True) and payload.get("artifact_root") == state["artifact_root"]
+                and event_followup_mode(payload) == state.get("followup_mode", "durable")
+                and evidence(payload.get("evidence")) and notification_digest(payload) == proof.get("sha256")
+                and receipt_bound(state, payload.get("receipt"))):
+            return {}
+        when = timestamp(payload["observed_at"]) if payload.get("observed_at") else None
+        verified.append((when, proof))
+    if not verified:
+        return None
+    dated = [when for when, _ in verified if when is not None]
+    latest = max(dated) if dated else None
+    current = next(proof for when, proof in verified if when == latest)
+    required = required_artifact_snapshot(state, current["payload"]["receipt"])
+    if any((when is None or when == latest)
+           and required_artifact_snapshot(state, proof["payload"]["receipt"]) != required
+           for when, proof in verified):
+        return {}  # Unknown order or same-time conflicts need fresh real proof.
+    return current
+
+
+def current_artifacts_applied(state, ledger):
+    if not state["artifact_contract"]["required"]:
+        return True
+    proof = current_artifact_observation(state, ledger)
+    return (artifact_ready(state) and captured_artifacts_ready(state, ledger)
+            and (proof is None or required_artifact_snapshot(state, state.get("artifact_receipt"))
+                 == required_artifact_snapshot(state, proof["payload"]["receipt"])))
+
+
+def artifact_gate(state, ledger):
+    proof = current_artifact_observation(state, ledger)
+    if proof and captured_artifacts_ready(state, ledger) and not current_artifacts_applied(state, ledger):
+        latest = proof["payload"]
+        for item in (ledger or {}).get("notifications", []):
+            payload = item.get("controller_event") or {}
+            if (isinstance(payload, dict) and payload.get("type") == "artifact_receipt"
+                    and payload.get("receipt") == latest.get("receipt")
+                    and payload.get("observed_at") == latest.get("observed_at")
+                    and bound(payload, state, token=True) and payload.get("artifact_root") == state["artifact_root"]
+                    and event_followup_mode(payload) == state.get("followup_mode", "durable")
+                    and payload.get("notification_key") == item.get("key")
+                    and notification_digest(payload) == item.get("receipt_sha256") == payload.get("notification_receipt_sha256")
+                    and not notification_applied(state, item.get("key"), item.get("receipt_sha256"))):
+                latest = payload
+                break
+        if not latest.get("notification_key"):
+            latest = {**latest, "type": "artifact_receipt"}
+        if not notification_applied(state, latest.get("notification_key"), latest.get("notification_receipt_sha256")):
+            answer = result(state, "process_saved_result", "Apply the current verified required snapshot locally; historical event receipt is not the current applied file set.")
+            answer["controller_event"] = latest
+            return answer
+    return result(state, "obtain_required_artifacts", "Required files need current verification and an applied matching snapshot.")
 
 
 def next_round(state, event, next_source):
@@ -377,7 +456,7 @@ def next_round(state, event, next_source):
                   source_id=next_source, request_token=token, candidate_source_id=None,
                   source_binding=source_binding, source_binding_digest=source_hash,
                   used_request_tokens=[*state["used_request_tokens"], token],
-                  artifact_contract=contract, contract_digest=digest, artifact_receipt=None,
+                  artifact_contract=contract, contract_digest=digest, artifact_receipt=None, artifact_observation=None,
                   acceptance_contract=acceptance, acceptance_digest=acceptance_hash,
                   prepared_request=None, review=None, review_message_id=None, last_completion=None,
                   submitted_user_message_id=None, submitted_prompt_sha256=None,
@@ -391,23 +470,12 @@ def completion(state, observer_record=None):
     review = state.get("review") or {}
     checks = state.get("validation") or {}
     delivery = state.get("delivery") or {}
-    files_ready = artifact_ready(state) and captured_artifacts_ready(state, observer_record)
-    if (state["artifact_contract"]["required"] and captured_artifacts_ready(state, observer_record)
-            and observer_record and observer_binding(observer_record.get("binding") or {}) == observer_binding(state)):
-        pending = saved_result(state, observer_record)
-        required = [item["name"] for item in state["artifact_contract"]["required"]]
-        if pending and pending.get("type") == "artifact_receipt" and any(
-                ((state.get("artifact_receipt") or {}).get("files") or {}).get(name)
-                != (pending["receipt"].get("files") or {}).get(name) for name in required):
-            answer = result(state, "process_saved_result", "Apply the received original current required-artifact event before final delivery; capture is already closed.")
-            answer["controller_event"] = pending
-            return answer
+    files_ready = current_artifacts_applied(state, observer_record)
     if state.get("pending_file_findings", 0):
-        return result(state, "obtain_required_artifacts" if not files_ready
-                      else "continue_repair_with_files",
-                      "File-dependent confirmed findings remain open.")
+        return (artifact_gate(state, observer_record) if not files_ready else result(state, "continue_repair_with_files",
+                      "File-dependent confirmed findings remain open."))
     if not files_ready:
-        return result(state, "obtain_required_artifacts", "Required saved artifacts need current verification.")
+        return artifact_gate(state, observer_record)
     review_only = state.get("execution_scope") == "review_only"
     if not (bound(review, state, token=True)
             and (review.get("coverage_complete") is True if review_only else review.get("clean") is True)
@@ -780,8 +848,7 @@ def scheduled_observation(state, event, saved):
             or inline == (kind in {"inline_observation", "inline_artifacts"}), "observer surface disagrees with followup_mode")
     if kind in {"scheduled_artifacts", "inline_artifacts"}:
         require(receipt_bound(state, event.get("receipt")), "scheduled artifacts have stale or invalid binding")
-        payload = {**event, "execution_scope": state.get("execution_scope", "repair_loop")}
-        ledger["artifact_observation"] = {"payload": payload, "sha256": notification_digest(payload)}
+        ledger["artifact_observation"] = artifact_observation(state, event)
     ledger["required_artifacts_ready"] = captured_artifacts_ready(state, ledger)
     ledger["notifications"] = [({**item, "status": "received"} if notification_received(state, item, ledger) else item)
                                for item in ledger["notifications"]]
@@ -885,11 +952,17 @@ def scheduled_observation(state, event, saved):
     if kind in {"scheduled_artifacts", "inline_artifacts"}:
         receipt = event.get("receipt")
         require(receipt_bound(state, receipt), "scheduled artifacts have stale or invalid binding")
+        proof = current_artifact_observation(state, ledger)
+        if (proof and proof["payload"].get("observed_at")
+                and timestamp(proof["payload"]["observed_at"]) > when):
+            return answer("keep_quiet", "A newer actual verification is already current; preserve the older raw observation without restarting capture.",
+                          schedule_action="keep_active" if web_capture_required(state, ledger) else "pause_if_active",
+                          observe_webpage=web_capture_required(state, ledger))
         if not artifact_ready({**state, "artifact_receipt": receipt}):
             return answer("capture_required_artifacts", "Required attachments remain; preserve capture obligations without waking Controller.",
                           observe_webpage=True)
-        ledger["required_artifacts_ready"] = True
-        schedule_action = "pause_if_active" if state["phase"] != "waiting_web" or ledger.get("text_complete") else "keep_active"
+        ledger["required_artifacts_ready"] = captured_artifacts_ready(state, ledger)
+        schedule_action = "pause_if_active" if ledger["required_artifacts_ready"] and (state["phase"] != "waiting_web" or ledger.get("text_complete")) else "keep_active"
         controller_event = {**event, "type": "artifact_receipt"}
         notification_material = {"kind": "artifacts", "receipt": receipt}
     else:
@@ -950,7 +1023,8 @@ def scheduled_observation(state, event, saved):
         return answer("keep_quiet", "This reply/content or error transition already has a receipt; do not wake Controller again.",
                       schedule_action=schedule_action, key=key,
                       observe_webpage=web_capture_required(state) and not (ledger.get("text_complete") and ledger.get("required_artifacts_ready")))
-    controller_event = {**controller_event, "execution_scope": state.get("execution_scope", "repair_loop"), "notification_key": key}
+    controller_event = {**controller_event, "execution_scope": state.get("execution_scope", "repair_loop"),
+                        "followup_mode": state.get("followup_mode", "durable"), "notification_key": key}
     digest = notification_digest(controller_event)
     controller_event["notification_receipt_sha256"] = digest
     ledger["notifications"] = [*ledger["notifications"], {"key": key, "status": "pending",
@@ -1015,6 +1089,14 @@ def _decide(state, event, observer_record=None):
                 "consumer_host", "artifact_root"):
         require(event.get(key) == state[key], "stale or mismatched " + key)
     kind = event.get("type")
+    if kind in {"observation", "artifact_receipt", "web_progress"}:
+        if kind == "web_progress" or "execution_scope" in event or event.get("notification_key"):
+            require(event.get("execution_scope", "repair_loop") == state.get("execution_scope", "repair_loop"),
+                    "stale or mismatched execution_scope")
+        if (kind == "web_progress" or "followup_mode" in event or event.get("notification_key")
+                or event.get("inline_execution_ref") or event.get("followup_view")):
+            require(event_followup_mode(event) == state.get("followup_mode", "durable"),
+                    "stale or mismatched followup_mode")
     if kind in {"observation", "artifact_receipt", "web_progress"} and event.get("notification_key"):
         require(event.get("notification_receipt_sha256") == notification_digest(event), "Controller receipt payload SHA mismatch")
         if notification_applied(state, event["notification_key"], event["notification_receipt_sha256"]):
@@ -1274,33 +1356,61 @@ def _decide(state, event, observer_record=None):
                 "artifact receipt requires a current webpage round")
         receipt = event.get("receipt")
         require(isinstance(receipt, dict), "missing artifact receipt")
-        candidate = {**state, "artifact_receipt": receipt}
+        proof = artifact_observation(state, event)
+        previous_proof = state.get("artifact_observation") or {}
+        previous = previous_proof.get("payload") or {}
+        if bound(previous, state, token=True) and previous.get("observed_at") and not event.get("observed_at"):
+            return result(state, "ignore_stale_artifact_receipt", "An undated legacy receipt cannot replace a newer applied proof; verify the current files locally if reconciliation is needed.")
+        if event.get("observed_at"):
+            when = timestamp(event["observed_at"])
+            if bound(previous, state, token=True) and previous.get("observed_at"):
+                before = timestamp(previous["observed_at"])
+                if when < before:
+                    return result(state, "ignore_stale_artifact_receipt", "Preserve the newer applied verification; read the current original proof.")
+                if when == before and (previous_proof.get("conflicting_proof")
+                        or required_artifact_snapshot(state, receipt) != required_artifact_snapshot(state, previous.get("receipt"))):
+                    require(receipt_bound(state, receipt), "artifacts are mismatched")
+                    proof["conflicting_proof"] = (previous_proof["conflicting_proof"]
+                        if required_artifact_snapshot(state, receipt) == required_artifact_snapshot(state, previous.get("receipt"))
+                        else {"payload": previous, "sha256": previous_proof.get("sha256")})
+                    return result(state, "reconcile_artifact_verification", "Preserve the actual same-time conflict until fresh local verification resolves it; do not invent an order.",
+                                  artifact_observation=proof)
+        candidate = {**state, "artifact_receipt": receipt, "artifact_observation": proof}
         require(receipt_bound(candidate, receipt) and artifact_ready(candidate),
                 "artifacts are missing, invalid or mismatched")
+        current = current_artifact_observation(candidate, observer_record)
+        if current and current["payload"].get("receipt") == receipt:
+            proof = current  # This same saved receipt may have fresher actual verification.
+            candidate["artifact_observation"] = proof
+        updates = {"artifact_receipt": receipt, "artifact_observation": proof}
         if state["phase"] == "waiting_web":
             return result(state, "watch", "Files verified; the complete reply still needs stable observation.",
-                          artifact_receipt=receipt)
+                          **updates)
         if state.get("execution_scope") == "review_only":
             answer = completion(candidate, observer_record)
-            answer["state_updates"]["artifact_receipt"] = receipt
+            answer["state_updates"].update(updates)
+            return answer
+        if not current_artifacts_applied(candidate, observer_record):
+            answer = artifact_gate(candidate, observer_record)
+            answer["state_updates"].update(updates)
             return answer
         if state["phase"] in {"repairing", "validating"}:
             if state.get("pending_file_findings", 0):
                 return result(state, "continue_repair_with_files",
                               "Continue the same developer with newly verified files and open findings.",
-                              phase="repairing", artifact_receipt=receipt)
+                              phase="repairing", **updates)
             return result(state, "continue_current_step", "Files verified; preserve current work.",
-                          artifact_receipt=receipt)
+                          **updates)
         review = state.get("review") or {}
         if review.get("confirmed_findings", 0):
             return result(state, "dispatch_repair", "Verified files now permit dependent repair.",
-                          phase="repairing", artifact_receipt=receipt)
+                          phase="repairing", **updates)
         if review.get("clean") is True:
             answer = completion(candidate, observer_record)
-            answer["state_updates"]["artifact_receipt"] = receipt
+            answer["state_updates"].update(updates)
             return answer
         return result(state, "investigate_review", "Files are ready; resolve remaining claims.",
-                      artifact_receipt=receipt)
+                      **updates)
     if kind == "assessment":
         require(state["phase"] == "review_ready", "assessment requires review_ready")
         require(nonempty(state.get("review_message_id"))
@@ -1325,14 +1435,15 @@ def _decide(state, event, observer_record=None):
             answer["state_updates"].update(review=review, pending_file_findings=0, dispatchable_findings=0)
             return answer
         if event["confirmed_findings"]:
-            ready = artifact_ready(state)
+            ready = current_artifacts_applied(state, observer_record)
             dispatchable = event["confirmed_findings"] if ready else event["confirmed_findings"] - dependent
             if dispatchable:
                 return result(state, "dispatch_repair", "Dispatch verified independent fixes; preserve disputed claims.",
                               phase="repairing", review=review, dispatchable_findings=dispatchable,
                               pending_file_findings=dependent)
-            return result(state, "obtain_required_artifacts", "File-dependent repairs await verified required files.",
-                          review=review, dispatchable_findings=0, pending_file_findings=dependent)
+            answer = artifact_gate(state, observer_record)
+            answer["state_updates"].update(review=review, dispatchable_findings=0, pending_file_findings=dependent)
+            return answer
         if event["unresolved_claims"]:
             return result(state, "investigate_review", "Resolve disputed claims with evidence.",
                           review=review, pending_file_findings=0, dispatchable_findings=0)
@@ -1352,7 +1463,7 @@ def _decide(state, event, observer_record=None):
         addressed = event.get("addressed_file_findings", 0)
         require(type(pending) is int and pending >= 0 and type(addressed) is int
                 and 0 <= addressed <= pending, "invalid addressed_file_findings")
-        require(addressed == 0 or artifact_ready(state),
+        require(addressed == 0 or current_artifacts_applied(state, observer_record),
                 "file-dependent findings cannot be addressed before required artifacts verify")
         return result(state, "run_local_checks", "Worker completion is not goal completion.",
                       phase="validating", candidate_source_id=event["candidate_source_id"],
@@ -1379,11 +1490,13 @@ def _decide(state, event, observer_record=None):
             return result(state, "complete_missing_checks", "Required unverified checks still block acceptance.",
                           validation=validation)
         if state.get("pending_file_findings", 0):
-            return result(state, "continue_repair_with_files" if artifact_ready(state)
-                          else "obtain_required_artifacts",
-                          "Open file-dependent findings stay with this developer before resubmission.",
-                          phase="repairing" if artifact_ready(state) else "validating",
-                          validation=validation)
+            if current_artifacts_applied(state, observer_record):
+                return result(state, "continue_repair_with_files",
+                              "Open file-dependent findings stay with this developer before resubmission.",
+                              phase="repairing", validation=validation)
+            answer = artifact_gate(state, observer_record)
+            answer["state_updates"]["validation"] = validation
+            return answer
         review = state.get("review") or {}
         current_review = (bound(review, state, token=True) and review.get("source_id") == checked
                           and (review.get("coverage_complete") is True if state.get("execution_scope") == "review_only"
@@ -1420,6 +1533,7 @@ def decide(state, event, observer_record=None):
         received = record(state, event, receipt_sha256=digest, received_at=event.get("controller_received_at"),
                           artifact_root=state["artifact_root"], followup_mode=state.get("followup_mode", "durable"))
         received["applied"] = (event["type"] in {"observation", "artifact_receipt", "web_progress"}
+                               and answer["action"] != "reconcile_artifact_verification"
                                or notification_applied(state, key, digest))
         answer["state_updates"]["received_notifications"] = {**(state.get("received_notifications") or {}), key: received}
     # Controller reads the independent observer record before closing its own

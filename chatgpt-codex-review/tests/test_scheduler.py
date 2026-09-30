@@ -11,7 +11,7 @@ import tempfile
 import unittest
 import zipfile
 
-from test_review_cycle import (A, HELPER, ROOT, apply, closed_followup, event, followup,
+from test_review_cycle import (A, B, HELPER, ROOT, apply, closed_followup, event, followup,
                                observation, preparation, ready_review, receipt, state,
                                submission, with_required)
 from test_source_and_artifacts import FILES
@@ -417,6 +417,289 @@ class IntegrationOrderTests(unittest.TestCase):
             self.assertEqual(applied["action"], "disable_followup")
             self.assertEqual(applied["state_updates"]["artifact_receipt"], updated_receipt)
             self.assertEqual(ledger["notifications"][0]["controller_event"], original_payload)
+
+
+class ArtifactSnapshotTests(unittest.TestCase):
+    complete = IntegrationOrderTests.complete
+    acknowledge = IntegrationOrderTests.acknowledge
+
+    def prepared(self, directory, scope="review_only", mode="durable", fixed_hash=False):
+        root = Path(directory)
+        original = b"original complete report A\n"
+        (root / "report.txt").write_bytes(original)
+        current = state("submitting")
+        required = {"name": "report", "kind": "utf8"}
+        if fixed_hash:
+            required["sha256"] = hashlib.sha256(original).hexdigest()
+        current.update(execution_scope=scope, artifact_root=str(root), artifact_contract={
+            "required": [required], "optional": [{"name": "preview", "kind": "utf8"}]})
+        current["contract_digest"] = HELPER.contract_digest(current["artifact_contract"])
+        current["prepared_request"].update(execution_scope=scope, contract_digest=current["contract_digest"])
+        if mode == "inline":
+            current = inline(current)
+        sent = submission(current) if mode == "durable" else inline_event(submission({**current,
+            "web_io_binding": state()["web_io_binding"]}))
+        return apply(current, HELPER.decide(current, sent))
+
+    def verify(self, current):
+        root = Path(current["artifact_root"])
+        request = {"binding": {key: current[key] for key in ("run_id", "round", "source_id", "request_token",
+                    "consumer_host", "artifact_root")}, "artifact_contract": current["artifact_contract"],
+                   "files": {"report": str(root / "report.txt"), "preview": str(root / "preview.txt")}}
+        return FILES.verify(request)
+
+    def capture(self, current, seconds, ledger=None):
+        moment = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)
+        fields = {"receipt": self.verify(current), "observed_at": moment.isoformat(),
+                  "execution_scope": current["execution_scope"]}
+        if current.get("followup_mode") == "inline":
+            observed = inline_event(event(current, "inline_artifacts", **fields))
+        else:
+            observed = event(current, "scheduled_artifacts", followup_view=followup(current, checked_seconds=seconds), **fields)
+        return HELPER.decide(current, observed, ledger)
+
+    def reviewed(self, directory, scope="review_only", mode="durable", fixed_hash=False):
+        current = self.prepared(directory, scope, mode, fixed_hash)
+        files = self.capture(current, 1)
+        current = apply(current, HELPER.decide(current, files["controller_event"], files["observer_updates"]))
+        ledger = files["observer_updates"]
+        for seconds in (10, 20):
+            observed = (inline_event({**observation(current, seconds), "type": "inline_observation"})
+                        if mode == "inline" else scheduled(current, seconds))
+            observed = {**observed, "execution_scope": scope}
+            result = HELPER.decide(current, observed, ledger)
+            ledger = result["observer_updates"]
+        current = apply(current, HELPER.decide(current, result["controller_event"], ledger))
+        if scope == "review_only":
+            current = apply(current, HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
+                            coverage_complete=True, confirmed_findings=0, unresolved_claims=0, file_dependent_findings=0), ledger))
+            current = apply(current, HELPER.decide(current, event(current, "validation", checked_source_id=A,
+                            passed=True, required_unverified=[]), ledger))
+        return current, ledger, copy.deepcopy(files["controller_event"])
+
+    def final_delivery(self, current, ledger):
+        return HELPER.decide(current, event(current, "delivery", delivered_source_id=A, complete=True,
+                            observed_at="2026-01-01T00:01:00+00:00"), ledger)
+
+    def test_latest_real_invalid_blocks_dependent_dispatch_but_preserves_independent_repair(self):
+        for independent in (0, 1):
+            with self.subTest(independent=independent), tempfile.TemporaryDirectory() as directory:
+                current, ledger, _ = self.reviewed(directory, "repair_loop")
+                (Path(directory) / "report.txt").write_bytes(b"\xff invalid utf8")
+                invalid = self.capture(current, 30, ledger)
+                ledger = invalid["observer_updates"]
+                self.assertEqual(self.verify(current)["files"]["report"]["status"], "invalid")
+                assessed = HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
+                                        coverage_complete=True, confirmed_findings=1 + independent,
+                                        unresolved_claims=0, file_dependent_findings=1), ledger)
+                self.assertEqual(assessed["action"], "dispatch_repair" if independent else "obtain_required_artifacts")
+                self.assertEqual(assessed["state_updates"]["dispatchable_findings"], independent)
+                self.assertEqual(assessed["state_updates"]["pending_file_findings"], 1)
+
+    def test_latest_invalid_cannot_close_worker_file_findings_or_resume_dependent_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, ledger, _ = self.reviewed(directory, "repair_loop")
+            assessed = HELPER.decide(current, event(current, "assessment", review_message_id="message-1",
+                                    coverage_complete=True, confirmed_findings=2, unresolved_claims=0,
+                                    file_dependent_findings=1), ledger)
+            current = apply(current, assessed)
+            (Path(directory) / "report.txt").write_bytes(b"\xff invalid utf8")
+            ledger = self.capture(current, 30, ledger)["observer_updates"]
+            worker = event(current, "worker_result", candidate_source_id=B, delivery_path="worker/fixed.md")
+            with self.assertRaisesRegex(ValueError, "file-dependent"):
+                HELPER.decide(current, {**worker, "addressed_file_findings": 1}, ledger)
+            independent = HELPER.decide(current, {**worker, "addressed_file_findings": 0}, ledger)
+            self.assertEqual(independent["state_updates"]["pending_file_findings"], 1)
+            current = apply(current, independent)
+            checked = HELPER.decide(current, event(current, "validation", checked_source_id=B, passed=True,
+                                   required_unverified=[]), ledger)
+            self.assertEqual(checked["action"], "obtain_required_artifacts")
+
+    def test_optional_queued_receipt_cannot_hide_the_latest_required_snapshot(self):
+        for mode in ("durable", "inline"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                current, ledger, _ = self.reviewed(directory, mode=mode)
+                (Path(directory) / "preview.txt").write_text("optional preview", encoding="utf-8")
+                optional = self.capture(current, 30, ledger)
+                ledger = optional["observer_updates"]
+                current = apply(current, self.acknowledge(current, ledger["notifications"][-1], ledger))
+                self.assertNotEqual(self.final_delivery(current, ledger)["action"], "process_saved_result")
+                (Path(directory) / "report.txt").write_text("updated required report B", encoding="utf-8")
+                required = self.capture(current, 40, ledger)
+                ledger = required["observer_updates"]
+                current = apply(current, self.acknowledge(current, ledger["notifications"][-1], ledger))
+                deliver = self.final_delivery(current, ledger)
+                self.assertEqual(deliver["action"], "process_saved_result")
+                self.assertEqual(deliver["controller_event"], required["controller_event"])
+                self.assertFalse(deliver["terminal"])
+                consumed = HELPER.decide(current, deliver["controller_event"], ledger)
+                current = apply(current, consumed)
+                self.assertEqual(current["artifact_receipt"]["files"]["report"], self.verify(current)["files"]["report"])
+                self.assertNotEqual(self.final_delivery(current, ledger)["action"], "process_saved_result")
+
+    def test_actual_A_B_A_reverification_updates_current_snapshot_without_replaying_old_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, ledger, original_payload = self.reviewed(directory)
+            path = Path(directory) / "report.txt"
+            original = path.read_bytes()
+            original_receipt = copy.deepcopy(current["artifact_receipt"])
+            path.write_text("new valid report B", encoding="utf-8")
+            changed = self.capture(current, 30, ledger)
+            ledger = changed["observer_updates"]
+            current = apply(current, HELPER.decide(current, changed["controller_event"], ledger))
+            changed_receipt = copy.deepcopy(current["artifact_receipt"])
+            self.assertNotEqual(original_receipt["files"]["report"]["sha256"], changed_receipt["files"]["report"]["sha256"])
+            replayed = HELPER.decide(current, original_payload, ledger)
+            self.assertEqual(apply(current, replayed)["artifact_receipt"], changed_receipt)
+            path.write_bytes(original)
+            restored = self.capture(current, 40, ledger)
+            ledger = restored["observer_updates"]
+            self.assertEqual(restored["action"], "keep_quiet")
+            self.assertEqual(ledger["notifications"][0]["controller_event"], original_payload)
+            deliver = self.final_delivery(current, ledger)
+            self.assertEqual(deliver["action"], "process_saved_result")
+            self.assertFalse(deliver["terminal"])
+            self.assertEqual(deliver["controller_event"]["receipt"], original_receipt)
+            self.assertEqual(deliver["controller_event"]["observed_at"], "2026-01-01T00:00:40+00:00")
+            current = apply(current, HELPER.decide(current, deliver["controller_event"], ledger))
+            self.assertEqual(current["artifact_receipt"], original_receipt)
+            self.assertNotEqual(self.final_delivery(current, ledger)["action"], "process_saved_result")
+            self.assertEqual(apply(current, HELPER.decide(current, original_payload, ledger))["artifact_receipt"], original_receipt)
+
+    def test_new_actual_controller_verification_supersedes_old_invalid_observer_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, ledger, _ = self.reviewed(directory, fixed_hash=True)
+            path = Path(directory) / "report.txt"
+            original = path.read_bytes()
+            path.write_bytes(b"\xff broken")
+            ledger = self.capture(current, 30, ledger)["observer_updates"]
+            older_invalid = copy.deepcopy(ledger["artifact_observation"]["payload"])
+            self.assertFalse(HELPER.captured_artifacts_ready(current, ledger))
+            path.write_bytes(original)
+            verified = self.verify(current)
+            fresh = event(current, "artifact_receipt", receipt=verified, observed_at="2026-01-01T00:00:40+00:00",
+                          execution_scope="review_only", followup_mode="durable")
+            current = apply(current, HELPER.decide(current, fresh, ledger))
+            self.assertTrue(HELPER.captured_artifacts_ready(current, ledger))
+            self.assertNotEqual(self.final_delivery(current, ledger)["action"], "obtain_required_artifacts")
+            late_delivery = HELPER.decide(current, older_invalid, ledger)
+            self.assertEqual(late_delivery["action"], "keep_quiet")
+            self.assertTrue(late_delivery["observer_updates"]["required_artifacts_ready"])
+            self.assertFalse(late_delivery["observe_webpage"])
+            path.write_bytes(b"\xff broken again")
+            ledger = self.capture(current, 50, ledger)["observer_updates"]
+            self.assertFalse(HELPER.captured_artifacts_ready(current, ledger))
+            self.assertEqual(self.final_delivery(current, ledger)["action"], "obtain_required_artifacts")
+
+    def test_original_progress_cannot_be_rebound_to_a_changed_scope_or_mode(self):
+        original = state("submitting")
+        original = apply(original, HELPER.decide(original, submission(original)))
+        progress = HELPER.decide(original, scheduled(original, 1, generation="generating", actionable_progress=True,
+                                actionable_progress_ref="ui/current-progress.json"))
+        payload = copy.deepcopy(progress["controller_event"])
+        for axis in ("scope", "mode"):
+            with self.subTest(axis=axis):
+                changed = copy.deepcopy(original)
+                if axis == "scope":
+                    changed["execution_scope"] = "review_only"
+                else:
+                    changed = inline(changed)
+                with self.assertRaisesRegex(ValueError, "scope|mode|business"):
+                    HELPER.decide(changed, payload, progress["observer_updates"])
+        same = {**original, "execution_scope": "repair_loop", "followup_mode": "durable"}
+        accepted = HELPER.decide(same, payload, progress["observer_updates"])
+        self.assertEqual(accepted["action"], "assess_web_progress")
+        self.assertEqual(payload, progress["controller_event"])
+
+    def test_conflicting_same_time_proofs_wait_for_actual_fresh_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, ledger, _ = self.reviewed(directory)
+            receipt_a = self.verify(current)
+            same_time_a = event(current, "artifact_receipt", receipt=receipt_a,
+                                observed_at="2026-01-01T00:00:30+00:00", execution_scope="review_only")
+            current = apply(current, HELPER.decide(current, same_time_a, ledger))
+            (Path(directory) / "report.txt").write_text("actual valid report B", encoding="utf-8")
+            newer = self.capture(current, 30, ledger)
+            ledger = newer["observer_updates"]
+            self.assertFalse(ledger["required_artifacts_ready"])
+            self.assertFalse(HELPER.captured_artifacts_ready(current, ledger))
+            self.assertFalse(self.final_delivery(current, ledger)["terminal"])
+            incoming = newer["controller_event"]
+            reconcile = HELPER.decide(current, incoming, ledger)
+            self.assertEqual(reconcile["action"], "reconcile_artifact_verification")
+            self.assertEqual(apply(current, reconcile)["artifact_receipt"], receipt_a)
+            self.assertFalse(reconcile["state_updates"]["received_notifications"][newer["notification_key"]]["applied"])
+            fresh = event(current, "artifact_receipt", observed_at="2026-01-01T00:00:31+00:00",
+                          execution_scope="review_only", receipt=self.verify(current))
+            current = apply(current, HELPER.decide(current, fresh, ledger))
+            self.assertTrue(HELPER.current_artifacts_applied(current, ledger))
+            stale = HELPER.decide(current, same_time_a, ledger)
+            self.assertEqual(stale["action"], "ignore_stale_artifact_receipt")
+            self.assertEqual(apply(current, stale)["artifact_receipt"], fresh["receipt"])
+
+    def test_legacy_undated_current_proof_is_not_given_an_invented_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, ledger, _ = self.reviewed(directory)
+            old = current["artifact_observation"]["payload"]
+            old.pop("observed_at")
+            current["artifact_observation"]["sha256"] = HELPER.notification_digest(old)
+            (Path(directory) / "report.txt").write_text("actual valid report B", encoding="utf-8")
+            newer = self.capture(current, 30, ledger)
+            ledger = newer["observer_updates"]
+            self.assertFalse(HELPER.captured_artifacts_ready(current, ledger))
+            self.assertFalse(self.final_delivery(current, ledger)["terminal"])
+            fresh = event(current, "artifact_receipt", receipt=self.verify(current),
+                          observed_at="2026-01-01T00:00:40+00:00", execution_scope="review_only")
+            current = apply(current, HELPER.decide(current, fresh, ledger))
+            self.assertTrue(HELPER.current_artifacts_applied(current, ledger))
+            self.assertEqual(current["artifact_observation"]["payload"]["observed_at"], fresh["observed_at"])
+
+    def test_legacy_undated_direct_replay_preserves_newer_applied_real_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, ledger, _ = self.reviewed(directory, mode="inline")
+            legacy = event(current, "artifact_receipt", receipt=self.verify(current))
+            (Path(directory) / "report.txt").write_text("actual valid report B", encoding="utf-8")
+            fresh = event(current, "artifact_receipt", receipt=self.verify(current),
+                          observed_at="2026-01-01T00:00:40+00:00", execution_scope="review_only")
+            current = apply(current, HELPER.decide(current, fresh, ledger))
+            proof = copy.deepcopy(current["artifact_observation"])
+            replay = HELPER.decide(current, legacy, ledger)
+            current = apply(current, replay)
+            self.assertEqual(current["artifact_receipt"], fresh["receipt"])
+            self.assertEqual(current["artifact_observation"], proof)
+            self.assertTrue(HELPER.current_artifacts_applied(current, ledger))
+            self.assertTrue(self.final_delivery(current, ledger)["terminal"])
+            same_snapshot = event(current, "artifact_receipt", receipt=self.verify(current))
+            current = apply(current, HELPER.decide(current, same_snapshot, ledger))
+            self.assertEqual(current["artifact_observation"], proof)
+
+    def test_direct_same_time_conflict_persists_until_fresh_real_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, ledger, _ = self.reviewed(directory, mode="inline")
+            original = event(current, "artifact_receipt", receipt=self.verify(current),
+                             observed_at="2026-01-01T00:00:40+00:00", execution_scope="review_only")
+            current = apply(current, HELPER.decide(current, original, ledger))
+            (Path(directory) / "report.txt").write_text("actual valid report B", encoding="utf-8")
+            conflicting = event(current, "artifact_receipt", receipt=self.verify(current),
+                                observed_at="2026-01-01T00:00:40+00:00", execution_scope="review_only")
+            raw = copy.deepcopy(conflicting)
+            answer = HELPER.decide(current, conflicting, ledger)
+            self.assertEqual(answer["action"], "reconcile_artifact_verification")
+            current = apply(current, answer)
+            self.assertEqual(current["artifact_receipt"], original["receipt"])
+            self.assertFalse(HELPER.current_artifacts_applied(current, ledger))
+            self.assertFalse(self.final_delivery(current, ledger)["terminal"])
+            replay = HELPER.decide(current, conflicting, ledger)
+            current = apply(current, replay)
+            self.assertEqual(replay["action"], "reconcile_artifact_verification")
+            self.assertFalse(self.final_delivery(current, ledger)["terminal"])
+            fresh = event(current, "artifact_receipt", receipt=self.verify(current),
+                          observed_at="2026-01-01T00:00:41+00:00", execution_scope="review_only")
+            current = apply(current, HELPER.decide(current, fresh, ledger))
+            self.assertTrue(HELPER.current_artifacts_applied(current, ledger))
+            self.assertTrue(self.final_delivery(current, ledger)["terminal"])
+            self.assertEqual(current["artifact_receipt"], self.verify(current))
+            self.assertEqual(conflicting, raw)
 
 
 class RecoveryTests(unittest.TestCase):
