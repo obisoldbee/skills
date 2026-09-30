@@ -7,7 +7,7 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-from buddy_contract import dispatch_receipt, previous_receipt_block_receipt, receipt_for_observed_state
+from buddy_contract import dispatch_receipt, make_receipt, previous_receipt_block_receipt, receipt_for_observed_state
 from render_report import render
 
 
@@ -63,6 +63,34 @@ class ReportTests(unittest.TestCase):
                 data["receipt"]["dispatch_confirmed"] = False
             with self.subTest(change=change), self.assertRaises(ValueError):
                 render(data)
+
+    def test_previous_completion_is_history_not_current_execution(self):
+        data = self.completed()
+        data.update(receipt=previous_receipt_block_receipt("2026-09-13", data["receipt"]),
+                    gift="not_claimed", points=None, page={"status": "not_created"})
+        result = render(data)
+        self.assertIn("据历史回执跳过（本轮未派出）", result)
+        self.assertIn("页面：未创建", result)
+        self.assertNotIn("已完成", result)
+        self.assertNotIn("03:59:47", result)
+        self.assertNotIn("10 积分", result)
+
+    def test_history_conflict_requires_a_short_reason_in_the_actual_report(self):
+        data = self.completed()
+        data.update(receipt=make_receipt("2026-09-13", "blocked",
+                    dispatch_attempted=False, dispatch_confirmed=False,
+                    terminal_for_day=False, retry_allowed=False,
+                    next_action="manual_review_required"), gift="not_claimed", points=None)
+        for reason in (None, "证" * 41):
+            data["reason"] = reason
+            with self.subTest(reason=reason), self.assertRaises(ValueError):
+                render(data)
+        data["reason"] = "历史记录与当前页面不一致，今日完成未确认"
+        result = render(data)
+        self.assertEqual(len(result.splitlines()), 6)
+        self.assertIn("领取：本轮未领取", result)
+        self.assertIn("原因：" + data["reason"], result)
+        self.assertNotIn("已完成", result)
 
     def test_maintenance_and_notification_failures_stay_separate(self):
         data = self.completed()

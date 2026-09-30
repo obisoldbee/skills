@@ -63,7 +63,7 @@ project-root/
 ├── .project-conventions/    # Required. Project-owned, Harness-neutral access entry
 │   ├── ACCESS.md            # Worktree-first collaboration policy
 │   ├── project.json         # Portable type/mapping and helper digest
-│   └── project_access.py    # Local status/enter/check/finish/recover CLI
+│   └── project_access.py    # Compatibility CLI; ordinary worktree-first work needs no admission
 └── <agent-system-dir>/      # Agent platform's system directory (e.g. .workbuddy/, .qoderworkcn/) — NOT managed by this skill
     └── memory/              # Platform auto-maintained; never substitutes for project records
 ```

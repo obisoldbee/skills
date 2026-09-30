@@ -2,6 +2,10 @@
 
 ## 先区分目标
 
+新增密集三合一分支 [kimi-trimodal.md](kimi-trimodal.md)：`kimi-trimodal-swarm`，
+默认每秒 2 帧、音频导出、本地词级时间戳 ASR，再由 3 个独立 MiniMax-M3 观察者
+各自读取全量材料。使用视频同目录 `frames_<视频名>`；不替换普通原生视频路径。
+
 - `video_summary`：整体内容、章节与关键时间点。
 - `video_qa`：围绕一个问题定位相关片段并回答。
 - `audio_visual`：同时分析画面、说话、音乐和声音事件。
@@ -9,6 +13,10 @@
 - `benchmark`：比较时间顺序、跨镜头连续性、文字、声音与整体结论。
 
 ## 直接路线
+
+Kimi Code 新分支见 [kimi-readmedia.md](kimi-readmedia.md)：`kimi-readmedia` 普通模式，
+`kimi-readmedia-swarm` 默认 3 个独立上下文同题观察。默认 MiniMax-M3；可选 Agnes 3.0 Flash
+原生视频按显式授权的兼容性实验验证。两条模式均使用内置 `ReadMediaFile`，不替换下面的 direct 路线。
 
 | 目标 | Route | 执行器 |
 |---|---|---|

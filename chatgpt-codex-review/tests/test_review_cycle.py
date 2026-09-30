@@ -40,6 +40,11 @@ def state(phase="waiting_web"):
             "artifact_contract": CONTRACT, "contract_digest": DIGEST,
             "acceptance_contract": ACCEPTANCE, "acceptance_digest": ACCEPTANCE_DIGEST,
             "conversation_url": "https://chatgpt.com/c/test-conversation"}
+    current["web_io_binding"] = {"surface": "visible_thread", "ready": True,
+            "thread_id": "luna-thread", "host_id": "luna-host", "model": "gpt-6-luna", "reasoning": "max",
+            "identity_readback_ref": "tasks/luna-identity.json", "model_readback_ref": "tasks/luna-model.json",
+            "reasoning_readback_ref": "tasks/luna-effort.json", "runtime_pair_verified": True,
+            "route_basis": "explicit_skill_route", "verified_at": "2026-01-01T00:00:00+00:00"}
     current["followup"] = followup(current)
     current["prepared_request"] = {
         **{k: current[k] for k in ("run_id", "round", "source_id", "source_binding_digest",
@@ -52,8 +57,14 @@ def followup(current, *, checked_seconds=-1, status="ACTIVE", evidence_ref="view
     moment = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=checked_seconds)
     return {"tool": "automation_update/view", "kind": "heartbeat",
             "automation_id": "heartbeat-1", "status": status,
-            "owner_thread_id": current["controller_thread_id"],
-            "owner_host": current["controller_host"], "run_id": current["run_id"],
+            "owner_thread_id": current["web_io_binding"]["thread_id"],
+            "target_thread_id": current["web_io_binding"]["thread_id"], "owner_role": "web_io",
+            "owner_host": current["web_io_binding"]["host_id"], "run_id": current["run_id"],
+            "owner_model": current["web_io_binding"]["model"], "owner_reasoning": current["web_io_binding"]["reasoning"],
+            "owner_model_readback_ref": current["web_io_binding"]["model_readback_ref"],
+            "owner_reasoning_readback_ref": current["web_io_binding"]["reasoning_readback_ref"],
+            "controller_thread_id": current["controller_thread_id"], "controller_host": current["controller_host"],
+            "schedule_inventory_ref": "tasks/run-schedules.json", "active_automation_ids": ["heartbeat-1"] if status == "ACTIVE" else [],
             "state_path": current["state_path"], "prompt_binding_verified": True,
             "cadence_minutes": 5, "checked_at": moment.isoformat(),
             "next_check_at": (moment + timedelta(minutes=5)).isoformat() if status == "ACTIVE" else None,
@@ -224,7 +235,7 @@ class ReviewCycleTests(unittest.TestCase):
     def test_deleted_followup_can_be_replaced_only_with_old_id_evidence(self):
         current = state("ready_to_submit")
         replacement = {**followup(current, checked_seconds=1, evidence_ref="view-new-active"),
-                       "automation_id": "heartbeat-replacement"}
+                       "automation_id": "heartbeat-replacement", "active_automation_ids": ["heartbeat-replacement"]}
         item = event(current, "followup_readback", followup=replacement)
         self.assertEqual(HELPER.decide(current, item)["action"], "ensure_followup")
         item.update(replacement_of_automation_id="heartbeat-1",

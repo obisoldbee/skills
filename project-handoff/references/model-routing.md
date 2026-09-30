@@ -1,302 +1,152 @@
 # Model Routing
 
-Use this reference for automatic selection and for validating that an explicit route was preserved and is supported by the correct runtime surface.
+Use this reference for an explicitly selected route or `auto`. Resolve each lane from verified scope, then check the selected host's current task-tool capability.
 
 ## Contents
 
 1. Field-level precedence
-2. Aliases
-3. Per-lane classifier
-4. Mixed work and Controller routing
-5. Route receipt
+2. Current aliases and compatibility
+3. Automatic recommendations
+4. Mixed work and continuity
+5. Mandatory preflight and receipts
 6. Evaluation examples
 
 ## Field-level precedence
 
 Resolve `model` and `reasoning` independently:
 
-1. Preserve an explicit user value for that field.
-2. When the user explicitly selects a Skill alias such as `sol-ultra`, let that alias bind both fields.
-3. Treat an explicit `auto` for that field as authorization to classify it and pass the selected value.
-4. When the user did not select that field, leave it to the platform default and omit it from `create_thread`.
+1. Preserve each explicit raw user value.
+2. An explicitly selected alias binds both model and reasoning.
+3. Classify only an axis explicitly set to `auto`.
+4. An unselected axis is `platform_default`: record null and omit its tool field.
 
-Merely invoking `$project-handoff`, triggering the Skill implicitly with “创建任务”, or asking to create a task does not authorize model classification. If neither axis was selected, record `requested_route=platform-default`, set both values to `null`, use `platform_default` for both bases, and call `create_thread` without `model` or `thinking`. This preserves the live platform defaults.
+A bare `$project-handoff` or “创建任务” does not authorize model selection. Use `requested_route=platform-default`, `create_thread_arguments={}`, and omit both `model` and `thinking`. A model-only request omits `thinking`; a reasoning-only request omits `model`.
 
-If the user specifies a model but not reasoning, pass only `model`; omit `thinking`. If the user specifies reasoning but not a model, pass only `thinking`; omit `model`. An explicit `auto` applies only to the axis on which it was requested. Validate every value that will be passed against the current task-tool schema before dispatch; validate Spark against the bundled wrapper contract, never the visible-task schema.
+Keep raw selections in `requested_model` and `requested_reasoning`. Model-only names `Astra`, `Sol`, and `Luna` select a family without selecting effort; resolve them with the destination snapshot below. `GPT6` pins `gpt-6-astra`, not every GPT-6 variant. Exact IDs such as `gpt-6-sol` stay exact even when a newer Sol is present. Unknown raw model IDs require live capability verification; do not rewrite them.
 
-An explicit ordered pipeline, lane-to-model mapping, or concurrency cap also wins over automatic planning. Never silently downgrade, upgrade, or substitute an unsupported explicit value; report the unsupported pair and ask for a new choice only when no exact route is possible.
+Valid per-axis bases are `explicit_user`, `explicit_skill_route`, `explicit_auto`, and `platform_default`. The guard returns `requested_axes`, the exact `create_thread_arguments`, and `omitted_create_thread_fields`. Adding a value to a platform-default axis is `silent_default_override` and stops dispatch. An explicit route or pipeline always takes precedence over automatic recommendations.
 
-Record each field's basis as exactly one of:
+## Current aliases and compatibility
 
-- `explicit_user` — the user supplied that raw model or reasoning value;
-- `explicit_skill_route` — the user explicitly selected a Skill alias that binds that axis;
-- `explicit_auto` — the user explicitly asked the Skill to select that axis;
-- `platform_default` — the user did not select that axis, so the corresponding tool field must be absent.
-
-The route validator returns `requested_axes` with each axis's basis, requested value, and effective value, plus `create_thread_arguments` using tool field names (`model`, `thinking`) and `omitted_create_thread_fields`. A raw explicit axis must carry `requested_model` or `requested_reasoning`, and its effective value must match. The only model-name normalization is documented below: retain `astra` or `gpt6` as the requested name and resolve it to `gpt-6-astra`; this does not select reasoning. Use the exact argument projection. Supplying a value while its basis is `platform_default` is `silent_default_override` and must fail before dispatch.
-
-## Aliases
-
-| Alias | Model | Reasoning | Surface |
+| Alias | Model | Reasoning | Use |
 |---|---|---|---|
-| `astra-ultra` / `gpt6-ultra` | `gpt-6-astra` | `ultra` | visible Codex task/controller |
-| `astra-max` / `gpt6-max` | `gpt-6-astra` | `max` | visible Codex task |
-| `sol-ultra` | `gpt-5.6-sol` | `ultra` | visible Codex task/controller |
-| `sol-max` | `gpt-5.6-sol` | `max` | visible Codex task |
-| `terra-max` | `gpt-5.6-terra` | `max` | visible Codex task |
-| `luna-max` | `gpt-5.6-luna` | `max` | visible Codex task |
-| `spark` / `spark-xhigh` | `gpt-5.3-codex-spark` | `xhigh` | bundled CLI workflow |
+| `astra-ultra` | Astra (baseline `gpt-6-astra`) | `ultra` | Hardest reasoning |
+| `astra-high` | Astra | `high` | Default orchestration |
+| `sol-max` | Sol (baseline `gpt-6.1-sol`) | `max` | Default writing/development |
+| `sol-medium` | Sol | `medium` | Default desktop computer operation |
+| `luna-max` | Luna (baseline `gpt-6-luna`) | `max` | Simple browser operation, mechanical audits, file lookup |
+| `astra-max` / `sol-ultra` | Current corresponding family | `max` / `ultra` | Explicit alternatives |
+| `gpt6-max` / `gpt6-ultra` | `gpt-6-astra` (pinned generation) | `max` / `ultra` | Explicit compatibility aliases |
+| `terra-max` | `gpt-5.6-terra` | `max` | Explicit human selection only |
 
-An alias is a shortcut for the complete model/reasoning/surface pair, not a new model. Bare `Astra` and `GPT6` are model-only names for `gpt-6-astra`; record `model_basis=explicit_user` and leave reasoning unselected unless the user names it or requests `auto`. For example, “模型用 GPT6，推理用平台默认” passes only `model=gpt-6-astra`. These spellings refer specifically to Astra, not every future GPT-6 variant. Existing `sol-ultra`, `sol-max`, and `terra-max` keep their original meanings. Terra remains available by explicit model or alias, but is never selected by model `auto` for new dispatch.
+All supported aliases use `visible_thread` and the live `create_thread` tool. Normalize alias casing. An alias is a shortcut, not a new model. Raw GPT-5.6 IDs and other live-supported model/effort pairs remain available only when explicitly chosen; they are not automatic fallbacks. A raw older model plus explicit reasoning `auto` may use max without changing the chosen model.
 
-Do not migrate already-created Terra tasks as a side effect of this policy update. An unchanged historical automatic Terra route may continue only for existing-task follow-up, eligible synchronization, or failure reporting with `route_changed=false` and a verified existing task. Before using that exception, the caller must bind the operation to an existing task id and verify its original effective route from task readback and the historical receipt. The offline guard checks declared operation/route fields only; it does not query the task or prove this continuity evidence. New initial dispatch and new plans reject model `auto` selecting Terra. Historical receipts remain evidence of the original call and policy; a current initial-dispatch validator is not a retroactive acceptance test for those receipts.
+Baselines as of 2026-09-30: Sol is GPT-6.1, Luna is GPT-6. Existing tasks keep their verified original model/effort; do not reroute them by reinterpreting an old alias. Spark aliases and model ID are retired and rejected. The bundled executor and its instructions have been removed. An explicit request for a retired route requires a new user choice, never an automatic Luna replacement.
 
-Normalize alias casing. Check the live tool declaration before creating a visible task because supported model/reasoning combinations can change. Tool capability is not route authority: an advertised Spark model does not authorize `create_thread`, fork, handoff, or any visible task. `spark` is an atomic CLI-only route, and a nonzero wrapper exit terminates that lane until a new explicit user request changes route. `luna-max` is an atomic max route unless the user explicitly replaces that alias with another route; a later follow-up does not implicitly replace it.
+Capability observation on 2026-09-30: the calling task schema advertises GPT-6 Astra and GPT-6.1 Sol with low, medium, high, xhigh, max, ultra; GPT-6 Luna with low, medium, high, xhigh, max. Recheck the actual destination: an observation is not a permanent provider guarantee. `destination_state.supported_reasoning` or the catalog below can restrict the pair. Static validation or UI availability does not prove live dispatch.
 
-Treat every non-Spark alias above as a visible-task contract, not merely a model selection. Initial dispatch must use the live `create_thread` tool. `spawn_agent`, collaboration subagents, agent paths, and subagent activity receipts never satisfy these aliases.
+### Newest available family policy
 
-An explicitly selected alias records both axes as `explicit_skill_route`. If the user instead says `auto`, record `requested_route=auto` and the classified axes as `explicit_auto`; do not relabel an automatic choice as a user-selected alias. A raw model or reasoning value uses `explicit_user` and does not silently bind the other axis.
+For a **new** unversioned family alias or automatic role, prefer the highest numeric version in the same family among visible releases supported by the target task service. Compare version tuples, so 6.10 is newer than 6.9; never sort lexically. This is the user's upgrade preference, not evidence of universal capability, speed or price superiority. Do not cross families, include preview/custom suffixes by guesswork, or invent an ID from a version announcement.
 
-When the user explicitly names another live-supported reasoning tier such as `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`, preserve it and record a non-alias `requested_route` when it replaces an alias contract. Do not copy a Controller's reasoning tier to workers automatically. Automatic reasoning uses `max` for visible tasks and `xhigh` for the atomic Spark CLI route. Use `ultra` only when explicitly requested, including through an `*-ultra` alias. An automatic choice is recorded as `requested_route=auto`, never relabeled as a user-selected alias.
+Record `route.model_catalog` (also `context.model_catalog` for the fixture resolver):
 
-The current task-tool schema observed on 2026-09-06 lists `gpt-6-astra` with `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. This is a compatibility observation, not a permanent support guarantee or runtime dispatch test; recheck the selected host at execution time.
+```json
+{
+  "source": "exact destination task-tool capability reference",
+  "host_id": "target-host-id",
+  "observed_at": "2026-09-30T00:00:00Z",
+  "models": [
+    {"model": "gpt-6.1-sol", "hidden": false,
+     "reasoning_efforts": ["low", "medium", "high", "xhigh", "max", "ultra"]}
+  ]
+}
+```
 
-## Mandatory route preflight
+Use a fresh observation in this dispatch session, bound to the actual host and executing service. A newer local CLI catalog, stale cache, other host's schema, or UI menu alone is not the remote task service's capability. When only raw core catalog evidence is available, corroborate it against the destination task API before including it here. Capture the complete relevant family, including efforts. The offline guard validates declared evidence, not its authenticity/freshness or runtime availability; keep the source reference and verify it externally.
 
-Before any dispatch, follow-up, retry, or availability claim, serialize the attempt and run `scripts/validate_dispatch_route.py`. A multi-lane plan must also carry `requested_route` and `surface` for every lane so `scripts/validate_orchestration_plan.py` can enforce the same alias boundary.
+Without a snapshot, the offline resolver uses the dated baselines; it does not discover models or authorize skipping live preflight. With a snapshot it resolves deterministically and refuses a family older than the baseline, rather than quietly going back to 6 Sol or 5.6 Sol. Diagnose stale destination configuration/core when appropriate. If the newest model lacks the requested effort, stop with the mismatch; do not choose an older version merely to make validation pass. Existing task follow-ups use their recorded pair, not today's catalog; keep historical receipts unchanged.
 
-The attempt receipt requires:
+A tool's capability is not route authority. Never substitute `spawn_agent`, collaboration subagents, agent paths, or CLI runs for a requested visible task.
+
+## Automatic recommendations
+
+Automatic model selection requires a verified `task_kind`. When reasoning is also `auto`, use that role's effort. Explicit reasoning still wins; an unselected reasoning axis stays omitted. Role defaults do not turn a bare task-creation request into automatic routing.
+
+| Verified lane evidence | Recommended route | Expected output |
+|---|---|---|
+| Hardest reasoning or demanding integration (`top_difficulty`) | Astra ultra | Decisions, risks, acceptance criteria, downstream plan |
+| Task decomposition, coordination, integration planning (`orchestration`) | Astra high | Dependency graph, bounded assignments and integration gates |
+| Writing/development (`writing`), or executing Astra's accepted plan (`astra_planned_execution`) | Sol max | Artifacts, named checks and deviations |
+| Desktop computer operation (`computer_operation`) | Sol medium | Verified actions and observed state |
+| Simple browser operation (`browser_operation`) or mechanical audits, file lookup, existing scripts (`mechanical`) | Luna max | Exact evidence and bounded results |
+| Other work, ambiguous difficulty, or missing plan evidence | Explicit human route | Resolve the missing scope or selection before dispatch |
+
+Do not infer top difficulty from total project size, the Controller's model, or the word “design” alone. Do not infer mechanical work from “read-only”, “audit”, or “review”: evidence interpretation, semantic judgments, risk prioritization, and final acceptance do not qualify. A complex audit may belong to Astra; a fully specified review step may belong to Sol; otherwise obtain an explicit route.
+
+A Sol writing lane names the brief, outputs and checks; an Astra-planned execution lane additionally names the accepted plan and its gate. If execution uncovers unresolved design, report it to the Controller; do not silently expand scope or replace the model. A Luna lane names exact inputs/actions and result format. Complex browser research/review uses its substantive reasoning role, not the simple-browser default. Model routing itself never authorizes scheduling, sending, purchases or other extra side effects.
+
+Keep a deterministic local command local when it fully answers the request and no separate task was requested. An explicitly requested scheduled execution task can use Luna with its supplied script; use the host's scheduling tools only when scheduling is authorized.
+
+## Mixed work and continuity
+
+For a top-difficulty design followed by implementation:
+
+1. Create Astra ultra for the top-difficulty design lane (ordinary orchestration uses Astra high).
+2. Require the accepted plan artifact and named ready state.
+3. Verify that artifact and current repository state.
+4. Create Sol max from the accepted plan; do not start it speculatively before the gate.
+
+Independently scoped mechanical checks can use Luna max concurrently. For all ready lanes, dispatch the full ready, conflict-free wave within the user's cap and actual visible-task capacity. Shared files/resources require separate worktrees, narrowed scopes, or serial integration. Keep one integration owner.
+
+Follow-ups preserve the task's verified effective route. Normally omit model/thinking on `send_message_to_thread` to retain its settings; never add a lower effort because the follow-up is short. An explicit route change controls only the requested axes.
+
+For existing tasks, including GPT-6 Sol and GPT-5.6 tasks, bind the task ID and original route using readback and its historical receipt. Only unchanged follow-up, eligible synchronization, and failure reporting may retain a historical automatic route or pre-migration alias pair. The offline guard checks this declaration, not task existence. It cannot be used for new initial dispatch, replacement tasks, or new plans. Historical receipts remain evidence of the original call and policy; do not rewrite their model versions.
+
+## Mandatory preflight and receipts
+
+Before dispatch, follow-up, retry, or availability claims, serialize one attempt and run `scripts/validate_dispatch_route.py ATTEMPT --format json`. For multi-lane work also run `scripts/validate_orchestration_plan.py` with each lane's `requested_route` and `surface`.
 
 ~~~yaml
 operation: initial_dispatch | followup | sync_retry | failure_report
-action: create_visible_task | run_bundled_spark_cli | read_existing_task | set_visible_task_title | send_followup | none
-tool: <exact live tool or bundled wrapper>
-failure_class: none | creation_visibility_delay | prompt_readback_delay | title_metadata_delay | unsupported_parameter | invalid_request | unsupported_route | wrapper_missing | codex_cli_missing | auth | permission | quota | provider_model | unknown
+action: create_visible_task | read_existing_task | set_visible_task_title | send_followup | none
+tool: <exact live tool name>
+failure_class: none | creation_visibility_delay | prompt_readback_delay | title_metadata_delay | unsupported_parameter | invalid_request | unsupported_route | auth | permission | quota | provider_model | unknown
 route_changed: false
 explicit_user_route_change: false
 route:
-  requested_route: spark | luna-max | astra-max | astra-ultra | sol-max | terra-max | model-id
-  requested_model: <required for an explicit raw model; otherwise omit>
-  requested_reasoning: <required for an explicit raw reasoning value; otherwise omit>
-  model: <selected value or null for platform default>
-  reasoning: <selected value or null for platform default>
-  surface: visible_thread | bundled_cli
+  requested_route: astra-ultra | astra-high | sol-max | sol-medium | luna-max | auto | platform-default | <explicit route>
+  task_kind: <required for automatic model selection; role from the table>
+  requested_model: <required only for a raw explicit model>
+  requested_reasoning: <required only for a raw explicit effort>
+  model: <value or null>
+  reasoning: <value or null>
+  surface: visible_thread
   model_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
   reasoning_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
 ~~~
 
-Proceed only when the validator returns `valid: true`. Retain its `attempt_sha256`. For visible creation, copy only its returned `create_thread_arguments` into the live tool call; do not fill any returned `omitted_create_thread_fields`. Obey its `terminal`, `next_action`, `visible_task_allowed`, and `route_change_requires_new_user_request` fields. An `unsupported_parameter`, `invalid_request`, or `reasoning.summary` rejection on the visible/Desktop surface is classified as `wrong_surface_or_request`, cannot support a Spark-unavailable claim, and must not be retried by changing or omitting reasoning.
+Proceed only on `valid: true`. Retain `attempt_sha256`; pass exactly its `create_thread_arguments` using the current tool's **model/thinking** names. Never add fields listed in `omitted_create_thread_fields`.
 
-After visible creation, normalize the actual `create_thread` return, exact arguments, and attempt hash, then run `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT`. Do not register a lane until that validator accepts both the binding and a real ready `thread_id`/`host_id` or queued `client_thread_id`.
+Normalize the actual creation result with the exact `actual_tool`, `actual_create_thread_arguments`, `dispatch_attempt_sha256`, IDs, and prompt-delivery evidence. Require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to pass before registration. Then verify initial progress and, when requested, completed output. A model's self-description is not model identity evidence.
 
-## Per-lane classifier
-
-Build the dependency graph and lane scope first, then classify each lane. One run may legitimately use different routes for design, implementation, audit, and integration. Keep deterministic local work local when an LLM adds no material value.
-
-### Route to Astra-max
-
-Use for:
-
-- product or architecture design;
-- ambiguous requirements;
-- cross-system trade-offs;
-- migration strategy;
-- high-consequence design review;
-- selecting among multiple viable approaches.
-
-Require decisions, alternatives, risks, interfaces, acceptance criteria, and a clear handoff state.
-
-### Route to Sol-max
-
-Use for:
-
-- implementing an accepted plan;
-- multi-file development;
-- debugging and integration;
-- tests and verification;
-- converting a stable design into working artifacts.
-
-This is the ordinary implementation default and the bounded execution support for an Astra Controller. If the design is missing or materially unresolved, run Astra-max first unless a small implementation can be safely specified within the current lane. An explicit user route always wins.
-
-### Route demanding development to Astra-max
-
-Use Astra-max instead of Sol-max when the lane is verified to require high-intensity development or integration, for example:
-
-- unresolved cross-system interfaces or architectural decisions;
-- multiple coordinated workstreams with substantial collision risk;
-- large or super-large scope with an unusually demanding integration and verification surface;
-- a high-consequence review requiring the same depth of judgment as architecture work.
-
-The Astra/Sol split replaces the former Sol/Terra automatic split: Astra takes the former design and highest-difficulty work; Sol takes accepted-plan implementation. Preserve the current or explicitly assigned Controller. Its model alone does not promote every helper to Astra or copy `ultra` to workers. Mechanical checks and ordinary bounded support retain their own route even inside a large run.
-
-Use only verified lane scope and runtime/user-provided metadata; never infer a Controller model from writing style. If difficulty or project scope is ambiguous, keep ordinary implementation on Sol-max. Do not replace an explicit Sol or Terra choice just because the task is difficult.
-
-### Route to Luna-max
-
-Use for:
-
-- judgmental audits;
-- comparing evidence and claims;
-- risk prioritization;
-- focused research review;
-- deciding whether a report supports an engineering conclusion.
-
-Luna may produce visible review artifacts, but it does not inherit authority beyond the assigned scope.
-
-Keep `max` on creation and every follow-up. Do not add `thinking: low`, omit the reasoning field to accept a default, or downgrade because a correction is short. Only an explicit user route change authorizes a different effective route.
-
-### Route to Spark CLI
-
-Use for bounded read-only work such as:
-
-- parsing and classifying structured files;
-- checking frontmatter, JSONL, YAML, hashes, names, paths, and counts;
-- grouping deterministic validator failures;
-- producing a candidate table from explicit files;
-- summarizing mechanical command output.
-
-Do not use Spark for product decisions, semantic truth, user-position handling, medical conclusions, formal writes, deployment, or final acceptance.
-
-Spark has no visible-task branch in this Skill. Use only the bundled wrapper at `xhigh`; never test Spark availability through a task-creation API. On `PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE`, stop the lane and wait for a new explicit user request rather than selecting an App model.
-
-### Keep local
-
-Do not create a model task when a single deterministic command fully answers the request and an independent LLM reading adds no value. Run the local validator, preserve exact output, and report it.
-
-## Mixed work and Controller routing
-
-For design plus implementation:
-
-1. Route design to Astra-max.
-2. Require a named, non-empty artifact and explicit ready state.
-3. Verify the artifact and current repository state.
-4. Route implementation just in time: Sol-max ordinarily, or Astra-max for a verified demanding lane as above.
-
-Do not create both tasks simultaneously unless the user explicitly asks for speculative work and accepts that the implementation cannot pass its real integration gate until design is accepted. Other graph-independent lanes should still be dispatched concurrently.
-
-For multiple ready lanes:
-
-1. classify each lane separately;
-2. preserve every explicit lane route;
-3. dispatch the full ready, conflict-free wave within the live concurrency cap;
-4. keep the current task or explicitly named Controller responsible for route changes and final integration.
-
-## Route decision receipt
-
-Record:
-
-~~~yaml
-lane_id:
-requested_route:
-requested_model:
-requested_reasoning:
-operation:
-action:
-selected_executor:
-planned_tool:
-actual_tool:
-model:
-reasoning:
-model_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
-reasoning_basis: explicit_user | explicit_skill_route | explicit_auto | platform_default
-create_thread_arguments: <exact validator projection; omit platform-default axes>
-omitted_create_thread_fields:
-dispatch_attempt_sha256:
-actual_create_thread_arguments:
-surface:
-selection_basis:
-runtime_pair_verified:
-dispatch_guard_valid:
-receipt_guard_valid:
-failure_class:
-spark_unavailable_supported:
-dependencies:
-fallback: none | explicit-user-authorized alternative
-authority_boundary:
-~~~
+Record selection evidence, route bases, requested/effective axes, runtime pair verification, dependencies, authority boundary, guard results, failure class, and fallback (`none` unless explicitly authorized). `model_unavailable_supported` is false for parameter validation errors. See `references/thread-dispatch.md` for the GPT-6 max diagnostic procedure: preserve the exact pair, inspect the executing runtime/capabilities, and never mask a validation mismatch by switching to GPT-5.6, dropping thinking, or substituting CLI/subagents.
 
 ## Evaluation examples
 
-The offline `resolve_request_case` regression grammar is deliberately bounded, not a general runtime intent parser. It consumes the fixture forms for Chinese `模型和推理都自动选`, per-axis `模型自动选`/`推理自动选` (also `auto`), `模型用`/`推理用` values, Chinese `用`/`使用` aliases, a leading naked alias, or English `use <alias> ... create`. Model-only `Astra`/`GPT6` use the same leading/Chinese/English forms or follow `模型用`. Context fields describe verified lane facts, not hidden defaults: `lane_difficulty=bounded` prevents a large overall project from promoting ordinary implementation support. Multiple or conflicting explicit selections require a resolved route; unsupported fixture forms are not a license to override an axis. Runtime routing must still resolve the full live request. A bare `$project-handoff` or “创建任务” form is tested separately and never counts as an alias.
+| Request and verified context | Result |
+|---|---|
+| Both axes auto; verified top-difficulty cross-system architecture problem | baseline `gpt-6-astra`, `thinking=ultra` |
+| Both axes auto; ordinary orchestration | baseline `gpt-6-astra`, `thinking=high` |
+| Both axes auto; execute Astra's accepted plan with named checks | baseline `gpt-6.1-sol`, `thinking=max` |
+| Both axes auto; desktop operation | baseline `gpt-6.1-sol`, `thinking=medium` |
+| Both axes auto; inspect manifest YAML/paths/SHA without judging content | `gpt-6-luna`, `thinking=max` |
+| Both axes auto; find files or run an existing authorized script mechanically | `gpt-6-luna`, `thinking=max` |
+| Both axes auto; assess whether research supports a conclusion, scope unspecified | Resolve scope or request an explicit route; do not select Luna |
+| “用 sol-max 创建任务” | Newest verified Sol at max; current baseline GPT-6.1 Sol |
+| Explicit raw `gpt-5.6-sol`; reasoning unselected | Pass only that model, omit thinking |
+| Model auto with mechanical scope; reasoning unselected | Pass only `gpt-6-luna`, omit thinking |
+| “创建任务” or bare Skill trigger | Omit both axes |
+| Luna max rejected by create_thread reasoning validation | Preserve failure; inspect task-service capability; no silent downgrade |
 
-An explicit model plus reasoning `auto` preserves that model; model `auto` plus explicit reasoning preserves that reasoning. An omitted axis stays omitted. If a model-only automatic choice would require the atomic Spark route while reasoning is unselected, stop that proposed route rather than silently filling `xhigh` or substituting another model.
-
-### Example 1 — Architecture design
-
-Input: “创建新任务，模型和推理都自动选；为一个跨设备 Repo Hub 设计控制面、数据模型和迁移方案。”
-
-Expected: `gpt-6-astra`, `max`, visible task.
-
-Reason: The task requires architecture and trade-offs rather than implementation.
-
-### Example 2 — Accepted-plan implementation
-
-Input: “创建新任务，模型和推理都自动选；方案已经批准，按 `docs/specs/api-v2.md` 实现并跑测试。”
-
-Expected: `gpt-5.6-sol`, `max`, visible task.
-
-Reason: A current accepted design already defines the implementation contract.
-
-### Example 3 — Design then build
-
-Input: “模型和推理都自动选；先设计新的同步协议，方案验收后再开发。”
-
-Expected: `gpt-6-astra max -> gpt-5.6-sol max`, sequential visible tasks.
-
-Reason: The user explicitly requires a design gate before implementation.
-
-### Example 4 — Judgmental audit
-
-Input: “创建新任务，模型和推理都自动选；核验三份研究报告的证据是否真的支持工程结论，并标出风险。”
-
-Expected: `gpt-5.6-luna`, `max`, visible task.
-
-Reason: The work requires evidence interpretation and risk judgment.
-
-### Example 5 — Mechanical audit
-
-Input: “创建新任务，模型和推理都自动选；只读检查 80 个 manifest 的 YAML、字段、路径和 SHA，输出异常表，不判断内容价值。”
-
-Expected: `gpt-5.3-codex-spark`, `xhigh`, bundled CLI.
-
-Reason: The scope is bounded, structural, read-only, and non-authoritative.
-
-### Example 6 — Demanding development under an Astra Controller
-
-Input: The verified source Controller is `gpt-6-astra` with `ultra` reasoning; the user asks to auto-select both worker axes for a lane integrating several workstreams across a super-large project.
-
-Expected: `gpt-6-astra`, `max`, visible task.
-
-Reason: The lane's demanding integration scope selects Astra-max; the Controller stays in place. An ordinary bounded implementation helper under the same Controller would use Sol-max.
-
-### Example 7 — Partial explicit route
-
-Input: “实现这个已验收方案，用 `gpt-5.6-terra`；推理档位用平台默认。”
-
-Expected: `create_thread_arguments={"model":"gpt-5.6-terra"}`; omit `thinking`.
-
-Reason: A raw explicit model does not authorize the Skill to override the other axis.
-
-### Example 8 — Independent mixed lanes
-
-Input: “并行做两件事：Sol-max 设计迁移方案；Luna-max 独立审核现有证据。两者都完成后由当前任务集成。”
-
-Expected: dispatch both visible tasks in one ready wave with their explicit routes; current task remains integration owner.
-
-Reason: The lanes have no data dependency or shared writes, and both explicit routes must be preserved.
-
-### Example 9 — Skill trigger only
-
-Input: “帮我创建一个新任务继续处理。” or “`$project-handoff` 创建任务。”
-
-Expected: `requested_route=platform-default`; `create_thread_arguments={}`; omit both `model` and `thinking`.
-
-Reason: Skill discovery or invocation is task-creation authority only; it is not model-selection authority.
-
-### Example 10 — Explicit auto
-
-Input: “创建新任务，模型和推理都自动选。”
-
-Expected: classify both axes, record both as `explicit_auto`, validate the live pair, and pass both returned fields.
-
-Reason: The user explicitly authorized model/reasoning selection rather than leaving either axis to the platform.
+The offline `resolve_request_case` parser is a bounded regression grammar, not a general intent parser. It recognizes fixture forms, aliases and family names. Auto uses the verified role table's `task_kind`, `lane_difficulty=high`, or `plan_owner=astra` with an accepted-plan request. Only narrowly structural wording is classified mechanically without context. A reasoning-only auto request without role context retains max while leaving model untouched. Unknown or conflicting scope/axes fail instead of inventing authority. Runtime callers resolve the full live request and source evidence.

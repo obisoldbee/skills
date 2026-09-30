@@ -1,6 +1,6 @@
 # Worktree-first collaboration
 
-Task: complete the authorized work without a persistent project-wide admission claim. This policy applies when the project's managed AGENTS block and project.json select `worktree-first`. Existing projects need the bounded migration below; updating the global Skill does not rewrite project copies.
+Task: complete the authorized work without a persistent project-wide admission claim. Existing AGENTS may adopt this workflow without installing a helper. Where an initialized helper governs ordinary work, keep its managed AGENTS block and project.json consistent with `worktree-first`; migrate them together as described below. Explicit runtime-only legacy dependencies are scoped separately. Updating the global Skill does not rewrite project copies.
 
 ## Choose the actual output
 
@@ -30,6 +30,12 @@ If the branch/path exists, inspect it or choose a new task-specific name. Git er
 Use the exact output name the user supplies; if none is supplied, choose a task-specific filename. Use exclusive creation (`open(path, 'x')` or equivalent); an existing file means inspect it or select another authorized name. A hash check before overwriting is not an atomic guarantee. Concurrent changes to the same tracked file belong in separate worktrees; for non-Git files use one integrator.
 
 Agents write separate task records. The integrator updates shared daily logs/indexes and assigns canonical sequence numbers during integration. Do not make every worker rewrite the same daily file or reserve all of conversation/. If the project requires a numbered canonical record immediately, one editor allocates it while others keep their own drafts. Response-only work creates no records.
+
+## Guidance maintenance and execution dependencies
+
+An explicit request to upgrade a workspace's existing AGENTS/guidance selects governance maintenance for that bounded workspace. Inventory current entry points and routed operational guides, preserve project-specific rules, and update stale generated templates along with the authorized existing copies. Updating only the Skill does not migrate copies. Do not initialize missing helpers, rewrite historical evidence, modify third-party upstream instructions, or retarget consumer links as a side effect.
+
+Before changing an adopted helper policy, inspect local callers. A command supervisor or an apply authorization API may require legacy token checks or actual child execution. The worktree-first compatibility helper returns `not_required` without executing commands. Preserve a narrowly documented runtime-only legacy exception until its caller is migrated and behavior-tested; ordinary reads, reports and code maintenance need no such capability. Keep AGENTS, ACCESS and project.json digests consistent. Report retained execution dependencies explicitly instead of claiming full helper migration.
 
 ## Existing projects and copied disks
 

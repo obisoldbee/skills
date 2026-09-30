@@ -40,7 +40,7 @@ The standard shape is:
 ├── AGENTS.md
 ├── README.md
 ├── MEMBERS.md
-├── GitHub/                                  # the one Git worktree
+├── GitHub/                                  # the canonical distribution checkout
 │   └── project-conventions/                 # true package source
 ├── project-conventions/                     # stable Project Root wrapper
 │   ├── .project-conventions/                # project-local cross-Harness access entry
@@ -60,7 +60,7 @@ The standard shape is:
 Six path roles are distinct:
 
 1. **Project Collection**: `<collection>`; it is not a Git repository.
-2. **Shared Repository Root**: `<collection>/GitHub`; it is the only checkout of `obisoldbee/skills` in this collection.
+2. **Shared Repository Root**: `<collection>/GitHub`; it is the canonical checkout of `obisoldbee/skills` in this collection; linked task worktrees of that repository are allowed for authorized concurrent code work.
 3. **True Skill source**: `<collection>/GitHub/project-conventions`.
 4. **Member Project Root**: `<collection>/project-conventions`; it owns documents and continuity records.
 5. **Member projection**: `<collection>/project-conventions/src/project-conventions`; relative symlink on Unix, junction on Windows.
@@ -77,7 +77,7 @@ The standard initializer above owns only the public `obisoldbee/skills` distribu
 - an **owned private distribution Repository Root**, such as `GitHub-private`, with one Skill package per top-level directory; or
 - a **third-party checkout pool**, such as `GitHub-others`, whose container has no `.git/` and whose named children are independent upstream Repository Roots.
 
-Multiple owned distribution roots are valid only when every member mapping names one exact collection-relative `repository_root`, one normalized remote identity, and one `managed_scope`. Keep at most one checkout of each normalized remote identity in the collection. Never infer a remote, ownership, privacy, or export authority from a directory name.
+Multiple owned distribution roots are valid only when every member mapping names one exact collection-relative `repository_root`, one normalized remote identity, and one `managed_scope`. Keep at most one canonical clone of each normalized remote identity in the collection; task worktrees share that clone and do not replace its source mappings or consumer links. Never infer a remote, ownership, privacy, or export authority from a directory name.
 
 An owned private repository is not a secret store. Keep credentials and raw sensitive data outside Git. Treat source publication class and runtime availability as independent: a private or local Skill may be portable, device-bound, network-bound, or device-and-network-bound. When device and network restrictions both exist, both must match; unknown evidence means do not execute the integration.
 
@@ -214,7 +214,7 @@ Core rules:
 9. Resolve the actual repository, base commit, unique branch and absent task-worktree path. Authorized code work includes ordinary local worktree setup. Use the host's existing task worktree when suitable. A worktree begins from committed files; preserve and explicitly account for dirty/untracked inputs. Never reset or stash another task's work.
 10. One concurrent writer per physical worktree. Separate worktrees may edit the same logical filename; one integrator reconciles commits and runs affected checks. Worktrees do not isolate shared databases, ports, services or common build outputs. Use separate resources or one dedicated builder for a stable integrated revision.
 11. New reports use exact unique files with no-clobber creation; different files in one folder may coexist. For shared non-Git documents use one editor and separate proposals. Agents write task-specific records; the integrator updates canonical logs/indexes and allocates sequence numbers. Do not introduce persistent claims for these operations.
-12. Existing adopted projects retain their copied policy until migrated. For an authorized switch on an exact named target, run `scripts/migrate_worktree_policy.py <project-root> --apply`; it plans, checks, backs up and replaces the four governance files without consulting the old claim registry. No separate claim-recovery permission round is needed. A call without `--apply` is an optional preview. Updating the Skill alone does not migrate project copies. Reload running Agents' rules; preserve actual active work.
+12. Existing adopted projects retain their copied policy until migrated. Before switching, check whether a local command supervisor or authorization API depends on legacy helper execution/tokens; handle that narrowly scoped runtime dependency as described in `references/worktree-collaboration.md`. For an authorized switch on an exact compatible target, run `scripts/migrate_worktree_policy.py <project-root> --apply`; it plans, checks, backs up and replaces the four governance files without consulting the old claim registry. No separate claim-recovery permission round is needed. A call without `--apply` is an optional preview. Updating the Skill alone does not migrate project copies. Reload running Agents' rules; preserve actual active work.
 
 `worktree-first` is a coordination policy, separate from the retained legacy helper's protocol version 3. Old SQLite claims do not govern projects using this policy, and a copied database does not inherit control over an independent copy. Do not delete the database or infer process death from a stale row. Projects explicitly retaining `legacy-claims` use `references/project-access.md`; never mix those admission commands into the default workflow.
 

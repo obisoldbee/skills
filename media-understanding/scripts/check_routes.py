@@ -21,6 +21,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--home", type=Path, default=Path.home())
     parser.add_argument("--route", action="append", default=[], help="Inspect only this route id; repeatable.")
+    parser.add_argument("--model", help="Exact model ID for Kimi routes; default MiniMax-M3")
+    parser.add_argument("--model-alias", help="Exact Kimi alias if multiple profiles serve the model")
     return parser.parse_args()
 
 
@@ -181,17 +183,33 @@ def main() -> None:
             continue
         executor = inspect_executor(route["executor"], args.home)
         credentials = inspect_credentials(route.get("credentials"), args.home)
+        kimi_binding = None
+        route_readiness = readiness(route, executor, credentials)
+        if route.get("configuration_owner") == "kimi_code":
+            from providers.kimi_readmedia import binding
+            try:
+                if route["id"] == "kimi-trimodal-swarm" and args.model and args.model != "MiniMax-M3":
+                    raise ValueError("configuration_mismatch: trimodal_requires_MiniMax-M3")
+                alias, model, provider = binding(args.home / ".kimi-code/config.toml", args.model or route["model"], args.model_alias)
+                kimi_binding = {"alias": alias, "model": model["model"], "capabilities": model.get("capabilities", []),
+                                "provider_type": provider["type"], "base_url": provider["base_url"]}
+                if not shutil.which("kimi"):
+                    route_readiness = "missing_executor"
+            except (ValueError, KeyError, OSError) as exc:
+                route_readiness = "needs_explicit_binding"
+                kimi_binding = {"error": str(exc) if isinstance(exc, ValueError) else "local_configuration_error"}
         results.append({
             "id": route["id"],
             "declared_status": route["status"],
             "provider": route["provider"],
-            "model": route.get("model"),
+            "model": (kimi_binding or {}).get("model", route.get("model")),
             "authorization": route.get("authorization"),
             "default_for": route.get("default_for"),
             "authorization_scope": route.get("authorization_scope"),
             "cost_scope": route.get("cost_scope"),
             "fallback_policy": route.get("fallback_policy"),
-            "readiness": readiness(route, executor, credentials),
+            "readiness": route_readiness,
+            "kimi_binding": kimi_binding,
             "runtime_state": route.get("runtime_state"),
             "executor": executor,
             "credentials": credentials,

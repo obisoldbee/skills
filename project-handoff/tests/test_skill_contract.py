@@ -15,10 +15,91 @@ SKILL_ROOT = TEST_ROOT.parent
 WORKSPACE_ROOT = SKILL_ROOT
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
-from validate_dispatch_route import resolve_request_case, validate_route
+from validate_dispatch_route import resolve_request_case, validate_route, validate_attempt, resolve_family
 
 
 class ProjectHandoffContractTests(unittest.TestCase):
+    def catalog(self, *models):
+        return {'source': 'fixture task capability', 'host_id': 'fixture-host',
+                'observed_at': '2026-09-30T00:00:00Z',
+                'models': [{'model': m, 'hidden': False,
+                            'reasoning_efforts': ['low', 'medium', 'high', 'max', 'ultra']}
+                           for m in models]}
+
+    def test_role_defaults_preserve_independent_axes(self):
+        roles = {'top_difficulty': ('gpt-6-astra', 'ultra'),
+                 'orchestration': ('gpt-6-astra', 'high'),
+                 'writing': ('gpt-6.1-sol', 'max'),
+                 'computer_operation': ('gpt-6.1-sol', 'medium'),
+                 'browser_operation': ('gpt-6-luna', 'max'),
+                 'mechanical': ('gpt-6-luna', 'max')}
+        for kind, (model, effort) in roles.items():
+            with self.subTest(kind=kind):
+                route = resolve_request_case('创建任务，模型和推理都自动选。', {'task_kind': kind})
+                self.assertEqual(route['create_thread_arguments'], {'model': model, 'thinking': effort})
+                route = resolve_request_case('创建任务，模型自动选。', {'task_kind': kind})
+                self.assertEqual(route['create_thread_arguments'], {'model': model})
+        self.assertEqual(resolve_request_case('用 astra-high 创建任务')['reasoning'], 'high')
+        self.assertEqual(resolve_request_case('用 sol-medium 创建任务')['model'], 'gpt-6.1-sol')
+
+    def test_family_resolution_numeric_newest_and_pins(self):
+        # Synthetic future releases test sorting, not actual model availability.
+        cat = self.catalog('gpt-6-sol', 'gpt-6.1-sol', 'gpt-6.9-sol', 'gpt-6.10-sol',
+                           'gpt-99-sol-preview', 'gpt-100-luna')
+        self.assertEqual(resolve_family('sol', cat), 'gpt-6.10-sol')
+        route = resolve_request_case('用 sol-max 创建任务', {'model_catalog': cat})
+        self.assertEqual(route['create_thread_arguments']['model'], 'gpt-6.10-sol')
+        self.assertEqual(route['model_catalog'], cat)
+        auto = resolve_request_case('创建任务，模型和推理都自动选。',
+                                    {'task_kind': 'writing', 'model_catalog': cat})
+        self.assertEqual(auto['create_thread_arguments'], {'model': 'gpt-6.10-sol', 'thinking': 'max'})
+        exact = resolve_request_case('创建任务，模型用 gpt-6-sol，推理用 max。', {'model_catalog': cat})
+        self.assertEqual(exact['model'], 'gpt-6-sol')
+        exact = resolve_request_case('创建任务，模型用 gpt-6-sol，推理自动选。',
+                                     {'task_kind': 'orchestration', 'model_catalog': cat})
+        self.assertEqual(exact['create_thread_arguments'], {'model': 'gpt-6-sol', 'thinking': 'high'})
+        name = resolve_request_case('创建任务，模型用 Sol。', {'model_catalog': cat})
+        self.assertEqual(name['create_thread_arguments'], {'model': 'gpt-6.10-sol'})
+        name = resolve_request_case('创建任务，模型用 Luna。')
+        self.assertEqual(name['create_thread_arguments'], {'model': 'gpt-6-luna'})
+
+    def test_catalog_hidden_stale_malformed_and_effort_mismatch(self):
+        cat = self.catalog('gpt-6.1-sol', 'gpt-6.2-sol')
+        cat['models'][1]['hidden'] = True
+        self.assertEqual(resolve_family('sol', cat), 'gpt-6.1-sol')
+        cat['models'][1]['hidden'] = False
+        cat['models'][1]['reasoning_efforts'] = ['high']
+        with self.assertRaisesRegex(ValueError, 'unsupported_reasoning'):
+            resolve_request_case('用 sol-max 创建任务', {'model_catalog': cat})
+        for broken in [[], {}, self.catalog('gpt-6-sol'),
+                       self.catalog('gpt-6.1-sol', 'gpt-6.1-sol')]:
+            with self.subTest(broken=broken), self.assertRaises(ValueError):
+                resolve_family('sol', broken)
+        route = resolve_request_case('用 sol-max 创建任务')
+        route.update(model_catalog=[], task_kind=[])
+        self.assertTrue(validate_route(route)[1])
+
+    def test_old_alias_followup_keeps_exact_pair_not_new_default(self):
+        for model in ('gpt-6-sol', 'gpt-5.6-sol'):
+            attempt = {'operation': 'followup', 'action': 'send_followup',
+                       'tool': 'codex_app__send_message_to_thread', 'failure_class': 'none',
+                       'route_changed': False, 'explicit_user_route_change': False,
+                       'route': {'requested_route': 'sol-max', 'model': model, 'reasoning': 'max',
+                                 'surface': 'visible_thread', 'model_basis': 'explicit_skill_route',
+                                 'reasoning_basis': 'explicit_skill_route'}}
+            self.assertTrue(validate_attempt(attempt)['valid'])
+            attempt.update(operation='initial_dispatch', action='create_visible_task',
+                           tool='codex_app__create_thread')
+            self.assertFalse(validate_attempt(attempt)['valid'])
+
+    def test_role_mismatch_and_unsupported_future_pair_rejected(self):
+        route = resolve_request_case('创建任务，模型和推理都自动选。', {'task_kind': 'orchestration'})
+        route['model'] = 'gpt-6.1-sol'
+        self.assertTrue(any('automatic_model_not_allowed' in e for e in validate_route(route)[1]))
+        route = resolve_request_case('创建任务，模型和推理都自动选。', {'task_kind': 'computer_operation'})
+        route['reasoning'] = 'max'
+        self.assertTrue(any('automatic_reasoning_not_allowed' in e for e in validate_route(route)[1]))
+
     def test_astra_rejects_explicit_and_inherited_invalid_effort(self):
         route = {"requested_route": "gpt-6-astra", "model": "gpt-6-astra",
                  "requested_model": "gpt-6-astra", "model_basis": "explicit_user",
@@ -36,6 +117,22 @@ class ProjectHandoffContractTests(unittest.TestCase):
         route.update(reasoning="ultra", requested_reasoning="ultra",
                      destination_state={"model": "gpt-6-astra", "supported_reasoning": ["low", "medium", "high", "xhigh", "max"]})
         self.assertTrue(any("capability evidence" in e for e in validate_route(route)[1]))
+
+    def test_gpt6_model_effort_matrix_and_removed_executor(self):
+        for model in ("gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"):
+            for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
+                route = {"requested_route": model, "requested_model": model,
+                         "model": model, "model_basis": "explicit_user",
+                         "reasoning": effort, "requested_reasoning": effort,
+                         "reasoning_basis": "explicit_user", "surface": "visible_thread"}
+                expected_valid = effort not in {"none", "minimal"} and not (model == "gpt-6-luna" and effort == "ultra")
+                self.assertEqual(expected_valid, not validate_route(route)[1], (model, effort))
+                inherited = {"requested_route": "platform-default", "surface": "visible_thread",
+                             "model_basis": "platform_default", "reasoning_basis": "platform_default",
+                             "destination_state": {"model": model, "reasoning": effort}}
+                self.assertEqual(expected_valid, not validate_route(inherited)[1], (model, effort, "inherited"))
+        self.assertFalse((SKILL_ROOT / "scripts/run-spark-cli.sh").exists())
+        self.assertFalse((SKILL_ROOT / "references/spark-cli-route.md").exists())
 
     def test_malformed_destination_evidence_returns_validation_errors(self):
         for axis in ("model", "reasoning"):
@@ -58,7 +155,6 @@ class ProjectHandoffContractTests(unittest.TestCase):
             "sol-max",
             "terra-max",
             "luna-max",
-            "spark",
             "完整交接",
             "任务分解",
             "并行 Agent",
@@ -73,13 +169,11 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertIn("scripts/validate_dispatch_route.py", text)
         self.assertIn("scripts/validate_orchestration_plan.py", text)
         self.assertIn("Using multiple Agents", text)
-        self.assertIn("Never create, fork, hand off, or retry a visible Spark task", text)
-        self.assertIn("not evidence that Spark is unavailable", text)
+        self.assertIn("Spark execution has been removed", text)
+        self.assertIn("not proof the model is unavailable", text)
         self.assertIn("create_thread", text)
         self.assertIn("spawn_agent", text)
         self.assertIn("scripts/validate_visible_task_receipt.py", text)
-        self.assertIn("PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE", text)
-        self.assertIn("new explicit user request", text)
         self.assertIn("platform_default", text)
         self.assertIn("silent_default_override", text)
 
@@ -90,7 +184,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertIn("complete portable handoff", text)
         self.assertIn("visible Codex tasks", text)
         self.assertIn("never substitute subagents", text)
-        self.assertIn("stop its lane on any CLI failure", text)
+        self.assertIn("diagnose without silent fallback", text)
 
     def test_public_package_validator_passes(self):
         script = SKILL_ROOT / "scripts" / "validate_package.py"
@@ -113,13 +207,16 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertEqual(len(cases), len({case["id"] for case in cases}))
 
         allowed = {
-            ("gpt-6-astra", "max", "visible_thread"),
-            ("gpt-5.6-sol", "max", "visible_thread"),
-            ("gpt-5.6-luna", "max", "visible_thread"),
-            ("gpt-5.3-codex-spark", "xhigh", "bundled_cli"),
+            ("gpt-6-astra", "ultra", "visible_thread"),
+            ("gpt-6.1-sol", "max", "visible_thread"),
+            ("gpt-6-luna", "max", "visible_thread"),
         }
 
         for case in cases:
+            if "error_contains" in case["expected"]:
+                with self.assertRaisesRegex(ValueError, case["expected"]["error_contains"]):
+                    resolve_request_case(case["request"], case.get("context"))
+                continue
             actual = resolve_request_case(case["request"], case.get("context"))
             expected = case["expected"]
             self.assertEqual(
@@ -136,8 +233,8 @@ class ProjectHandoffContractTests(unittest.TestCase):
                 self.assertEqual("explicit_auto", actual["reasoning_basis"])
                 self.assertEqual(
                     [
-                        {"model": "gpt-6-astra", "reasoning": "max"},
-                        {"model": "gpt-5.6-sol", "reasoning": "max"},
+                        {"model": "gpt-6-astra", "reasoning": "ultra"},
+                        {"model": "gpt-6.1-sol", "reasoning": "max"},
                     ],
                     actual["sequence"],
                 )
@@ -179,9 +276,10 @@ class ProjectHandoffContractTests(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "controller_model": "gpt-5.6-sol",
+                "controller_model": "gpt-6.1-sol",
                 "controller_reasoning": "ultra",
                 "project_scale": "super-large",
+                "lane_difficulty": "high",
             },
             large_case["context"],
         )
@@ -199,6 +297,10 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertEqual("explicit_auto", auto_case["reasoning_basis"])
 
         for case in cases:
+            if "error_contains" in case["expected"]:
+                with self.assertRaisesRegex(ValueError, case["expected"]["error_contains"]):
+                    resolve_request_case(case["request"], case.get("context"))
+                continue
             actual = resolve_request_case(case["request"], case.get("context"))
             if actual.get("model_basis") == "explicit_auto":
                 self.assertNotEqual("gpt-5.6-terra", actual.get("model"), case["id"])
@@ -219,8 +321,9 @@ class ProjectHandoffContractTests(unittest.TestCase):
                 self.assertEqual(name.lower(), actual["requested_axes"]["model"]["requested"])
                 self.assertEqual(["thinking"], actual["omitted_create_thread_fields"])
 
-        with self.assertRaisesRegex(ValueError, "Spark model requires reasoning=xhigh"):
-            resolve_request_case("创建任务，模型自动选，只读检查 manifest 的 SHA。")
+        mechanical = resolve_request_case("创建任务，模型自动选，只读检查 manifest 的 SHA。")
+        self.assertEqual({"model": "gpt-6-luna"}, mechanical["create_thread_arguments"])
+        self.assertEqual(["thinking"], mechanical["omitted_create_thread_fields"])
         with self.assertRaisesRegex(ValueError, "conflicting explicit and auto"):
             resolve_request_case("创建任务，模型用 gpt-5.6-sol，模型自动选。")
         with self.assertRaisesRegex(ValueError, "conflicting explicit and auto"):
@@ -314,8 +417,8 @@ class ProjectHandoffContractTests(unittest.TestCase):
                     expected["classification"], disposition["classification"], case["id"]
                 )
                 self.assertEqual(
-                    expected["spark_unavailable_supported"],
-                    disposition["spark_unavailable_supported"],
+                    expected["model_unavailable_supported"],
+                    disposition["model_unavailable_supported"],
                     case["id"],
                 )
                 if "create_thread_arguments" in expected:
@@ -509,158 +612,6 @@ class ProjectHandoffContractTests(unittest.TestCase):
             "actual_create_thread_arguments",
         ):
             self.assertIn(required, text)
-
-    def test_spark_route_is_integrated(self):
-        text = (
-            SKILL_ROOT / "references" / "spark-cli-route.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn("scripts/run-spark-cli.sh", text)
-        self.assertIn("Good Spark tasks", text)
-        self.assertIn("Do not send to Spark", text)
-        self.assertIn("Never call `create_thread`", text)
-        self.assertIn("spark_unavailable_supported", text)
-        self.assertIn("private temporary `CODEX_HOME`", text)
-        self.assertIn("PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE", text)
-        self.assertIn("explicit request", text)
-        self.assertIn("pre-dispatch permission stop", text)
-        self.assertIn("64 KiB", text)
-        self.assertIn("minified JSON/JSONL", text)
-        self.assertIn("tool_output_token_limit=4096", text)
-        self.assertIn("--output-last-message", text)
-        self.assertIn("final 8 KiB", text)
-
-    @unittest.skipIf(os.name == "nt", "POSIX Spark wrapper contract")
-    def test_bundled_spark_wrapper_contract(self):
-        script = SKILL_ROOT / "scripts" / "run-spark-cli.sh"
-        self.assertTrue(os.access(script, os.X_OK))
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp = Path(temp_dir)
-            source_home = temp / "source-home"
-            source_home.mkdir()
-            (source_home / "auth.json").write_text(
-                '{"test":"credential"}\n', encoding="utf-8"
-            )
-            source_state = source_home / "state_5.sqlite"
-            source_state.write_text("do-not-touch\n", encoding="utf-8")
-            runtime_home_receipt = temp / "runtime-home.txt"
-            fake_codex_receipt = temp / "fake-codex-receipt.txt"
-            fake_codex = temp / "codex"
-            fake_codex.write_text(
-                "#!/bin/sh\n"
-                "last_message=''\n"
-                "previous=''\n"
-                "for argument in \"$@\"; do\n"
-                "  if [ \"$previous\" = '--output-last-message' ]; then last_message=$argument; fi\n"
-                "  previous=$argument\n"
-                "done\n"
-                "{\n"
-                "printf 'ARGS:%s\\n' \"$*\"\n"
-                "printf 'RUNTIME_HOME:%s\\n' \"$CODEX_HOME\"\n"
-                "if [ -r \"$CODEX_HOME/auth.json\" ]; then printf 'AUTH:present\\n'; fi\n"
-                "if [ ! -e \"$CODEX_HOME/state_5.sqlite\" ]; then printf 'LIVE_STATE:absent\\n'; fi\n"
-                "printf 'STDIN:'\n"
-                "cat\n"
-                "} > \"$FAKE_CODEX_RECEIPT\"\n"
-                "printf '%s\\n' \"$CODEX_HOME\" > \"$RUNTIME_HOME_RECEIPT\"\n"
-                "printf 'TRACE:must-not-reach-parent\\n'\n"
-                "printf 'OK\\n' > \"$last_message\"\n",
-                encoding="utf-8",
-            )
-            fake_codex.chmod(0o755)
-            prompt = temp / "prompt.txt"
-            prompt.write_text("Reply exactly OK.\n", encoding="utf-8")
-            env = os.environ.copy()
-            env["PATH"] = f"{temp_dir}:{env['PATH']}"
-            env["CODEX_HOME"] = str(source_home)
-            env["TMPDIR"] = temp_dir
-            env["RUNTIME_HOME_RECEIPT"] = str(runtime_home_receipt)
-            env["FAKE_CODEX_RECEIPT"] = str(fake_codex_receipt)
-            proc = subprocess.run(
-                [
-                    str(script),
-                    "--cwd",
-                    str(WORKSPACE_ROOT),
-                    "--prompt-file",
-                    str(prompt),
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                timeout=10,
-                env=env,
-            )
-            isolated_home = Path(
-                runtime_home_receipt.read_text(encoding="utf-8").strip()
-            )
-            self.assertNotEqual(source_home, isolated_home)
-            self.assertFalse(isolated_home.exists())
-            self.assertEqual("do-not-touch\n", source_state.read_text(encoding="utf-8"))
-            receipt_text = fake_codex_receipt.read_text(encoding="utf-8")
-
-        self.assertEqual("OK\n", proc.stdout)
-        self.assertNotIn("TRACE:must-not-reach-parent", proc.stdout)
-        self.assertIn("--ignore-user-config", receipt_text)
-        self.assertIn("--strict-config", receipt_text)
-        self.assertIn("--ephemeral", receipt_text)
-        self.assertIn("-s read-only", receipt_text)
-        self.assertIn("-m gpt-5.3-codex-spark", receipt_text)
-        self.assertIn('model_reasoning_effort="xhigh"', receipt_text)
-        self.assertIn("tool_output_token_limit=4096", receipt_text)
-        self.assertIn("--output-last-message", receipt_text)
-        self.assertNotIn("model_supports_reasoning_summaries", receipt_text)
-        self.assertIn("AUTH:present", receipt_text)
-        self.assertIn("LIVE_STATE:absent", receipt_text)
-        self.assertIn("STDIN:Reply exactly OK.", receipt_text)
-
-    @unittest.skipIf(os.name == "nt", "POSIX Spark wrapper contract")
-    def test_bundled_spark_wrapper_failure_is_terminal(self):
-        script = SKILL_ROOT / "scripts" / "run-spark-cli.sh"
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp = Path(temp_dir)
-            source_home = temp / "source-home"
-            source_home.mkdir()
-            runtime_home_receipt = temp / "runtime-home.txt"
-            fake_codex = temp / "codex"
-            fake_codex.write_text(
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$CODEX_HOME\" > \"$RUNTIME_HOME_RECEIPT\"\n"
-                "exit 23\n",
-                encoding="utf-8",
-            )
-            fake_codex.chmod(0o755)
-            prompt = temp / "prompt.txt"
-            prompt.write_text("Reply exactly OK.\n", encoding="utf-8")
-            env = os.environ.copy()
-            env["PATH"] = f"{temp_dir}:{env['PATH']}"
-            env["CODEX_HOME"] = str(source_home)
-            env["TMPDIR"] = temp_dir
-            env["RUNTIME_HOME_RECEIPT"] = str(runtime_home_receipt)
-            proc = subprocess.run(
-                [
-                    str(script),
-                    "--cwd",
-                    str(WORKSPACE_ROOT),
-                    "--prompt-file",
-                    str(prompt),
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=10,
-                env=env,
-            )
-            isolated_home = Path(
-                runtime_home_receipt.read_text(encoding="utf-8").strip()
-            )
-            self.assertFalse(isolated_home.exists())
-
-        self.assertEqual(23, proc.returncode)
-        self.assertIn("PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE", proc.stderr)
-        self.assertIn("action=stop_lane", proc.stderr)
-        self.assertIn("visible_fallback=forbidden", proc.stderr)
-        self.assertIn("route_change=requires_new_user_request", proc.stderr)
 
     def test_internal_prompt_uses_flat_sections_in_order(self):
         text = (

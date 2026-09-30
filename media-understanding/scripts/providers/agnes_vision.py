@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 DEFAULT_ENV = Path.home() / ".codex" / "secrets" / "agnes.env"
 DEFAULT_BASE_URL = "https://apihub.agnes-ai.com/v1"
-DEFAULT_MODEL = "agnes-2.5-flash"
+DEFAULT_MODEL = "agnes-3.0-flash"
 
 
 def load_env(path: Path) -> Dict[str, str]:

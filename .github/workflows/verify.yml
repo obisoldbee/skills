@@ -215,13 +215,17 @@ jobs:
         run: |
           python -B project-handoff/scripts/validate_package.py project-handoff
           python -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
-          bash -n project-handoff/scripts/run-spark-cli.sh
 
       - name: Verify chatgpt-codex-review package behavior
         shell: bash
         run: |
           python -B chatgpt-codex-review/scripts/validate_package.py chatgpt-codex-review
           python -B -m unittest discover -s chatgpt-codex-review/tests -p 'test_*.py'
+
+      - name: Verify Codex model catalog recovery probe
+        shell: bash
+        run: |
+          python -B -m unittest discover -s codex-model-catalog-recovery/tests -p 'test_*.py'
 
       - name: Verify others-manager package behavior
         shell: bash

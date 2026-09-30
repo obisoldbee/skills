@@ -447,7 +447,7 @@ def render_control_files(
 
 ## Project
 
-`{control_project}` owns repository-level records and the management view of the public repository root. `{repository_project}/` remains the only Git worktree and file source of truth; this Project Root owns no repository source bytes.
+`{control_project}` owns repository-level records and the management view of the public repository root. `{repository_project}/` remains the canonical distribution checkout and file source of truth; concurrent code work may use linked task worktrees of the same repository; this Project Root owns no repository source bytes.
 
 {render_access_block()}
 
@@ -637,7 +637,7 @@ def render_root_files(
 - `{member_project}/src/{member_project}` projects to `{repository_project}/{package_subpath}`.
 - Agent consumers link directly to `{repository_project}/{package_subpath}`.
 - Updating `{member_project}` only refreshes `{repository_project}` with the package update helper, validates the named package, and stops. Do not regenerate wrappers, indexes, records, or links.
-- Never create a second checkout or package copy to update one Skill.
+- Never create a duplicate clone or unmanaged package copy to update one Skill. Authorized concurrent code work may use linked task worktrees; keep canonical projections and consumer links unchanged.
 
 ## Entry Points
 

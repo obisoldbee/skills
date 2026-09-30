@@ -32,7 +32,7 @@
 
 ## 外部专项执行器
 
-- `agnes-image` 使用包内 `scripts/providers/agnes_vision.py` 与 `agnes-2.5-flash`；输入必须是 provider 可读取的 URL，调用前仍需当前外发授权与 route check。
+- `agnes-image` 使用包内 `scripts/providers/agnes_vision.py` 与 `agnes-3.0-flash`；输入必须是 provider 可读取的 URL，调用前仍需当前外发授权与 route check。
 - 无视觉宿主的默认单图路线是 `minimax-mmx-image`，使用 `$mmx-cli`；MiniMax-M3 direct 图片在 adapter 未显式绑定前保持 `needs_explicit_binding`。
 - 历史火山图片独立 Skill 已退役；火山请求只按 `provider-routing.md` 的普通 Platform 或 Ark CLI 路线执行。
 

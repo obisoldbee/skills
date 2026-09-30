@@ -12,6 +12,9 @@ v1 没有附件门槛，helper 明确拒绝 `schema_version=1`。迁移时读取
   "run_id": "example-run",
   "round": 1,
   "phase": "ready_to_submit",
+  "execution_scope": "review_only",
+  "followup_mode": "inline",
+  "durable_followup_requested": false,
   "controller_thread_id": "observed-controller-thread",
   "controller_host": "observed-controller-host",
   "state_path": "/absolute/run/state.json",
@@ -29,11 +32,21 @@ v1 没有附件门槛，helper 明确拒绝 `schema_version=1`。迁移时读取
   "acceptance_digest": "SHA-256-of-canonical-acceptance-contract",
   "conversation_url": null,
   "prepared_request": null,
-  "followup": null
+  "followup": null,
+  "web_io_binding": null,
+  "inline_observer_binding": null,
+  "controller_notification_authorization": null,
+  "awaiting_send": false
 }
 ```
 
-示例值不可拿来执行。已有本 Skill state 按原 phase 和原件恢复；已有代码与修复记录但无本 Skill 历史时，Astra 可直接核实材料、建立此 run 并从 `ready_to_submit` 准备复审，不重复初轮调研或默认派 Sol。旧 v2 缺 `controller_thread_id` / `controller_host` / `state_path` 时，用当前宿主真实上下文产生 `bind_controller` 事件补齐，不丢已收回复，也不编造身份。`conversation_url=null` 只适用于尚未发送的首轮或其暂停/阻碍恢复；空白新聊天通常在首条消息发送后才有真实 `/c/id`，届时由 Luna 读回。已有对话必须存实际 URL。`prepared_request` 由 Astra 准备事件写入，`followup` 由真实宿主 `automation_update/view` 回执写入，不能用此示例值冒充配置。
+示例值不可执行。`execution_scope` 取 `review_only/repair_loop/materials_only`，从原始用户要求绑定；旧 v2 缺省 repair_loop 是兼容值，恢复时仍须核对真实修复授权。review_only（包括 audit-only）允许网页发送/收取，完整报告可保留确认缺陷与未核实建议，不自动派修。materials_only 只交冻结请求。`followup_mode=inline` 只在当前 turn 有界收取；`durable` 要实际 Luna heartbeat。用户明确要求 durable 时保存 `durable_followup_requested=true`，helper 拒绝改 inline；旧 v2 缺省 durable，不把缺调度自动变成本回合模式。
+
+已有 state 保留 phase 和原件；无 Skill 历史的已有修复可直接 ready_to_submit，不重做初轮研究或默认派 Sol。缺 Controller 绑定时用 `bind_controller` 补真实 thread/host/绝对 state_path。首条尚未发送可以 URL=null；已发送必须由 UI 读回实际 `/c/id`，不编造。prepared_request 和 followup 都只由 Controller 核实真实事件后写入。
+
+durable 的 `web_io_binding` 为 `{surface:"visible_thread", ready:true, thread_id, host_id, model, reasoning, identity_readback_ref, model_readback_ref, reasoning_readback_ref, runtime_pair_verified:true, verified_at}`。默认是目标宿主核实的最新 Luna/max；精确用户覆盖需 `route_basis="explicit_user"` 与 `user_override_ref`。owner 不得等于 Controller、隐藏 Agent 或 queued clientThreadId。当前模型/强度可由显式 create_thread 参数和成功回执加已运行进展、真实会话设置或原生运行元数据绑定；read_thread 未暴露字段时如实说明证据限度，不以 prompt 自称代替，不伪称独立服务端核实。
+
+inline 的 `inline_observer_binding` 为 `{surface:"internal_agent"|"current_turn", execution_ref, turn_id, model, reasoning, model_readback_ref, reasoning_readback_ref, runtime_pair_verified:true, verified_at, deadline_at}`，默认 Luna/max，同样尊重显式覆盖；每个收发/观察事件带一致的 `inline_execution_ref/inline_turn_id` 和实际 observed_at。过期或换 turn 不能沿用该执行绑定；缺口返回 ensure_inline_luna，不声称有后台任务。此分支无需可见 owner 或 heartbeat，schedule_action 一律 none。
 
 `source_route=github` 需要 `git:` 加完整 40/64 位小写 commit；其 `source_binding` 为经路由核实的 `repository` 和 `commit`。`mcp` 需要 `mcp:` 加 64 位内容快照 SHA，binding 为 route helper 返回的 `server`, `tool`, `version`, `snapshot_sha256`, `manifest_sha256`；`evidence_ref` 另存证据，不进 digest。三个 digest 均是各自对象的 UTF-8 JSON（sorted keys、紧凑分隔符、保留 Unicode）的 SHA-256。验收标准或内容访问工具变化会使旧 review/validation/delivery 失效。`artifact_root` 是本 run 的真实绝对目录。run 记录还应保存原始要求、scope、授权、角色实际 model/effort/任务 host、网页 space/page、调度回执与验收标准。
 
@@ -47,23 +60,36 @@ Luna 的 `artifact_receipt` 保存完整 JSON 到独立文件，回 Astra 小回
 
 | type | 必需附加字段 | 建议器行为 |
 |---|---|
-| `bind_controller` | 实际 `controller_thread_id`, `controller_host`, 绝对 `state_path` | 旧 v2 补绑定后继续原阶段，并要求真实定时回读 |
-| `prepare_submission` | Astra 保存的 `review_request_path`, `prompt_sha256`, 原始需求、source 读回、检查、逐项处置的引用与 `materials_verified=true`；明确只整理时 `materials_only=true` | 冻结本轮请求，不自动发送；只整理时返回 `deliver_prepared_request`，闭环模式缺定时返回 `ensure_followup` |
+| `bind_controller` | 实际 controller_thread_id、controller_host、绝对 state_path | 补绑定后按 inline/durable 选择核实对应观察能力 |
+| `bind_web_io` | 真实 `web_io_binding` 的 ready visible Luna 身份与模型/强度证据 | 保存独立 Luna owner，要求该目标的真实调度回读；不创建任务 |
+| `prepare_submission` | 保存的 review_request_path/prompt_sha256、原始需求/source 读回/检查/逐项处置引用与 materials_verified=true；只整理时 materials_only=true | 冻结请求不自动发送；materials_only 交文件，其他模式缺相应执行/调度绑定时报告具体缺口 |
 | `followup_readback` | `followup` 为真实 heartbeat view 回执 | 记录本 run ACTIVE ID；不同 ID 仅在旧任务已删除/不存在的工具证据与替代 ACTIVE view 齐全时换绑 |
-| `submission` | `conversation_url` 可在首次 not_sent 为 null，`status=sent/not_sent/unknown`；sent 还需 `request_present=true`, `user_message_id`, `ui_model_verified=true`, `prompt_sha256` | 未发须准备请求及发送前新鲜 ACTIVE view；已读回才 watch，发送后跟进失效只补跟进，不重发 |
+| `submission` | URL 可在首次 not_sent 为 null，status=sent/not_sent/unknown；sent 需 request_present、user_message_id、ui_model_verified、prompt_sha256 | 未发须冻结请求及所选模式门槛：durable 新鲜 ACTIVE view，inline 本 turn 实际执行绑定；已发失效只补观察不重发 |
 | `adopt_submission` | 实际 URL、user message ID、原文 SHA/路径、源码身份及绑定 digest 的读回；无网页 token 时另记 `local_import_id` 且标明原文没有它 | 原请求绑定后接管观察，未知先 reconcile，绝不因本地导入而重发 |
 | `observation` | URL、时区时间、UI 错误/生成状态、请求与新消息身份、正文长度/SHA/保存路径、完成控件 | 两次完整稳定观测相隔 ≥10 秒才 triage；变化正文的观察时间也不可倒退 |
+| `scheduled_observation` / `inline_observation` | 与 observation 同样的原始字段；durable 需新鲜 followup_view，inline 需 turn 执行绑定；错误需 error_fingerprint | Luna 独立去重/稳定性门禁，返回 observer_updates，主 state_updates 为空；无变化静默 |
+| `scheduled_artifacts` / `inline_artifacts` | 当前绑定的完整 receipt 与时间、模式回读 | 必需缺件仅继续 capture；收齐后产生一次 artifact_receipt 小回执 |
+| `observer_delivery` | notification_key、delivery_status=delivered/not_delivered/unknown、实际 delivery_evidence_ref；delivered 还需 destination_thread_id/host | 仅写 Luna 独立记录；失败/未知不盲重发 |
+| `web_progress` | 当前 URL/请求及 actionable_progress=true、actionable_progress_ref | Controller 核实新可行动证据，不误报完成或自动派修 |
 | `artifact_receipt` | `receipt`（helper 原始 JSON） | 绑定且必需文件 ready 后解锁依赖文件的修复或继续验收 |
-| `assessment` | `review_message_id`, `coverage_complete`；完整时 `confirmed_findings`, `unresolved_claims`, `file_dependent_findings` | 已确认且可独立的修复先派；争议保留待裁决；必需附件缺时只挡文件依赖修复 |
+| `assessment` | review_message_id、coverage_complete；完整时 confirmed_findings、unresolved_claims、file_dependent_findings | review_only 保留问题后交报告；repair_loop 才派允许的确认修复，缺件仅挡依赖文件项 |
 | `worker_result` | `candidate_source_id`, `delivery_path`；处理文件依赖项时 `addressed_file_findings` | 仅从 repairing 进入 validating；缺文件项仍保留，不因一次局部交付消失 |
 | `validation` | `checked_source_id`, `passed`, `required_unverified`；需复审时新 token | 本地失败继续返修，源码变更送新网页轮次 |
 | `delivery` | `delivered_source_id`, `complete` | 同一源码约定交付门槛 |
 | `external_blocker` | `reason`, `attempts`, `requires_external_change`, `independent_work_remaining` | 先完成独立工作；确需外部改变才 blocked |
 | `pause` / `resume` | 用户停止/明确预算指令引用，或阻碍解除证据 | 保留同一 run 的恢复入口 |
-| `followup_closed` | 同一 automation ID 的真实 `PAUSED` view | 用户叫停或全局验收后关闭本 run 调度并读回；旧已完成工作无调度不必先建再关 |
+| `followup_closed` | 同一 automation ID 的真实 PAUSED view | 收齐且无网页义务时保留当前阶段并继续独立工作；用户停止或全局验收亦关闭，旧无调度不先建再关 |
 
-`followup` 回执含 `tool="automation_update/view"`, `kind="heartbeat"`, 真实 automation ID、`ACTIVE`/`PAUSED`、owner thread/host、run ID、state 绝对路径、已核实 prompt 绑定、实际 `cadence_minutes`、`checked_at`、`next_check_at` 与证据引用。ACTIVE 要有下次检查时间；PAUSED 可为 null。`followup_readback` 替换旧 ID 时另附 `replacement_of_automation_id`, `prior_automation_status=not_found/deleted`, `prior_automation_evidence_ref`，并保存换绑记录；通常跨轮复用同一 ID。发送前和恢复时要新鲜 `view`，旧回执不能永久放行；已用于发送前核实的同一 view，在有效时间窗内可用于该次 sent 读回，无须立即再 view。建议器只验证声明结构/绑定和时间，不会创建、暂停或查询任务。heartbeat 唤醒的是 Controller，由其读 state 后再派 Luna max；不能把 prompt 写着 Luna 当实际模型配置。调度失效返回 `ensure_followup`，但已发消息及已收原文保留；如果未真的刷新页面，不增加刷新计数。无变化的唤醒静默，完成或用户停止关闭本 run 的实际调度并回读。宿主若不支持建议的五分钟周期，记录实际支持的周期。
+`followup` 的真实 heartbeat view 回执保留 automation_id、ACTIVE/PAUSED、run_id、state_path、prompt_binding_verified、实际 cadence_minutes、checked_at、next_check_at、evidence_ref。增加 `owner_role="web_io"`、`owner_thread_id/target_thread_id/owner_host/owner_model/owner_reasoning`，均匹配 web_io_binding；`owner_model_readback_ref/owner_reasoning_readback_ref` 匹配其实际证据；另存 `controller_thread_id/controller_host`，不把 Controller 当 owner。宿主调用字段是 targetThreadId；这里只是归一化回执，model/effort 继承目标聊天，不能发明 heartbeat model 参数。
 
-`assessment` 确认问题和争议并存时，若有可独立修复项进入 `repairing`，记录争议数，允许随后 `worker_result`。有必需附件且确认问题大于零时，`file_dependent_findings` 必须明确给出，不能靠缺省零漏派。`dispatchable_findings` 与 `pending_file_findings` 分开记录。Luna 在 repairing/validating 期间收到当前绑定的必需文件时，`artifact_receipt` 建议同一 Sol 继续修复，不创建重叠 writer；已交的局部 worker 结果不会清空待处理文件项。Sol 处理后以 `addressed_file_findings` 明确扣除；未扣除项使验证不能进入下一轮。必需文件缺失且全部确认问题依赖它们时建议 `obtain_required_artifacts`；不能以缺件阻止无关文本核实。worker 候选须保持当前 GitHub/MCP 源码路线，换路线要重新初始化。clean review 也要当前附件门槛、同 run/源码/来源工具/附件合同/验收合同/host 的本地检查和交付才可 completed。无隐含一次返修预算。
+以 `schedule_inventory_ref` 绑定本 run 全部实际调度的读取证据；`active_automation_ids` 在 ACTIVE 时必须仅含本 automation_id，PAUSED 时为空。默认建议 10 分钟，宿主实际节奏优先。ACTIVE 要下一次检查；PAUSED next_check_at=null。跨轮保留 ID，换绑需旧 ID 已删除/不存在的工具证据和替代 ACTIVE view。旧 Controller heartbeat 先用宿主工具暂停/删除并保存原始 readback，再迁移绑定并检查去重；不能假称旧 owner 是 Luna 才关它。
+
+durable 发送前新鲜 view 必须在 10 分钟内，`awaiting_send=true` 保持准备→arm→send 的短窗口；正常发送后清零。已用于发送前验证的同一 view，可在有效窗内用于该 sent 读回。无 valid durable owner 返回 ensure_luna_owner，不能自动创建聊天或回退 Controller；有 owner 但调度无效返回 ensure_followup。已发消息/原文均保留，无真实刷新不消费预算。未等网页且无必需收件义务则 pause_if_active；进入下一轮发送前重新 arm 同一 ID。返回 schedule_action 是建议，仍需实际工具回读。
+
+Luna 执行只读 CLI `next_action.py --state <state> --event <observation> --observer-record <Luna-record>`，将 observer_updates 保存到本轮独立文件；不改 state/events。记录绑定 run/source/round/token/合同/host/对话/实际执行者，保存稳定性窗口、刷新预算、完整原始观测与待交/已交小回执。普通生成/流式字符变化不触发 Controller；actionable_progress 必须有本轮新消息内容及可行动证据；稳定完成用消息 ID+内容 SHA 去重；错误用稳定代码/内容 error_fingerprint 与错误转变去重，不能把轮询时间当新错误。同一待交或发送未知回执不重复唤醒。临时刷新预算耗尽只停反复刷新，keep_active 静默观察恢复；有真实已知恢复证据的 quota/provider 可标 recovery_expected=true。登录/用户控制等需人工处理才交接暂停；Controller 核实独立工作和阻碍后记录相应主状态。
+
+只有新可行动进展、完整回复或实质阻碍才生成 Controller 事件。稳定完成事件携带两个相隔 ≥10 秒的原始观测，Controller 核实 prior_observation 的绑定和完整性后一次 triage。正文收齐但 required 文件未验时 keep_active，只补取当前缺件；收齐后暂停并真实回读。跨可见聊天通知需 `controller_notification_authorization={authorized:true,user_instruction_ref,destination_thread_id,destination_host}`；授权必须直接来自用户且匹配 Controller。转发 prompt 不授予回发权限；无授权返回 save_receipt_for_controller，保留工件供等待/读取。inline 内部观察完成可 return_to_controller，不发跨聊天消息；两条模式都不直接激活 Developer。
+
+repair_loop 的 assessment 确认问题与争议并存时先派独立确认修复；file_dependent_findings 在 required 文件存在时必须明确，dispatchable/pending 分开。新当前文件交同一个 Sol 继续，不建重叠 writer；局部交付不清空 pending，处理后明确 addressed_file_findings，未闭合不能下一轮。worker 不可换 GitHub/MCP 路线。repair_loop completed 要 clean 当前 review、当前 required 附件、绑定本地检查与交付；review_only 要完整 coverage、当前 required 附件和报告交付，开放建议保留，只有验收合同明确要求的检查才需 validation。scope 变化使旧审查/交付记录失效。无隐含一次返修预算。
 
 `next_action.py` 的 `valid=false`/退出码 2 表示旧版本、字段缺失、错轮次/来源/合同/host 或非法转换。退出码 0 仅表示建议计算成功，不证明输入事实或整个 run 完成。浏览器最多三次有退避的连续错误刷新是页面恢复预算，跟修复轮数无关；正常生成不刷新，发送未知不重发。

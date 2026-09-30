@@ -4,7 +4,7 @@ description: >-
   Create or consume portable project handoffs (完整交接/阶段交接), coordinate
   explicitly requested visible Codex tasks (新对话/可见任务派发/编排派发), or
   use named dispatch routes astra-max/astra-ultra (gpt6-max/gpt6-ultra),
-  sol-ultra, sol-max, terra-max, luna-max, or spark.
+  astra-high, sol-max/sol-medium/luna-max, or explicitly selected sol-ultra/terra-max routes.
   Ordinary continuation, 任务分解, or 并行 Agent within the current task alone
   does not select this handoff workflow.
 ---
@@ -29,7 +29,7 @@ Success criteria: The recipient can continue from verified materials without hid
 
 ## Non-negotiable dispatch guard
 
-For this Skill's selected visible-task or Spark execution route, apply this gate before choosing or calling any task, follow-up, retry, or Spark tool. Complete handoff artifacts and ordinary internal collaboration do not run the dispatch guard. A live tool schema describes technical capability; capability is not route authority.
+For this Skill's selected visible-task execution route, apply this gate before choosing or calling any task, follow-up, retry, or task tool. Complete handoff artifacts and ordinary internal collaboration do not run the dispatch guard. A live tool schema describes technical capability; capability is not route authority.
 
 1. Resolve `requested_route`, each axis's requested value, effective model/reasoning, surface, exact tool, per-axis basis (`explicit_user`, `explicit_skill_route`, `explicit_auto`, or `platform_default`), operation, action, failure class, and whether the user explicitly changed the route.
 2. Validate that attempt with `scripts/validate_dispatch_route.py` and retain its `attempt_sha256`. For a multi-lane run, also put `requested_route` and `surface` in every plan route and run `scripts/validate_orchestration_plan.py`.
@@ -39,23 +39,20 @@ For this Skill's selected visible-task or Spark execution route, apply this gate
 Hard invariants:
 
 - Invoking this Skill, triggering it implicitly, or saying only “创建任务” does not select an executor axis. Record each unselected axis as `platform_default` with a null value and omit the corresponding `model` or `thinking` field from `create_thread`. Never classify an omitted axis. A value attached to `platform_default` is `silent_default_override` and must stop dispatch.
-- A raw user-supplied model or reasoning value controls only that axis and must be preserved as `requested_model` or `requested_reasoning`; the effective value must match it, except for the documented model-only names `Astra`/`GPT6` resolving to `gpt-6-astra`. An explicitly selected alias such as `astra-ultra` binds both axes as `explicit_skill_route`. An explicit `auto` authorizes classification only for the requested axis and records `explicit_auto`.
-- `astra-ultra`/`gpt6-ultra`, `astra-max`/`gpt6-max`, `sol-ultra`, `sol-max`, `terra-max`, and `luna-max` are `visible_thread` routes. Initial dispatch must call a live task tool whose leaf name is `create_thread`. Never call `spawn_agent`, `collaboration.spawn_agent`, another subagent API, or report `subAgentActivity`/`agentPath`/`agentThreadId` as a visible task. Hidden-subagent slot limits do not cap visible-task creation.
-- `spark` and `spark-xhigh` mean only `scripts/run-spark-cli.sh`, `gpt-5.3-codex-spark`, `xhigh`, `bundled_cli`, ephemeral, and read-only. Never create, fork, hand off, or retry a visible Spark task. Never use `create_thread`, `fork_thread`, `handoff_thread`, or another visible-task API for Spark, even when the API lists that model.
-- Any nonzero `run-spark-cli.sh` exit is terminal for that Spark lane. Honor `PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE`: call no task/thread/follow-up/model tool for the lane, do not substitute local or visible model work as if it were the Spark result, and wait for a new explicit user request before changing route.
-- `luna-max` means `gpt-5.6-luna` with `max` on `visible_thread`. A later message being small or simple is not permission to use `low`, omit reasoning, or add a different `thinking` value. Follow-ups preserve the existing route unless the user explicitly requests a route change.
-- `unsupported_parameter`, `invalid_request`, or rejection of `reasoning.summary` on a Desktop/visible-task request proves that request or surface is wrong. It is not evidence that Spark is unavailable. Stop that visible attempt; do not create a second task by deleting, omitting, or changing the reasoning field.
-- Report Spark itself unavailable only when a correctly validated bundled-CLI attempt returns a provider/model route failure and the validator reports `spark_unavailable_supported: true`. A missing wrapper or CLI means the executor is unavailable, not that the Spark model is unavailable.
+- A raw user-supplied model or reasoning value controls only that axis and must be preserved as `requested_model` or `requested_reasoning`; exact IDs stay pinned. Model-only family names `Astra`/`Sol`/`Luna` resolve by the verified destination catalog; `GPT6` remains the pinned Astra generation alias. An explicitly selected alias such as `astra-ultra` binds both axes as `explicit_skill_route`. An explicit `auto` authorizes classification only for the requested axis and records `explicit_auto`.
+- `astra-ultra`/`gpt6-ultra`, `astra-high`, `astra-max`/`gpt6-max`, `sol-ultra`, `sol-max`, `sol-medium`, `terra-max`, and `luna-max` are `visible_thread` routes. Initial dispatch must call a live task tool whose leaf name is `create_thread`. Never call `spawn_agent`, `collaboration.spawn_agent`, another subagent API, or report `subAgentActivity`/`agentPath`/`agentThreadId` as a visible task. Hidden-subagent slot limits do not cap visible-task creation.
+- Automatic role defaults: Astra ultra for the hardest reasoning, Astra high for orchestration, Sol max for writing/development, Sol medium for computer operation, Luna max for simple browser operation, mechanical audits and file lookup. Record verified `task_kind`; a review/audit label alone never selects Luna. These are routing preferences, not measured strength or pricing claims.
+- Spark execution has been removed. Reject retired Spark aliases/model IDs and do not revive the deleted CLI executor or silently replace an explicit Spark request with Luna.
+- The 2026-09-30 baseline is Astra=`gpt-6-astra`, Sol=`gpt-6.1-sol`, Luna=`gpt-6-luna`. Unversioned family aliases prefer the newest visible numbered release actually supported by the destination task service, using `model_catalog` evidence as described in `references/model-routing.md`. Never invent a release or silently fall back when the requested effort fails. Follow-ups preserve the existing task's verified route, including historical GPT-6/GPT-5.6 tasks, instead of reapplying today's alias.
+- `unsupported_parameter`, `invalid_request`, or “could not validate reasoning effort” indicates a request/capability-validation failure, not proof the model is unavailable. Keep the exact requested model and `thinking`; inspect the live schema, destination-specific capabilities, and actual executing runtime. Never delete `thinking`, downgrade `max`, swap GPT-6 for GPT-5.6, or use CLI/subagents to pretend visible creation passed.
 - The synchronization retry allowance applies only to reading an already identified task or retrying title metadata after a classified visibility/readback/title delay. It never authorizes a new task, a model/reasoning change, or a retry of an unsupported parameter, invalid request, permission, authentication, quota, or provider/model failure.
-
-If an older incorrect visible Spark attempt already exists, preserve it as invalid-route evidence and do not continue it. Before any bundled-CLI attempt has failed, the original authorized Spark lane may make one fresh, validated bundled-CLI attempt; this corrects the surface rather than retrying the visible task. After a bundled-CLI failure, the lane is terminal.
 
 ## Choose the outcome
 
 | Outcome | Use when | Result |
 |---|---|---|
 | Complete handoff | The recipient is external, lacks direct task/CLI access, needs a progress transfer, or the user asks for a prompt/file | Portable prompt or Markdown; no task or model call |
-| Single dispatch | One bounded lane should run elsewhere | One visible Codex task receipt or approved Spark result |
+| Single dispatch | One bounded lane should run elsewhere | One visible Codex task receipt |
 | Orchestrated run | Work has multiple independent lanes, dependencies, or stage gates | Dependency graph, controller records when durable, visible tasks, verified integration |
 
 Apply this precedence:
@@ -69,28 +66,28 @@ Apply this precedence:
 
 Use the existing request's authorization for the selected workflow. Continue its preparation, permitted corrections, and declared checks without per-step approval; ask again only for missing authority, changed scope, or an explicit acceptance gate. Model/route, sensitive disclosure, destructive-operation, and publication boundaries still apply.
 
-Treat an explicit `$project-handoff` dispatch request as authorization to create only the requested visible task or bounded Spark run. It does not by itself authorize model/reasoning selection: omit both fields unless the request supplies a value, selects an alias, or says `auto`. Do not dispatch anything when the user merely asks what the skill does.
+Treat an explicit `$project-handoff` dispatch request as authorization to create only the requested visible task. It does not by itself authorize model/reasoning selection: omit both fields unless the request supplies a value, selects an alias, or says `auto`. Do not dispatch anything when the user merely asks what the skill does.
 
 Boundary examples:
 
 - Example 1: “给外部同事一个完整交接文件” → complete handoff only; create no task and call no model.
-- Example 2: “把三个互不写同一文件的只读审计并发派给 Luna” → one ready concurrency wave, then one Controller integration gate.
-- Example 3: “先让 Sol 出设计，确认后再让 Terra 开发” → two serial waves; create the development task only after the design artifact and acceptance gate pass.
+- Example 2: “把三个互不写同一文件的机械检查并发派给 Luna-max” → one ready concurrency wave, then one Controller integration gate.
+- Example 3: “先让 Astra-max 出设计，确认后再让 Sol-max 开发” → two serial waves; create the development task only after the design artifact and acceptance gate pass.
 - Example 4: “project-handoff 是做什么的？” → explain the three outcomes; do not infer dispatch authority.
 
 ## Dispatch tool contract
 
-Purpose: Use the current Codex task tools or the bundled Spark wrapper to deliver one authorized lane to a capable recipient and preserve a verifiable receipt.
+Purpose: Use the current Codex task tools to deliver one authorized lane to a capable recipient and preserve a verifiable receipt.
 
-Use when: The user explicitly requests visible dispatch/orchestration or an approved bounded Spark run, and the target project, lane scope, route, dependencies, outputs, validation, and authority are known.
+Use when: The user explicitly requests visible dispatch/orchestration, and the target project, lane scope, route, dependencies, outputs, validation, and authority are known.
 
 Do not use when: The user asks only for a complete text/file handoff or explanation; task tooling is unavailable; a requested explicit route is unsupported; dependencies or write conflicts are unresolved; or the action would exceed granted authority.
 
 Parameters: Project/host target, lane id and goal, self-contained prompt, exact read/write paths, mutable resources, dependencies, expected outputs, validation, requested/effective model/reasoning axes with separate bases, the validator-produced `create_thread_arguments` and `attempt_sha256`, concurrency cap, integration owner, retry budget, and archive policy.
 
-Returns: A confirmed `thread_id` plus `host_id`, a queued `client_thread_id`, exact `actual_tool`, prompt-delivery/readback state, receipt-guard result, current cursor/status, artifact/validation receipts, or an exact structured failure. Spark returns bounded CLI output and no visible task.
+Returns: A confirmed `thread_id` plus `host_id`, a queued `client_thread_id`, exact `actual_tool`, prompt-delivery/readback state, receipt-guard result, current cursor/status, artifact/validation receipts, or an exact structured failure.
 
-Failure handling: Classify the exact failure with the dispatch guard. Retry only an eligible readback/title synchronization delay against the already identified non-Spark task; preserve every other failure receipt and stop or replace only under the declared worker-failure policy. A nonzero Spark wrapper exit overrides replacement policy and terminates that lane until a new explicit user request changes route. Never silently change route, scope, authority, executor, or create a second task by stripping a rejected parameter.
+Failure handling: Classify the exact failure with the dispatch guard. Retry only an eligible readback/title synchronization delay against the already identified task; preserve every other failure receipt and stop or replace only under the declared worker-failure policy. Never silently change route, scope, authority, executor, or create a second task by stripping a rejected parameter.
 
 Tool stop rule: Stop after the requested handoff is delivered, the lane reaches its declared gate, a non-repairable blocker appears, the retry budget is exhausted, the user aborts, or the integrated run closes.
 
@@ -122,9 +119,20 @@ Do not split a task merely to use more Agents. Keep tightly coupled work in one 
 
 ## Select each route
 
-Read `references/model-routing.md` before explicit automatic selection or when validating an explicit route. Check the live task-tool schema for every visible field that will be passed because model names and supported reasoning pairs can change. Do not inspect the schema and then fill an unselected axis: `platform_default` means the field stays absent. Never let advertised Spark task capability override its bundled-CLI-only contract or silently downgrade, upgrade, or substitute an unsupported explicit choice.
+Read `references/model-routing.md` before explicit automatic selection or when validating an explicit route. Check the live task-tool schema for every visible field that will be passed because model names and supported reasoning pairs can change. Do not inspect the schema and then fill an unselected axis: `platform_default` means the field stays absent. Never silently downgrade, upgrade, or substitute an unsupported explicit choice.
 
-For explicit model `auto`, Astra handles design and verified demanding work; Sol handles accepted-plan implementation and bounded execution support; Luna handles focused judgmental review; Spark retains its bounded mechanical read-only route. Terra is explicit-only. This policy changes automatic selection, never the meaning of an existing Sol/Terra alias. Bare `Astra`/`GPT6` selects only the model; `astra-max`/`gpt6-max` and `astra-ultra`/`gpt6-ultra` bind both axes.
+For explicit model `auto`, use this policy:
+
+| Evidence for the lane | Automatic model and reasoning |
+|---|---|
+| Hardest reasoning, architecture trade-off, or demanding integration (`top_difficulty`) | Astra / `ultra` |
+| Decomposition, scheduling and integration coordination (`orchestration`) | Astra / `high` |
+| Writing, development, or executing an accepted plan (`writing`, `astra_planned_execution`) | Sol / `max` |
+| Desktop computer operation (`computer_operation`) | Sol / `medium` |
+| Simple browser operation (`browser_operation`), mechanical audit/file lookup/script execution (`mechanical`) | Luna / `max` |
+| Anything else or insufficient scope evidence | Obtain an explicit route; do not guess |
+
+Resolve the family to the destination's current model ID before validation. Role effort applies only when reasoning was selected as `auto`; preserve explicit effort and omit unselected axes. A reasoning-only auto request without a role retains `max` and never selects a model. Terra and older exact IDs remain human-selected alternatives. Bare family names select only the model. Tool selection does not lower a task's reasoning needs: a judgmental browser review must be classified by its substantive work.
 
 ## Build the handoff envelope
 
@@ -138,7 +146,7 @@ For explicit model `auto`, Astra handles design and verified demanding work; Sol
 
 Read `references/thread-dispatch.md` and use the live Codex task tools exclusively when the user requested visible work:
 
-1. Validate that the lane is a `visible_thread` route; Spark fails this check and must go to the bundled CLI section.
+1. Validate that the lane is a supported `visible_thread` route.
 2. Inspect the current visible-task surface, exact `create_thread` tool name, schema, project target, and supported model/reasoning pairs.
 3. Put that exact tool in the dispatch attempt and pass the route guard before calling it. Use its exact `create_thread_arguments`; an empty object is correct when both axes are platform defaults.
 4. Create every currently ready independent lane without waiting for another lane in that wave, without adding omitted model/thinking fields.
@@ -162,23 +170,6 @@ Archive visible tasks only when the user requests cleanup or an explicit run pol
 
 Start a downstream phase only after the named upstream artifact exists, is non-empty when file-based, passes its validation, and carries the required ready state. Rebuild the downstream prompt from the accepted artifact and freshly verified project state. Skip a design lane when an accepted current design already exists; do not skip its acceptance contract.
 
-## Route Spark through the bundled CLI
-
-Use Spark for bounded, mechanical, read-only work that benefits from independent classification or summarization but does not need final judgment.
-
-- Execute the bundled `scripts/run-spark-cli.sh`; do not require the user or recipient to locate another skill.
-- Fix the route to `gpt-5.3-codex-spark`, `xhigh`, ephemeral, and read-only.
-- Let the wrapper isolate writable CLI runtime state in a private temporary `CODEX_HOME`; never grant the project or live user state database extra write access.
-- Prepare the actual provider input before dispatch: reuse the user's Spark request for minimum non-sensitive material in its named scope. For private history, extract locally and prefer task-local aliases and necessary mechanical facts; do not include original task IDs, personal paths, titles, or excerpts by default. Check the remaining facts for sensitivity too. Follow the decision table in `references/spark-cli-route.md`; ask once only for necessary disclosure not already authorized, with the concrete packet ready for review.
-- The local CLI sends inference input to the Spark service. A pending or denied platform approval is a pre-dispatch stop, not a started Spark failure. Report the stated reason; reconsider only with new authorization evidence or a materially safer input allowed by the review. Never retry the same rejected disclosure through another command or route.
-- Pass the bounded-input gate in `references/spark-cli-route.md` before provider execution. For large or minified records, prepare a compact structured evidence packet locally; never let Spark discover candidates by echoing whole JSON/JSONL records or by relying on a line-only `head` limit. The wrapper's per-tool output cap is a backstop, not a substitute for prefiltering; on success it returns only the final message, and on failure only bounded diagnostics plus the terminal marker.
-- Disclose that this route creates no visible task.
-- Do not call any visible-task create/fork/handoff API for Spark, regardless of what its schema advertises.
-- Require the main agent to review findings and make all writes and final judgments.
-- Stop on every nonzero wrapper exit and report the exact executor boundary accurately. The terminal marker forbids App fallback, model substitution, reasoning changes, and same-lane retry; only a new explicit user request may select another route. Do not add writable flags.
-
-Read `references/spark-cli-route.md` before invoking Spark; it contains the integrated execution contract and portable applicability patterns.
-
 ## Consume a received handoff
 
 Treat a received handoff as a routing map, not guaranteed current truth. Verify cheap volatile facts first, then continue from its first action. Do not reread an entire old conversation unless a required decision is missing.
@@ -199,9 +190,8 @@ Using multiple Agents, creating tasks, or receiving plausible worker prose is ne
 
 - Do not silently replace an explicit executor or reasoning level.
 - Do not turn Skill invocation, implicit triggering, or a bare task-creation request into automatic model/reasoning selection. Never pass a value for an axis recorded as `platform_default`.
-- Do not dispatch, follow up, retry, or report Spark unavailable without a valid dispatch-guard receipt.
-- Do not create a visible Spark task or downgrade `luna-max` on a follow-up.
-- After `PROJECT_HANDOFF_SPARK_TERMINAL_FAILURE`, stop that lane and call no App task or model tool until the user explicitly requests a new route.
+- Do not dispatch, follow up, retry, or make model-availability claims without the matching guard/evidence.
+- Do not revive retired routes or downgrade a max route on follow-up.
 - Do not create a hidden subagent when a visible task was requested.
 - Do not write `created_confirmed`, `created_unconfirmed`, or `queued` without a valid create-thread receipt containing the required real task identifier.
 - Do not claim a task received work until readback or a creation receipt supports it.

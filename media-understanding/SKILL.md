@@ -60,11 +60,13 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
    `configured_not_called` 只证明执行器和凭据槽位存在，不证明远端鉴权、余额、模型接受或本次素材成功。
 4. 除“无视觉宿主 + 本次单张图片 + 用户要求理解”默认授权外，外部调用必须得到当前请求对 provider、素材范围和成本边界的明确授权。默认条件成立时选择 `minimax-mmx-image`，授权范围只覆盖本次图片和一次常规图片理解请求。用户点名的 provider/model 优先；未经授权不得切换 provider。
 5. 委派到精确执行器：
+   - 密集逐帧三合一：选择 `kimi-trimodal-swarm`，见 [kimi-trimodal.md](references/kimi-trimodal.md)。每秒 2 帧原尺寸输出到视频同目录 `frames_<视频名>`，导出音频和带词级时间戳的本地 ASR；Kimi Code + MiniMax-M3 的 3 个独立观察者各自读取全量材料，再由主 Agent 汇总。M3 声学听音尚未验证，转写理解不能冒充听音。该分支已明确约定同目录输出，作为通用显式 output-dir 规则的特定例外；原件仍只读。
+   - Kimi Code 内置媒体：普通 `kimi-readmedia`；增强 `kimi-readmedia-swarm` 默认 3 个独立观察者做同样工作，再由主 Agent 汇总。默认 `MiniMax-M3`，可选 `agnes-3.0-flash`。先读 [kimi-readmedia.md](references/kimi-readmedia.md)；视频需 Kimi profile 的 `video_in`，Agnes 原生视频按用户授权的兼容性实验及实测范围记录，配置标签不等于官方支持。同一步只能发出一个 AgentSwarm；多视频合并 items 或等待前一轮完整返回后顺序调用，详见该分支的多视频说明。Kimi profile 绑定与普通/Swarm 调用证据必须分开验证；
    - MiniMax 快速图片：`$mmx-cli`，命令 `mmx vision describe`；CLI 不暴露底层模型，不得写成 `MiniMax-VL-01`；
    - MiniMax-M3 图片：选择 `minimax-m3-image`；默认走官方推荐的 Anthropic-compatible `/anthropic/v1/messages`，在 direct adapter 明确绑定前保持 `needs_explicit_binding`；
    - MiniMax 课程视频视觉：选择 `minimax-m3-course-video`，运行包内 `python3 <skill-root>/scripts/providers/minimax_m3_course_video.py --input <video> --output-dir <authorized-output-dir> [--analyze]`；M3 direct 默认走 Anthropic-compatible Messages；
    - MiniMax 音频语义默认先做获授权的 ASR，再通过 Anthropic-compatible Messages 把 transcript 交给 `MiniMax-M3`；实验兼容路线 `minimax-m3-course-audio-via-video-experimental` 运行包内 `python3 <skill-root>/scripts/providers/minimax_m3_course_audio.py --input <media> --output-dir <authorized-output-dir> [--analyze]`，把音频装入真实低清 MP4，只能显式选择；
-   - Agnes 图片：选择 `agnes-image`，运行包内 `python3 <skill-root>/scripts/providers/agnes_vision.py --image-url <url> --prompt <question>`，模型 `agnes-2.5-flash`；
+   - Agnes 图片：选择 `agnes-image`，运行包内 `python3 <skill-root>/scripts/providers/agnes_vision.py --image-url <url> --prompt <question>`，模型 `agnes-3.0-flash`；
    - 火山生产主路由：普通 Ark Platform 的 Responses API + Files API；需要先绑定普通 Platform adapter 和非 Plan 的 Base URL/key；
    - 火山交互式配方：`arkcli +understand <recipe>`，使用 Ark CLI 自己的登录/配置，调用前核对 recipe 实际解析模型；
    - 火山 Agent/Coding Plan：只经官方支持的 AI/编程工具；不得把自定义 Python Chat/Responses 请求当作普通 Plan API；

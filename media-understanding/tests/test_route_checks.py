@@ -50,13 +50,13 @@ class RouteCheckTests(unittest.TestCase):
             home = Path(temporary)
             secret = home / ".codex" / "secrets" / "agnes.env"
             secret.parent.mkdir(parents=True)
-            secret.write_text("AGNES_MODEL=agnes-2.5-flash\n", encoding="utf-8")
+            secret.write_text("AGNES_MODEL=agnes-3.0-flash\n", encoding="utf-8")
             secret.chmod(0o600)
             config = {"routes": [{
                 "id": "test",
                 "status": "active_if_configured",
                 "provider": "test",
-                "model": "agnes-2.5-flash",
+                "model": "agnes-3.0-flash",
                 "credentials": {"file": "~/.codex/secrets/agnes.env", "required_env": ["AGNES_API_KEY", "AGNES_MODEL"]},
                 "executor": {"kind": "script", "path": "scripts/check_routes.py"},
             }]}

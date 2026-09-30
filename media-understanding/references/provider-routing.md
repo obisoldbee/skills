@@ -24,6 +24,9 @@
 
 | 媒体/任务 | Route id | 精确执行器 | 外部凭据 |
 |---|---|---|---|
+| 密集逐帧/音频/时间戳三合一 | `kimi-trimodal-swarm` | 包内 `scripts/providers/kimi_trimodal.py` → Kimi AgentSwarm | Kimi 的 MiniMax-M3 profile；本地缓存 Whisper |
+| Kimi 普通媒体观察 | `kimi-readmedia` | 包内 `scripts/providers/kimi_readmedia.py --mode single` → 内置 ReadMediaFile | 调用方 Kimi exact profile；默认 M3，可选 Agnes 3.0 |
+| Kimi 三观察者增强 | `kimi-readmedia-swarm` | 同脚本 `--mode swarm --observers 3` → 内置 AgentSwarm + ReadMediaFile | 同一 Kimi profile，三个独立上下文 |
 | 无视觉宿主的默认单图理解 | `minimax-mmx-image` | `$mmx-cli` → `mmx vision describe`；底层模型未暴露 | `~/.codex/secrets/minimax.env` |
 | MiniMax-M3 direct 图片理解 | `minimax-m3-image` | Anthropic-compatible Messages adapter；当前需显式绑定 | `~/.codex/secrets/minimax.env` |
 | MiniMax 课程视频视觉 | `minimax-m3-course-video` | 包内 `scripts/providers/minimax_m3_course_video.py` | `~/.codex/secrets/minimax.env` |

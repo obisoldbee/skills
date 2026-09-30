@@ -1,6 +1,6 @@
 # Thread Dispatch Contract
 
-Use these contracts when creating or coordinating visible Codex tasks. In this reference, a visible-task worker is a separate user-owned Codex task created through `create_thread`; it never means a collaboration subagent. Spark is outside this surface and must use the bundled CLI route.
+Use these contracts when creating or coordinating visible Codex tasks. In this reference, a visible-task worker is a separate user-owned Codex task created through `create_thread`; it never means a collaboration subagent.
 
 ## Contents
 
@@ -14,7 +14,7 @@ Use these contracts when creating or coordinating visible Codex tasks. In this r
 
 Inspect the current task-tool names and schemas before planning dispatch. Tool names, project-target shapes, model ids, reasoning fields, host ids, and readiness receipts may change.
 
-A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization. Never create, fork, hand off, message, or retry a visible Spark task. Validate the route attempt with `scripts/validate_dispatch_route.py` before selecting a tool.
+Validate the route attempt with `scripts/validate_dispatch_route.py` before selecting a tool.
 
 - Use `list_projects` before project-scoped creation when that tool exists.
 - If the live `create_thread` schema resolves a verified workspace/project target directly, follow that schema instead of inventing an obsolete lookup step.
@@ -24,7 +24,7 @@ A tool advertising `gpt-5.3-codex-spark` describes capability, not authorization
 
 ## Visible-task exclusivity
 
-- For Astra, Sol, Terra, and Luna initial dispatch, call the live tool whose leaf name is `create_thread`.
+- For any supported model initial dispatch, call the live tool whose leaf name is `create_thread`.
 - Never call `spawn_agent`, `collaboration.spawn_agent`, or another hidden-subagent API for a `visible_thread` route. Never treat `subAgentActivity`, `/root/<agent>`, `agentPath`, or `agentThreadId` as task creation evidence.
 - Do not apply a hidden-subagent concurrency-slot limit to visible tasks. Use only the live visible-task capacity and the user's cap.
 - Put the exact planned tool name in the route attempt before calling it and retain the route validator's `attempt_sha256`. After the call, put the exact actual tool name, actual route-sensitive arguments, and attempt hash in a normalized receipt, then run `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT`.
@@ -36,7 +36,7 @@ Visible-task authority and field authority are separate. A user who only invokes
 
 - **Purpose**: Create a separate, user-owned Codex task.
 - **Use when**: The user explicitly asks for a new/visible task, names a dispatch pipeline, or invokes a documented `$project-handoff` dispatch mode.
-- **Do not use when**: The user asks only for an explanation, complete handoff artifact, or current-task answer; or the route is Spark.
+- **Do not use when**: The user asks only for an explanation, complete handoff artifact, or current-task answer.
 - **Parameters**:
   - `prompt`: generated internal handoff envelope;
   - `target`: resolved project/projectless target and allowed environment;
@@ -82,7 +82,7 @@ Visible-task authority and field authority are separate. A user who only invokes
 - **Do not use when**: Creating the initial task.
 - **Failure handling**: Do not duplicate the same follow-up after an uncertain send without checking the task.
 - **Route rule**: Preserve the task's effective model/reasoning route. Do not pass a new model or `thinking` value unless the user explicitly requested that route change; in particular, keep `luna-max` at `max`.
-- **Retired automatic route**: For an existing task originally routed automatically to Terra, verify the task id and original effective route from readback and its historical receipt before declaring `route_changed=false`. The offline guard's compatibility allowance validates that declaration only; it does not establish task existence or original routing. This exception never authorizes new automatic Terra creation.
+- **Retired automatic route**: For an existing GPT-5.6 Sol/Luna/Terra task, verify the task id and original effective route from readback and its historical receipt before declaring `route_changed=false`. The offline guard's compatibility allowance validates that declaration only; it does not establish task existence or original routing. Use its original effective model/effort, including when its historical alias has since changed meaning. This exception never authorizes new automatic GPT-5.6 creation or migration to GPT-6.
 
 ## `set_thread_archived`
 
@@ -129,7 +129,6 @@ Before closing dispatch-only, also satisfy any initial progress wait/readback re
 - Before a worker retry, record the failure, artifacts, validation, attempted correction, and remaining retry budget.
 - Continue the existing task when its context and outputs remain safe; otherwise create a replacement only after marking the old task superseded and its unintegrated outputs stale.
 - Never change model, reasoning, scope, project target, or authority silently to make a retry pass.
-- A replacement policy for a worker failure does not legalize an invalid route. An incorrect visible Spark attempt is preserved as invalid-route evidence; any still-authorized Spark work starts once through the validated bundled CLI, never as a visible replacement.
 - On abort, stop downstream dispatch, notify running lanes when possible, preserve receipts/artifacts, and invalidate dependent gates.
 - Do not claim success because task creation, messaging, or multi-Agent usage succeeded.
 
@@ -143,7 +142,7 @@ Required creation-receipt fields:
 actual_tool: codex_app__create_thread
 status: created_confirmed | created_unconfirmed | queued | failed
 surface: visible_thread
-requested_route: astra-max | astra-ultra | sol-max | terra-max | luna-max | <supported visible route>
+requested_route: astra-high | astra-max | astra-ultra | sol-max | sol-medium | terra-max | luna-max | <supported visible route>
 dispatch_attempt_sha256: <64 lowercase hex from the route validator>
 actual_create_thread_arguments: <exact arguments actually passed; may be {}>
 task_kind: codex
@@ -190,15 +189,27 @@ next_gate:
 failure:
 failure_class:
 failure_disposition:
-spark_unavailable_supported:
 ~~~
 
 ## Verify effective reasoning before sending
 
-A generic tool parameter enum is not evidence that every listed effort works with every model. Astra rejects `none` and `minimal`. When a destination task is known, read its current model/effort before forwarding, particularly after switching models or receiving an unsupported-value error. Global configuration does not prove a task override is compatible. Record observed state in the route's optional `destination_state` object (`model`, `reasoning`, and a model-specific `supported_reasoning` list when actually observed). The validator checks inherited values as well as explicit overrides without converting platform-default axes into tool arguments. If destination state is unavailable, record that compatibility is unverified; do not claim the route guard checked a hidden default.
+A generic tool parameter enum is not evidence that every listed effort works with every model. The currently observed GPT-6 Astra, Sol, and Luna pairs reject `none` and `minimal`; Luna also excludes `ultra`. When a destination task is known, read its current model/effort before forwarding, particularly after switching models or receiving an unsupported-value error. Global configuration does not prove a task override is compatible. Record observed state in the route's optional `destination_state` object (`model`, `reasoning`, and a model-specific `supported_reasoning` list when actually observed). The validator checks inherited values as well as explicit overrides without converting platform-default axes into tool arguments. If destination state is unavailable, record that compatibility is unverified; do not claim the route guard checked a hidden default.
 
 For a provider error, retain its actual supported list: it takes precedence over a broader tool advertisement for that destination. For example, an Astra destination advertising only low/medium/high/xhigh/max cannot accept ultra even if a generic tool schema lists it. Do not silently rewrite an explicitly requested alias.
 
 If the user asks to fix an invalid inherited effort, restore that task's last verified supported effort (for example medium), keeping the model and substantive request unchanged. This targeted repair is authorized by the repair request; do not change all tasks or global defaults. Verify the corrected effective turn from task readback. An erroring turn that never ran is not evidence its business action was completed. Before resuming externally visible actions, reread their actual state to avoid duplicates. Ordinary unsupported-parameter errors still do not authorize repeated new tasks or silent route changes.
 
 ChatGPT-to-Codex built-in forwarding is outside this repository. Updating this Skill guards callers that use it; it cannot patch the app's internal forwarding implementation. If that bridge injects an invalid effort, pass a supported explicit effort through an available authorized task API or correct the destination UI setting. Report app-layer recurrence separately instead of claiming a Skill edit repaired the bridge.
+
+
+## Diagnose a GPT-6 max validation error
+
+`create_thread` uses `model` and **`thinking`**. Pass `thinking="max"` for the three max aliases; do not translate this to `effort` or `reasoning.effort` on this tool. Those names belong to other interfaces. The installed standalone CLI and the Desktop task service can use different binaries, versions, and model catalogs.
+
+1. Preserve the exact error, tool name, target host, attempted model/thinking, and current schema. A “could not validate reasoning effort max” error is `unsupported_parameter` (request/capability validation), not a demonstrated unavailable model.
+2. Check the selected host's actual task-service runtime and model-specific capability evidence. Use local code/version/catalog inspection first; do not infer Desktop support from the standalone `codex --version`, an unrelated CLI success, UI selection, a generic effort enum, or a model's self-description.
+3. If the current tool advertises the exact pair, an authorized smoke test may create one minimal task with that unchanged pair, then verify creation, prompt delivery, and completed output separately. A live rejection takes precedence over the static advertisement for that attempt.
+4. Diagnose mismatched/outdated metadata or unavailable capability evidence. Do not patch installed app internals, update/restart the app, or change global defaults as a side effect of editing this Skill. Follow the user's separate authority for runtime repair.
+5. Stop repeated creation on a parameter error. After a verified relevant runtime fix and authorization to retest, check whether any task was created before making one new test with the same exact model/thinking. Record it as a post-fix test, not a synchronization retry. Without that fix, report the unresolved tool validation boundary; never silently swap models, omit `thinking`, or substitute a subagent/CLI.
+
+A successful creation receipt proves the tool accepted the request. A completed marker from the task additionally proves the turn ran. Neither proves arbitrary complex work quality. If the runtime does not expose its effective model/effort, report the accepted requested pair and that readback limit rather than claiming independent server-model verification.

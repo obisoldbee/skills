@@ -25,6 +25,12 @@ Constraints:
 - Do not expose credentials, caches, local inventories, or machine-specific paths.
 - Base completion claims on current Git/disk/link readback and reply in the user's language.
 
+Collaboration:
+- Ordinary reads and independent exact report files require no admission claim. Use no-clobber creation and task-specific records; one integrator updates shared logs/indexes.
+- Concurrent Git writers use distinct branches and linked worktrees of this repository. Authorized code work includes ordinary local setup: bind repository, base commit, unique branch and absent destination; then actually edit/test there. Preserve dirty inputs and keep canonical projections/consumer links unchanged.
+- A linked worktree is not a duplicate clone. Canonical distribution maintenance may use one editor in this checkout; it does not allow multiple writers to share the same physical files. Worktrees do not isolate services, databases, ports or common output paths.
+- Verify changed files and affected checks, then report integration state. Commit, push, publication and consumer changes follow their own task authorization.
+
 Lifecycle routing:
 
 1. **Clone/bootstrap only**: clone to the exact named destination, verify Git identity, run root validation and the named package validator, report commit, and stop.

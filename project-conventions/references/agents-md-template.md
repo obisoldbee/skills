@@ -48,7 +48,7 @@ Template maintenance affects future initialization. It does not authorize regene
 | `src/` | Source code | — |
 | `release/` | Build artifacts (on demand) | — |
 | `memory/` | Agent-maintained project memory | — |
-| `.project-conventions/` | Harness-neutral status/enter/check/finish/recover entry | `.project-conventions/ACCESS.md` |
+| `.project-conventions/` | Worktree-first policy and compatibility helper | `.project-conventions/ACCESS.md` |
 
 ## Source Mapping
 
@@ -62,11 +62,11 @@ Template maintenance affects future initialization. It does not authorize regene
 
 ## Quick Reminders
 
-- Missing or failed helper required by this managed block? Remain read-only; do not guess that no other Agent is active
+- Ordinary worktree-first work does not depend on helper admission. Diagnose actual file/Git conflicts at their resource; do not block on a historical claim
 - Explicit repository/Skill update? Use update-only: fast-forward and validate the requested project or named package, then stop without restructuring, records, or link work
 - Significant decision or direction change? Create a unique task record; the integrator assigns canonical sequence numbers
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Claim exact record files for the short write batch to record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records
+- Record meaningful work in separate task files; one integrator updates canonical logs/indexes and allocates sequence numbers. Response-only tasks create no project records
 - Read the rules and materials needed for the selected task; reuse current readings, preserve required quality gates, and run checks for the changed behavior. Complete authorized corrections without per-step approval
 - Harness-owned memory does not replace project `conversation/` or `memory/`; never write into the harness's system memory directory
 - Concurrent work does not add fixed role directories or a permanent `work/lanes/` tree; physical worktrees and distinct output paths provide isolation, not separate chats
@@ -153,7 +153,7 @@ When working in this workspace, follow its initialized project-local access entr
 
 ## Quick Reminders
 
-- Before work, run project-local `status` and `enter`; without an entered receipt, do not write
+- Read directly; use unique report files or actual isolated task worktrees for writes. Ordinary work needs no status/enter receipt
 - Explicit repository/Skill update? Fast-forward and validate only; do not turn it into a directory migration
 - Significant decision or direction change? Create a unique task record; the integrator assigns canonical sequence numbers
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first

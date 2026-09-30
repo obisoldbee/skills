@@ -22,6 +22,10 @@ REQUIRED = [
     "references/official-sources.md",
     "scripts/check_routes.py",
     "scripts/providers/agnes_vision.py",
+    "scripts/providers/kimi_readmedia.py",
+    "references/kimi-readmedia.md",
+    "scripts/providers/kimi_trimodal.py",
+    "references/kimi-trimodal.md",
     "scripts/providers/minimax_request_state.py",
     "scripts/providers/minimax_m3_course_audio.py",
     "scripts/providers/minimax_m3_course_video.py",
@@ -179,8 +183,22 @@ def main() -> None:
             errors.append(f"route must use its package-owned script executor: {route_id}")
 
     agnes = next((route for route in routes if route.get("id") == "agnes-image"), None)
-    if not agnes or agnes.get("model") != "agnes-2.5-flash":
-        errors.append("Agnes route must target agnes-2.5-flash")
+    if not agnes or agnes.get("model") != "agnes-3.0-flash":
+        errors.append("Agnes route must target agnes-3.0-flash")
+    for route_id, mode in (("kimi-readmedia", "single"), ("kimi-readmedia-swarm", "swarm")):
+        route = next((r for r in routes if r.get("id") == route_id), {})
+        if (route.get("model") != "MiniMax-M3" or route.get("known_models") != ["MiniMax-M3", "agnes-3.0-flash"]
+            or route.get("mode") != mode or route.get("configuration_owner") != "kimi_code"
+            or route.get("executor") != {"kind": "script", "path": "scripts/providers/kimi_readmedia.py"}
+            or mode == "swarm" and route.get("default_observers") != 3):
+            errors.append(f"Kimi route loses model/mode/profile contract: {route_id}")
+    trimodal = next((r for r in routes if r.get("id") == "kimi-trimodal-swarm"), {})
+    if (trimodal.get("model") != "MiniMax-M3" or trimodal.get("default_observers") != 3
+        or trimodal.get("frames_per_second") != 2 or trimodal.get("mode") != "swarm"
+        or trimodal.get("configuration_owner") != "kimi_code"
+        or trimodal.get("output_convention") != "video_parent/frames_<video_stem>"
+        or trimodal.get("executor") != {"kind": "script", "path": "scripts/providers/kimi_trimodal.py"}):
+        errors.append("Kimi trimodal route loses dense-frame/swarm/output contract")
     mmx = next((route for route in routes if route.get("id") == "minimax-mmx-image"), None)
     if (
         not mmx

@@ -8,7 +8,7 @@ OUTCOMES = {
     "completed_cycle": "已完成（本轮已派出）",
     "already_travelling": "旅行中（本轮未派出）",
     "daily_limit_reached": "今日次数已用完",
-    "already_handled_for_service_day": "今日已处理（本轮未派出）",
+    "already_handled_for_service_day": "据历史回执跳过（本轮未派出）",
     "dispatch_outcome_unknown": "派出结果未确认（本轮已尝试，勿重复派出）",
     "auth_required": "需登录",
     "destination_unavailable": "未派出（目的地不可用）",
@@ -23,6 +23,10 @@ NORMAL = {"completed_cycle", "already_travelling", "daily_limit_reached",
 def render(data):
     receipt = validate_previous_receipt(data["receipt"])
     outcome = receipt["outcome"]
+    if outcome == "blocked":
+        # A blocker without a short explanation invites a handwritten trace
+        # after the renderer output. Require it in the rendered report itself.
+        short_text(data.get("reason"), "blocked reason", 40)
     result = OUTCOMES[outcome]
     if outcome == "already_handled_for_service_day" and receipt.get("previous_outcome") in (
             "dispatch_outcome_unknown", "blocked", "auth_required", "destination_unavailable"):

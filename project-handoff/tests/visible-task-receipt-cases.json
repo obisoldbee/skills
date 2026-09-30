@@ -9,7 +9,7 @@
       "explicit_user_route_change": false,
       "route": {
         "requested_route": "sol-max",
-        "model": "gpt-5.6-sol",
+        "model": "gpt-6.1-sol",
         "reasoning": "max",
         "surface": "visible_thread",
         "model_basis": "explicit_skill_route",
@@ -41,7 +41,7 @@
       "explicit_user_route_change": false,
       "route": {
         "requested_route": "luna-max",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "reasoning": "max",
         "surface": "visible_thread",
         "model_basis": "explicit_skill_route",
@@ -132,7 +132,7 @@
         "failure": null,
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6.1-sol",
           "thinking": "max"
         }
       },
@@ -184,7 +184,7 @@
         "failure": null,
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-luna",
+          "model": "gpt-6-luna",
           "thinking": "max"
         }
       },
@@ -233,7 +233,7 @@
         "failure": null,
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6.1-sol",
           "thinking": "max"
         }
       },
@@ -260,7 +260,7 @@
         "failure": null,
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6.1-sol",
           "thinking": "max"
         }
       },
@@ -288,7 +288,7 @@
         "agentThreadId": "agent-thread-demo-0001",
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6.1-sol",
           "thinking": "max"
         }
       },
@@ -315,7 +315,7 @@
         "failure": null,
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6.1-sol",
           "thinking": "max"
         }
       },
@@ -342,7 +342,7 @@
         "failure": "permission denied",
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6.1-sol",
           "thinking": "max"
         }
       },
@@ -475,7 +475,7 @@
         "failure": null,
         "dispatch_attempt_sha256": "$ATTEMPT_SHA256",
         "actual_create_thread_arguments": {
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6.1-sol",
           "thinking": "max"
         }
       },

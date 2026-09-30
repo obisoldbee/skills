@@ -11,8 +11,9 @@
 | Skill / 包 | 用途 |
 |---|---|
 | [project-conventions](project-conventions/) | 统一项目目录与治理入口；默认使用独立 Git worktree 协作，支持旧项目策略迁移 |
-| [project-handoff](project-handoff/) | 任务交接、多 Agent 调度、模型路由与执行回执；包含 Spark CLI 使用规范 |
-| [chatgpt-codex-review](chatgpt-codex-review/) | 联动网页 ChatGPT 深度研究与持续复审；源码默认 GitHub，无 GitHub 仓库走 MCP；Luna max 收发与下载，Astra max 编排，Sol max 开发 |
+| [project-handoff](project-handoff/) | 任务交接、多 Agent 调度与执行回执；按角色选择 Astra / Sol / Luna，并从目标能力清单解析同系列新版 |
+| [chatgpt-codex-review](chatgpt-codex-review/) | 联动网页 ChatGPT 深度研究与持续复审；Luna max 收发、下载及定时观察，有新结果才交 Astra high 编排和 Sol max 开发 |
+| [codex-model-catalog-recovery](codex-model-catalog-recovery/) | 排查 Codex 模型列表缺失：配置优先，核对桌面核心与 CLI，提供备份、回滚和恢复验收 |
 | [document-workspace](document-workspace/) | 基于文件的文档组织、工作区治理与资料管理 |
 | [web-bookmark-intelligence](web-bookmark-intelligence/) | 网页与书签内容采集、整理和研究输入处理 |
 | [research-qa-plugin](research-qa-plugin/) | 研究问答编排与配套研究视角，按插件内的说明使用 |
@@ -34,7 +35,7 @@
 
 项目并发默认采用 worktree-first：代码任务分别在独立分支和工作目录中修改，最后由一个执行者合并；只读任务和独立报告不申请持久化 claim。已有项目需按 `project-conventions` 的迁移说明切换本地规则，旧数据库保留为历史。当前提供执行指引和策略迁移工具，尚不自动分配 worktree 或强制重定向 Agent 的编辑位置，实际隔离依赖 Agent 创建并使用正确的工作目录。
 
-`chatgpt-codex-review` 需要可用的 ego-browser、已登录的 ChatGPT 网页和 Codex 协作工具。执行时可说：“用 chatgpt-codex-review 审查这个项目，有 GitHub 仓库就审查固定提交，没有则用已配置的 MCP 内容快照，持续修复并复审到约定验收通过。”默认 GPT-6 Luna max 负责网页消息、上传、监测、回复保存与附件下载校验，GPT-6 Astra max 核实并编排，GPT-6 Sol max 开发和测试；三个角色的模型/思考强度均可显式覆盖。已有 GitHub 的访问或推送故障须在原路径解决，不自动切换 MCP。它是由 Agent 执行的工作流 Skill，附带源码路由、附件验证和本地状态建议脚本，不会自行部署 MCP 或常驻监控；真实持续监控须由宿主调度工具建立。
+`chatgpt-codex-review` 需要可用的 ego-browser、已登录的 ChatGPT 网页和 Codex 协作工具。执行时可说：“用 chatgpt-codex-review 审查这个项目，有 GitHub 仓库就审查固定提交，没有则用已配置的 MCP 内容快照，持续修复并复审到约定验收通过。”当前默认 GPT-6 Luna max 负责网页消息、上传、定时观察、回复保存与附件下载校验；新结果或实质阻碍才唤醒 GPT-6 Astra high 核实编排，GPT-6.1 Sol max 开发测试。角色和强度可显式覆盖，未固定版本的系列名遵循 `project-handoff` 的目标能力解析规则。已有 GitHub 的访问或推送故障须在原路径解决，不自动切换 MCP。它是 Agent 工作流，不会自行部署 MCP 或常驻监控；真实跨回合观察必须绑定已验证的 Luna 任务与宿主调度，不能以高成本 Controller 的轮询冒充 Luna 定时执行。
 
 下方保留英文目录布局、初始化、更新和验证说明，便于跨工具、跨设备复用。
 

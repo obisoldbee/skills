@@ -17,6 +17,7 @@ REQUIRED = {
     "scripts/next_action.py", "scripts/route_source.py", "scripts/verify_artifacts.py",
     "scripts/validate_package.py", "tests/test_review_cycle.py",
     "tests/test_source_and_artifacts.py",
+    "tests/test_scheduler.py",
 }
 
 

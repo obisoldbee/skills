@@ -106,7 +106,7 @@ def validate_receipt(receipt, dispatch_attempt):
         receipt.get("requested_route"), "requested_route", errors
     ).lower()
     if requested_route in {"spark", "spark-xhigh"}:
-        add_error(errors, "Spark cannot produce a visible-task receipt")
+        add_error(errors, "retired_route cannot produce a new visible-task receipt")
 
     task_kind = required_string(receipt.get("task_kind"), "task_kind", errors)
     if task_kind and task_kind != "codex":

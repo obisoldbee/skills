@@ -4,7 +4,16 @@ Last reviewed: 2026-08-11. These links describe public contracts, not local cred
 
 ## Agnes
 
-- [Agnes 2.5 Flash](https://agnes-ai.com/zh-Hans/docs/agnes-25-flash): model id `agnes-2.5-flash`.
+Agnes section reviewed 2026-09-14. Model `agnes-3.0-flash`: 512K context,
+65,536 maximum output; Chat Completions, Responses and Anthropic-compatible Messages.
+Official input modalities are text and image URL, not native video. Chat fields include
+`temperature`, `top_p`, `max_tokens`, `stream`, `tools`, `tool_choice`, and
+`chat_template_kwargs.enable_thinking`; Messages supports `thinking.type` and
+`thinking.budget_tokens`. These fields are endpoint-specific, not a universal payload.
+Kimi local-image and sampled-frame compatibility is a separate runtime test; never add
+`video_in` merely because a model alias or API Key exists. See [Kimi branch](kimi-readmedia.md).
+
+- [Agnes 3.0 Flash](https://agnes-ai.com/zh-Hans/docs/agnes-30-flash): model id `agnes-3.0-flash`.
 - [Quickstart](https://agnes-ai.com/zh-Hans/docs/quickstart) and [overview](https://agnes-ai.com/zh-Hans/docs/overview): OpenAI-compatible `POST https://apihub.agnes-ai.com/v1/chat/completions` with Bearer authentication.
 - The current image example proves a public `image_url`. It does not prove local upload, data URL, or Base64 support. Keep those transports disabled until separately documented or authorized and tested.
 

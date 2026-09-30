@@ -9,10 +9,16 @@
           "id": "inventory",
           "goal": "Inventory the frozen inputs.",
           "depends_on": [],
-          "read_paths": ["inputs/frozen"],
-          "write_paths": ["reports/inventory.md"],
+          "read_paths": [
+            "inputs/frozen"
+          ],
+          "write_paths": [
+            "reports/inventory.md"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["reports/inventory.md"],
+          "expected_outputs": [
+            "reports/inventory.md"
+          ],
           "validation": "test -s reports/inventory.md",
           "route": {
             "requested_route": "terra-max",
@@ -27,14 +33,20 @@
           "id": "evidence-review",
           "goal": "Review evidence in the same frozen inputs.",
           "depends_on": [],
-          "read_paths": ["inputs/frozen"],
-          "write_paths": ["reports/evidence.md"],
+          "read_paths": [
+            "inputs/frozen"
+          ],
+          "write_paths": [
+            "reports/evidence.md"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["reports/evidence.md"],
+          "expected_outputs": [
+            "reports/evidence.md"
+          ],
           "validation": "test -s reports/evidence.md",
           "route": {
             "requested_route": "luna-max",
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -46,7 +58,10 @@
     "expected": {
       "valid": true,
       "ready_groups": [
-        ["inventory", "evidence-review"]
+        [
+          "inventory",
+          "evidence-review"
+        ]
       ]
     }
   },
@@ -60,14 +75,20 @@
           "id": "design",
           "goal": "Create and validate the design artifact.",
           "depends_on": [],
-          "read_paths": ["docs/requirements.md"],
-          "write_paths": ["docs/specs/design.md"],
+          "read_paths": [
+            "docs/requirements.md"
+          ],
+          "write_paths": [
+            "docs/specs/design.md"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["docs/specs/design.md"],
+          "expected_outputs": [
+            "docs/specs/design.md"
+          ],
           "validation": "test -s docs/specs/design.md",
           "route": {
             "requested_route": "sol-max",
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6.1-sol",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -77,11 +98,19 @@
         {
           "id": "build",
           "goal": "Implement the accepted design.",
-          "depends_on": ["design"],
-          "read_paths": ["docs/specs/design.md"],
-          "write_paths": ["src/feature.py"],
+          "depends_on": [
+            "design"
+          ],
+          "read_paths": [
+            "docs/specs/design.md"
+          ],
+          "write_paths": [
+            "src/feature.py"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["src/feature.py"],
+          "expected_outputs": [
+            "src/feature.py"
+          ],
           "validation": "python3 -m unittest",
           "route": {
             "requested_route": "terra-max",
@@ -97,8 +126,12 @@
     "expected": {
       "valid": true,
       "ready_groups": [
-        ["design"],
-        ["build"]
+        [
+          "design"
+        ],
+        [
+          "build"
+        ]
       ]
     }
   },
@@ -112,36 +145,50 @@
           "id": "worker-a",
           "goal": "Edit the application entry point.",
           "depends_on": [],
-          "read_paths": ["src/app.py"],
-          "write_paths": ["src/app.py"],
+          "read_paths": [
+            "src/app.py"
+          ],
+          "write_paths": [
+            "src/app.py"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["src/app.py"],
+          "expected_outputs": [
+            "src/app.py"
+          ],
           "validation": "python3 -m unittest",
           "route": {
             "requested_route": "auto",
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6.1-sol",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_auto",
-            "reasoning_basis": "explicit_auto"
+            "reasoning_basis": "explicit_auto",
+            "task_kind": "writing"
           }
         },
         {
           "id": "worker-b",
           "goal": "Refactor the application entry point.",
           "depends_on": [],
-          "read_paths": ["src/app.py"],
-          "write_paths": ["src/app.py"],
+          "read_paths": [
+            "src/app.py"
+          ],
+          "write_paths": [
+            "src/app.py"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["src/app.py"],
+          "expected_outputs": [
+            "src/app.py"
+          ],
           "validation": "python3 -m unittest",
           "route": {
             "requested_route": "auto",
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6.1-sol",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_auto",
-            "reasoning_basis": "explicit_auto"
+            "reasoning_basis": "explicit_auto",
+            "task_kind": "writing"
           }
         }
       ]
@@ -161,10 +208,18 @@
           "id": "api-test",
           "goal": "Test the API against the local test database.",
           "depends_on": [],
-          "read_paths": ["src/api"],
-          "write_paths": ["reports/api-test.md"],
-          "mutable_resources": ["test-db"],
-          "expected_outputs": ["reports/api-test.md"],
+          "read_paths": [
+            "src/api"
+          ],
+          "write_paths": [
+            "reports/api-test.md"
+          ],
+          "mutable_resources": [
+            "test-db"
+          ],
+          "expected_outputs": [
+            "reports/api-test.md"
+          ],
           "validation": "test -s reports/api-test.md",
           "route": {
             "requested_route": "terra-max",
@@ -179,10 +234,18 @@
           "id": "migration-test",
           "goal": "Test migrations against the local test database.",
           "depends_on": [],
-          "read_paths": ["src/migrations"],
-          "write_paths": ["reports/migration-test.md"],
-          "mutable_resources": ["test-db"],
-          "expected_outputs": ["reports/migration-test.md"],
+          "read_paths": [
+            "src/migrations"
+          ],
+          "write_paths": [
+            "reports/migration-test.md"
+          ],
+          "mutable_resources": [
+            "test-db"
+          ],
+          "expected_outputs": [
+            "reports/migration-test.md"
+          ],
           "validation": "test -s reports/migration-test.md",
           "route": {
             "requested_route": "terra-max",
@@ -211,9 +274,13 @@
           "goal": "Edit a Windows source tree.",
           "depends_on": [],
           "read_paths": [],
-          "write_paths": ["C:\\repo\\src"],
+          "write_paths": [
+            "C:\\repo\\src"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["C:\\repo\\src"],
+          "expected_outputs": [
+            "C:\\repo\\src"
+          ],
           "validation": "Run the project tests",
           "route": {
             "requested_route": "terra-max",
@@ -229,9 +296,13 @@
           "goal": "Edit a child file in the same Windows source tree.",
           "depends_on": [],
           "read_paths": [],
-          "write_paths": ["C:\\repo\\src\\app.py"],
+          "write_paths": [
+            "C:\\repo\\src\\app.py"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["C:\\repo\\src\\app.py"],
+          "expected_outputs": [
+            "C:\\repo\\src\\app.py"
+          ],
           "validation": "Run the project tests",
           "route": {
             "requested_route": "terra-max",
@@ -259,10 +330,16 @@
           "id": "docs",
           "goal": "Prepare the user documentation.",
           "depends_on": [],
-          "read_paths": ["docs/requirements.md"],
-          "write_paths": ["docs/guide.md"],
+          "read_paths": [
+            "docs/requirements.md"
+          ],
+          "write_paths": [
+            "docs/guide.md"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["docs/guide.md"],
+          "expected_outputs": [
+            "docs/guide.md"
+          ],
           "validation": "test -s docs/guide.md",
           "route": {
             "requested_route": "gpt-5.6-terra",
@@ -279,10 +356,16 @@
           "id": "code",
           "goal": "Implement the accepted feature.",
           "depends_on": [],
-          "read_paths": ["docs/requirements.md"],
-          "write_paths": ["src/feature.py"],
+          "read_paths": [
+            "docs/requirements.md"
+          ],
+          "write_paths": [
+            "src/feature.py"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["src/feature.py"],
+          "expected_outputs": [
+            "src/feature.py"
+          ],
           "validation": "python3 -m unittest tests.test_feature",
           "route": {
             "requested_route": "terra-max",
@@ -296,15 +379,25 @@
         {
           "id": "integrate",
           "goal": "Reconcile both outputs and close the full validation gate.",
-          "depends_on": ["docs", "code"],
-          "read_paths": ["docs/guide.md", "src/feature.py"],
-          "write_paths": ["reports/integration.md"],
+          "depends_on": [
+            "docs",
+            "code"
+          ],
+          "read_paths": [
+            "docs/guide.md",
+            "src/feature.py"
+          ],
+          "write_paths": [
+            "reports/integration.md"
+          ],
           "mutable_resources": [],
-          "expected_outputs": ["reports/integration.md"],
+          "expected_outputs": [
+            "reports/integration.md"
+          ],
           "validation": "python3 -m unittest",
           "route": {
             "requested_route": "sol-max",
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6.1-sol",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -316,31 +409,40 @@
     "expected": {
       "valid": true,
       "ready_groups": [
-        ["docs", "code"],
-        ["integrate"]
+        [
+          "docs",
+          "code"
+        ],
+        [
+          "integrate"
+        ]
       ]
     }
   },
   {
-    "id": "valid-spark-cli-lane",
+    "id": "valid-mechanical-luna-lane",
     "plan": {
-      "run_id": "valid-spark-cli-lane",
+      "run_id": "valid-mechanical-luna-lane",
       "integration_owner": "controller",
       "lanes": [
         {
           "id": "manifest-audit",
           "goal": "Perform a bounded read-only manifest audit.",
           "depends_on": [],
-          "read_paths": ["manifests"],
+          "read_paths": [
+            "manifests"
+          ],
           "write_paths": [],
           "mutable_resources": [],
-          "expected_outputs": ["response-only findings"],
+          "expected_outputs": [
+            "response-only findings"
+          ],
           "validation": "Controller reviews the complete response",
           "route": {
-            "requested_route": "spark",
-            "model": "gpt-5.3-codex-spark",
-            "reasoning": "xhigh",
-            "surface": "bundled_cli",
+            "requested_route": "luna-max",
+            "model": "gpt-6-luna",
+            "reasoning": "max",
+            "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
             "reasoning_basis": "explicit_skill_route"
           }
@@ -350,7 +452,9 @@
     "expected": {
       "valid": true,
       "ready_groups": [
-        ["manifest-audit"]
+        [
+          "manifest-audit"
+        ]
       ]
     }
   },
@@ -378,10 +482,11 @@
           "route": {
             "requested_route": "auto",
             "model": "gpt-6-astra",
-            "reasoning": "max",
+            "reasoning": "ultra",
             "surface": "visible_thread",
             "model_basis": "explicit_auto",
-            "reasoning_basis": "explicit_auto"
+            "reasoning_basis": "explicit_auto",
+            "task_kind": "top_difficulty"
           }
         },
         {
@@ -403,11 +508,12 @@
           "validation": "python3 -m unittest",
           "route": {
             "requested_route": "auto",
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6.1-sol",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_auto",
-            "reasoning_basis": "explicit_auto"
+            "reasoning_basis": "explicit_auto",
+            "task_kind": "writing"
           }
         }
       ]
