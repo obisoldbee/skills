@@ -44,7 +44,7 @@ Hard invariants:
 - Automatic role defaults: Astra ultra for the hardest reasoning, Astra high for orchestration, Sol max for writing/development, Sol medium for computer operation, Luna max for simple browser operation, mechanical audits and file lookup. Record verified `task_kind`; a review/audit label alone never selects Luna. These are routing preferences, not measured strength or pricing claims.
 - Spark execution has been removed. Reject retired Spark aliases/model IDs and do not revive the deleted CLI executor or silently replace an explicit Spark request with Luna.
 - The 2026-09-30 baseline is Astra=`gpt-6-astra`, Sol=`gpt-6.1-sol`, Luna=`gpt-6-luna`. Unversioned family aliases prefer the newest visible numbered release actually supported by the destination task service, using `model_catalog` evidence as described in `references/model-routing.md`. Never invent a release or silently fall back when the requested effort fails. Follow-ups preserve the existing task's verified route, including historical GPT-6/GPT-5.6 tasks, instead of reapplying today's alias.
-- `unsupported_parameter`, `invalid_request`, or “could not validate reasoning effort” indicates a request/capability-validation failure, not proof the model is unavailable. Keep the exact requested model and `thinking`; inspect the live schema, destination-specific capabilities, and actual executing runtime. Never delete `thinking`, downgrade `max`, swap GPT-6 for GPT-5.6, or use CLI/subagents to pretend visible creation passed.
+- `unsupported_parameter` or “could not validate reasoning effort” indicates a capability-validation failure, not proof the model is unavailable. A generic `invalid_request` also needs the actual error and failed stage: `already has an active writer` is a thread transport conflict, not a model error. Keep the requested model and `thinking`; diagnose the relevant capability or transport. Never downgrade effort, swap models, or use CLI/subagents to pretend visible creation passed.
 - The synchronization retry allowance applies only to reading an already identified task or retrying title metadata after a classified visibility/readback/title delay. It never authorizes a new task, a model/reasoning change, or a retry of an unsupported parameter, invalid request, permission, authentication, quota, or provider/model failure.
 
 ## Choose the outcome
@@ -89,9 +89,9 @@ For completion or coordination work, bind the result reader, next check time/ent
 
 Returns: A confirmed `thread_id` plus `host_id`, a queued `client_thread_id`, exact `actual_tool`, prompt-delivery/readback state, receipt-guard result, current cursor/status, artifact/validation receipts, or an exact structured failure.
 
-Failure handling: Classify the exact failure with the dispatch guard. Retry only an eligible readback/title synchronization delay against the already identified task; preserve every other failure receipt and stop or replace only under the declared worker-failure policy. Never silently change route, scope, authority, executor, or create a second task by stripping a rejected parameter.
+Failure handling: Classify the exact failure with the dispatch guard. Metadata synchronization retries and message transport recovery are separate. For a writer conflict or connection failure, follow [cross-device transport](references/cross-device-transport.md): retain the original request, reconcile delivery, restore its verified write endpoint and continue result collection. A transport failure leaves that delivery pending; it does not stop the project. Never silently change route, scope, authority, executor, or create a second task by stripping a rejected parameter.
 
-Tool stop rule: Stop after the requested dispatch-only handoff is delivered, the lane reaches its declared gate, a non-repairable blocker appears, the retry budget is exhausted, the user aborts, or the integrated run closes. For requested completion/coordination, keep unreceived results and a next check until Controller has actually read them; a send failure or successful dispatch does not close that obligation.
+Tool stop rule: End dispatch-only after verified delivery; end a lane or run at its declared gate, user stop or genuine unresolved external dependency. An exhausted communication retry budget ends immediate resends only: keep the pending receipt, next check and independent work. For requested completion/coordination, collect the actual results; a send failure or successful dispatch does not close that obligation.
 
 Task: Apply the verified materials, selected outcome, route basis, authority boundary, dependency/conflict analysis, tool contract, and stop rules above to produce the requested complete handoff or close the authorized dispatch through its artifact and integration gates.
 
@@ -159,6 +159,8 @@ Read `references/thread-dispatch.md` and use the live Codex task tools exclusive
 9. Create dependent tasks just in time after their upstream artifact and validation gate passes.
 
 Do not use `handoff_thread` to create a successor; it moves an existing task and Git state. Read `references/thread-dispatch.md` for tool contracts and failure handling.
+
+For cross-device communication, also read [cross-device transport](references/cross-device-transport.md). Bind the proven **write endpoint per caller and target thread**; a newly discovered readable host never replaces it. `local` is relative to the caller. Send once, then wait/read and collect the result even if the return notification fails. Reuse a healthy binding without extra probes; use `scripts/resolve_thread_transport.py` when resolving or recovering delivery. `idle` does not prove that a writer was released.
 
 ## Maintain controller state and lifecycle
 

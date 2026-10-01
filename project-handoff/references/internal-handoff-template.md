@@ -53,6 +53,10 @@ Success criteria:
 
 Progress state:
 - Registry/status/log: <paths or single-task receipt>
+- Request id: <stable id included in the exact sent message>
+- Send endpoint: <caller identity, target thread, proven hostId and creation/delivery evidence>
+- Return endpoint: <independently verified from the worker's caller context, or result-reader pull>
+- Result collection: <reader, actual storage host/path or worker thread, next check time/entry, receipt responsibility>
 - Sync: <how the Controller reconciles direct user/worker changes and last cursor/time>
 - Ready when: <gate>
 - Stop when: <blocked/needs-context/abort condition and retry budget>
@@ -64,6 +68,7 @@ Progress state:
 - Explain the intent behind material prohibitions when it affects trade-offs.
 - Cite paths, commands, record ids, or source anchors for evidence-based claims.
 - Allow `BLOCKED` or `NEEDS_CONTEXT` instead of guessing.
+- A transient send failure keeps that delivery pending. Follow cross-device transport recovery and let the named reader collect results; it is not a whole-project stop condition.
 - Redact credentials, tokens, cookies, private endpoint data, and unnecessary personal information.
 - Include only the current goal for long-running work; store broader progress in the project or Controller record.
 - Give workers disjoint writes whenever possible. If this lane shares a writable path or mutable resource, state the ordering edge and integration owner explicitly.

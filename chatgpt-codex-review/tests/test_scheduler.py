@@ -1572,7 +1572,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(stopped["observer_updates"]["notifications"][0]["status"], "received")
         self.assertFalse(stopped["observe_webpage"])
 
-    def test_active_writer_waits_then_retries_original_payload_without_dedup_loss(self):
+    def test_active_writer_needs_endpoint_recovery_not_just_idle(self):
         current = authorized(state())
         current["submitted_user_message_id"] = "original-user-message"
         full = collected(current)
@@ -1581,10 +1581,25 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(saved["notifications"][0]["destination_thread_id"], current["controller_thread_id"])
         busy = HELPER.decide(current, notification_check(current, 80, **destination_readback(current, 80,
                             destination_status="active_writer")), saved)
-        self.assertEqual(busy["action"], "check_controller_receipt")
+        self.assertEqual(busy["action"], "restore_notification_transport")
         self.assertFalse(busy["activate_controller"])
-        retry = HELPER.decide(current, notification_check(current, 90, **destination_readback(current, 90,
+        idle = HELPER.decide(current, notification_check(current, 90, **destination_readback(current, 90,
                              destination_status="idle")), busy["observer_updates"])
+        self.assertEqual(idle["action"], "restore_notification_transport")
+        self.assertFalse(idle["activate_controller"])
+        self.assertFalse(idle["observe_webpage"])
+        self.assertEqual(idle["schedule_action"], "keep_active")
+        self.assertEqual(idle["observer_updates"]["notifications"][0]["attempts"], 1)
+        pending = idle["observer_updates"]["notifications"][0]
+        recovery = {"notification_key": pending["key"], "receipt_sha256": pending["receipt_sha256"],
+                    "attempted_at": pending["attempted_at"], "evidence_ref": "io/writer-endpoint-restored.json"}
+        for field in ("notification_key", "receipt_sha256", "attempted_at", "evidence_ref"):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "write endpoint recovery"):
+                HELPER.decide(current, notification_check(current, 95,
+                             **destination_readback(current, 95, write_endpoint_recovery={**recovery, field: ""})),
+                             idle["observer_updates"])
+        retry = HELPER.decide(current, notification_check(current, 95, **destination_readback(current, 95,
+                             write_endpoint_recovery=recovery)), idle["observer_updates"])
         self.assertEqual(retry["action"], "retry_notification")
         self.assertEqual(retry["notification_key"], full["notification_key"])
         self.assertEqual(retry["controller_event"], full["controller_event"])
@@ -1595,7 +1610,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertFalse(duplicate["observe_webpage"])
         self.assertEqual(len(duplicate["observer_updates"]["notifications"]), 1)
 
-    def test_unknown_delivery_needs_sufficient_absence_readback_before_retry(self):
+    def test_unknown_delivery_cannot_retry_from_absent_history(self):
         current = authorized(state())
         full = collected(current)
         failed = HELPER.decide(current, delivery(current, full["notification_key"], "unknown"), full["observer_updates"])
@@ -1609,8 +1624,20 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(present["observer_updates"]["notifications"][0]["status"], "delivered")
         absent = HELPER.decide(current, notification_check(current, 90, **destination_readback(current, 90,
                               delivery_readback="absent", destination_status="idle")), unknown["observer_updates"])
-        self.assertEqual(absent["action"], "retry_notification")
-        self.assertEqual(absent["controller_event"], full["controller_event"])
+        self.assertEqual(absent["action"], "check_controller_receipt")
+        self.assertEqual(absent["observer_updates"]["notifications"][0]["status"], "unknown")
+        self.assertEqual(absent["observer_updates"]["notifications"][0]["attempts"], 1)
+        self.assertFalse(absent["activate_controller"])
+        self.assertFalse(absent["observe_webpage"])
+        pending = absent["observer_updates"]["notifications"][0]
+        recovery = {"notification_key": pending["key"], "receipt_sha256": pending["receipt_sha256"],
+                    "attempted_at": pending["attempted_at"], "evidence_ref": "io/connection-restored.json"}
+        reconnected = HELPER.decide(current, notification_check(current, 100,
+                                   **destination_readback(current, 100, delivery_readback="absent",
+                                                         write_endpoint_recovery=recovery)), absent["observer_updates"])
+        self.assertEqual(reconnected["action"], "check_controller_receipt")
+        self.assertEqual(reconnected["observer_updates"]["notifications"][0]["status"], "unknown")
+        self.assertEqual(reconnected["observer_updates"]["notifications"][0]["attempts"], 1)
 
     def test_retry_readback_must_match_target_be_fresh_and_follow_the_failed_attempt(self):
         current = authorized(state())
@@ -1636,8 +1663,11 @@ class SchedulerTests(unittest.TestCase):
         ledger = full["observer_updates"]
         for failure_time, retry_time in ((11, 80), (81, 150)):
             failed = HELPER.decide(current, delivery(current, full["notification_key"], "not_delivered", failure_time), ledger)
+            pending = failed["observer_updates"]["notifications"][0]
+            recovery = {"notification_key": pending["key"], "receipt_sha256": pending["receipt_sha256"],
+                        "attempted_at": pending["attempted_at"], "evidence_ref": f"io/reconnected-{retry_time}.json"}
             retried = HELPER.decide(current, notification_check(current, retry_time, **destination_readback(current, retry_time,
-                                   destination_status="idle")), failed["observer_updates"])
+                                   destination_status="idle", write_endpoint_recovery=recovery)), failed["observer_updates"])
             self.assertEqual(retried["action"], "retry_notification")
             ledger = retried["observer_updates"]
         failed = HELPER.decide(current, delivery(current, full["notification_key"], "active_writer", 151), ledger)

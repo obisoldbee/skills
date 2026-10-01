@@ -109,7 +109,7 @@ The integration owner is the only actor allowed to reconcile cross-lane changes,
 For a durable multi-task run, create these files under the user-approved output root, not under read-only source or input trees:
 
 - `controller/plan.json` — dependency graph, scopes, routes, expected outputs, and integration owner.
-- `controller/thread-registry.md` — lane, visible task id, title, host, status, dependencies, route, expected outputs, and last sync cursor/time.
+- `controller/thread-registry.md` — lane, visible task id, title, status, dependencies, route, expected outputs, last sync cursor/time, and caller-specific write endpoint with its creation/delivery evidence. Record each direction separately; readable hosts are discovery hints, not replacement write endpoints.
 - `controller/status.md` — current wave, ready queue, running lanes, blockers, invalidated gates, next action, and integration state.
 - `controller/router-log.jsonl` — append-only dispatch, message, retry, user intervention, gate, abort, archive, and integration events.
 
@@ -136,7 +136,7 @@ Worker to Controller:
 
 - Reconcile task state and the required artifacts or response evidence; an unsupported self-report is not completion evidence. A response-only audit is assessed against its requested findings and verifiable sources, without creating unrequested files.
 - Record changed files, validation, risks, and the lane's requested next state.
-- Save results before sending a hint. Distinguish collected, delivered and Controller received; message success is not receipt. While Controller is still writing, a reverse send may return active writer: Controller can directly wait/read the worker or shared saved receipt instead of waiting for a successful reverse message. Unknown delivery requires sufficiently covering history; a truncated recent summary does not prove absence. Known non-delivery may retry the same identity/payload after verified same-target idle, a bounded cooldown/budget and continuing direct user communication authority. Exhausted retries preserve a readable checkpoint and the next receipt check.
+- Save results before sending a hint. Distinguish collected, delivered and Controller received; message success is not receipt. Controller directly waits/reads the worker or saved result even when a reverse send fails. Follow [cross-device transport](cross-device-transport.md): unknown delivery remains unresolved until the original attempt is reconciled; a confirmed rejection requires the correct write endpoint before retry. `idle` does not release ownership. Exhausted immediate retries preserve the readable result and the next low-cost receipt check.
 - Carry forward only verified outputs. Mark replaced or superseded outputs stale until revalidated.
 
 Controller records actual receipt alongside result assessment in its existing state/log update; no separate approval or round trip is required. The selected observer owns observation/delivery records, while Controller remains the sole main-state writer. Web capture ending cannot stop a project watcher that still owns development/build waits. Dots may be the sole coordinator only when the user explicitly assigns it and its actual target and permissions are verified; local task access does not establish arbitrary cross-host chat access or bypass active-writer constraints. It is not a default dependency.
@@ -161,7 +161,7 @@ Use explicit states:
 Retry rules:
 
 1. Retry only a classified creation-visibility, prompt-readback, or title-metadata delay, and only by reading the already identified task or retrying its title metadata. Validate the retry receipt with `scripts/validate_dispatch_route.py`.
-2. Set a run-specific retry budget for worker failures. When none is stated, allow one scoped correction for a plausibly repairable failure; do not loop on the same failure class.
+2. Honor an explicit run budget. Otherwise continue scoped corrections while new evidence or a relevant fix makes progress; do not stop after an arbitrary single repair or repeat an unchanged failing attempt. For communications, keep delivery state separate from lane work state and use the bounded transport recovery procedure; pending delivery does not cancel independent work or result collection.
 3. Before retrying, capture the failure, current artifacts, attempted fix, and whether the existing task can continue safely.
 4. If a replacement task is required, mark the old task superseded and its unintegrated outputs stale; give the replacement a fresh prompt from current state.
 5. Never change model, reasoning, scope, or authority silently as a retry tactic.

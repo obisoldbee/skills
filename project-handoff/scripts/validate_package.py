@@ -18,12 +18,14 @@ EXPECTED_DIRECTORIES = {"agents", "references", "scripts", "tests", "tests/fixtu
 REQUIRED_FILES = {
     "SKILL.md",
     "agents/openai.yaml",
+    "references/cross-device-transport.md",
     "references/internal-handoff-template.md",
     "references/legacy-handoff-template.md",
     "references/model-routing.md",
     "references/orchestration-control.md",
     "references/thread-dispatch.md",
     "scripts/make_handoff.py",
+    "scripts/resolve_thread_transport.py",
     "scripts/validate_dispatch_route.py",
     "scripts/validate_orchestration_plan.py",
     "scripts/validate_package.py",
@@ -33,6 +35,7 @@ REQUIRED_FILES = {
     "tests/orchestration-cases.json",
     "tests/routing-cases.json",
     "tests/test_skill_contract.py",
+    "tests/test_thread_transport.py",
     "tests/visible-task-receipt-cases.json",
 }
 FORBIDDEN_NAMES = {".DS_Store", "__pycache__"}

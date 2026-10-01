@@ -44,6 +44,10 @@ FAILURE_CLASSES = {
     "permission",
     "quota",
     "provider_model",
+    "thread_writer_conflict",
+    "transport_timeout",
+    "transport_unavailable",
+    "delivery_unknown",
     "unknown",
 }
 
@@ -699,6 +703,29 @@ def resolve_request_case(request, context=None):
     raise ValueError("automatic routing requires an explicit auto request")
 
 
+def classify_failure(declared, error=None):
+    """Specific transport evidence outranks a coarse JSON-RPC error code."""
+    if not error:
+        return declared
+    if isinstance(error, str):
+        message, stage = error.lower(), ""
+    elif isinstance(error, dict):
+        message = str(error.get("message", "")).lower()
+        stage = str(error.get("stage", "")).lower()
+    else:
+        return declared
+    if "already has an active writer" in message:
+        return "thread_writer_conflict"
+    if any(text in message for text in ("stream pong timed out", "initialize handshake timed out")):
+        return "transport_timeout"
+    if stage in {"initialize", "thread/resume", "send_message_to_thread", "transport"}:
+        if "timed out" in message or "timeout" in message:
+            return "transport_timeout"
+        if any(text in message for text in ("connection closed", "disconnected", "connection refused")):
+            return "transport_unavailable"
+    return declared
+
+
 def failure_disposition(failure_class, route, route_errors):
     if failure_class in SYNC_FAILURES:
         classification = "synchronization_delay"
@@ -708,6 +735,8 @@ def failure_disposition(failure_class, route, route_errors):
         classification = "runtime_route_unavailable"
     elif failure_class in {"auth", "permission", "quota"}:
         classification = "runtime_access_blocked"
+    elif failure_class in {"thread_writer_conflict", "transport_timeout", "transport_unavailable", "delivery_unknown"}:
+        classification = failure_class
     elif failure_class == "none":
         classification = "none"
     else:
@@ -717,8 +746,14 @@ def failure_disposition(failure_class, route, route_errors):
         next_action = "correct_invalid_attempt"
     elif failure_class in SYNC_FAILURES:
         next_action = "retry_existing_task_metadata"
-    elif failure_class in {"unsupported_parameter", "invalid_request"}:
+    elif failure_class == "unsupported_parameter":
         next_action = "inspect_model_effort_capabilities"
+    elif failure_class == "invalid_request":
+        next_action = "inspect_failed_request_stage"
+    elif failure_class == "thread_writer_conflict":
+        next_action = "resolve_original_write_endpoint"
+    elif failure_class in {"transport_timeout", "transport_unavailable", "delivery_unknown"}:
+        next_action = "reconcile_delivery_then_restore_connection"
     elif failure_class == "none":
         next_action = "proceed"
     else:
@@ -726,7 +761,8 @@ def failure_disposition(failure_class, route, route_errors):
 
     return {
         "classification": classification,
-        "terminal": failure_class != "none" and failure_class not in SYNC_FAILURES,
+        "terminal": failure_class not in {"none", *SYNC_FAILURES, "thread_writer_conflict",
+                                         "transport_timeout", "transport_unavailable", "delivery_unknown"},
         "next_action": next_action,
         "visible_task_allowed": not route_errors,
         "same_lane_retry_allowed": failure_class in SYNC_FAILURES and not route_errors,
@@ -753,6 +789,9 @@ def validate_attempt(attempt):
     failure_class = required_string(
         attempt.get("failure_class"), "failure_class", errors
     )
+    declared_failure_class = failure_class
+    if operation == "failure_report" and failure_class in FAILURE_CLASSES:
+        failure_class = classify_failure(failure_class, attempt.get("error"))
     route_changed = required_bool(attempt.get("route_changed"), "route_changed", errors)
     explicit_user_route_change = required_bool(
         attempt.get("explicit_user_route_change"),
@@ -837,6 +876,7 @@ def validate_attempt(attempt):
         "action": action,
         "tool": tool,
         "failure_class": failure_class,
+        "declared_failure_class": declared_failure_class,
         "failure_disposition": disposition,
         "attempt_sha256": dispatch_attempt_sha256(attempt),
     }

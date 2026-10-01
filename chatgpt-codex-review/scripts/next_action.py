@@ -922,7 +922,15 @@ def scheduled_observation(state, event, saved):
         require(readback in {"present", "absent", "unknown"}, "invalid delivery readback")
         destination = event.get("destination_status", "unknown")
         require(destination in {"idle", "active_writer", "unknown"}, "invalid destination status")
-        if readback != "unknown" or destination != "unknown":
+        recovery = event.get("write_endpoint_recovery")
+        if recovery is not None:
+            require(isinstance(recovery, dict)
+                    and recovery.get("notification_key") == key
+                    and recovery.get("receipt_sha256") == pending.get("receipt_sha256")
+                    and recovery.get("attempted_at") == pending.get("attempted_at")
+                    and nonempty(recovery.get("evidence_ref")),
+                    "write endpoint recovery must bind the original notification and last attempt")
+        if readback != "unknown" or destination != "unknown" or recovery is not None:
             require(nonempty(event.get("readback_evidence_ref"))
                     and event.get("destination_thread_id") == state.get("controller_thread_id")
                     and event.get("destination_host") == state.get("controller_host"),
@@ -935,20 +943,21 @@ def scheduled_observation(state, event, saved):
         if readback == "present":
             pending = {**pending, "status": "delivered", "readback_evidence_ref": event["readback_evidence_ref"]}
             ledger["notifications"] = [pending if item["key"] == key else item for item in ledger["notifications"]]
-        if (pending.get("status") in {"not_delivered", "active_writer"} or
-                (pending.get("status") in {"pending", "unknown"} and readback == "absent")):
+        if pending.get("status") in {"not_delivered", "active_writer"}:
             due = pending.get("next_check_at")
-            if (destination == "idle"
-                    and (due is None or when >= timestamp(due)) and notification_authorized(state)):
+            if (due is None or when >= timestamp(due)) and notification_authorized(state):
                 if pending.get("attempts", 1) >= 3:
                     return answer("delivery_recovery_checkpoint", "Delivery attempt budget is exhausted; retain receipt checks and let Controller read the saved result directly.", key=key)
+                if recovery is None or destination == "active_writer":
+                    return answer("restore_notification_transport", "Restore the proven write endpoint through project-handoff; idle or readable alone is insufficient. Controller can collect the saved result meanwhile.", key=key)
                 payload = pending.get("controller_event")
                 require(isinstance(payload, dict) and notification_digest(payload) == pending.get("receipt_sha256"),
                         "retry needs the original saved payload and its receipt SHA")
                 pending = {**pending, "status": "pending", "attempts": pending.get("attempts", 1) + 1,
-                           "attempted_at": stamp(when), "next_check_at": stamp(when + timedelta(seconds=60))}
+                           "attempted_at": stamp(when), "next_check_at": stamp(when + timedelta(seconds=60)),
+                           "write_endpoint_recovery": recovery}
                 ledger["notifications"] = [pending if item["key"] == key else item for item in ledger["notifications"]]
-                return answer("retry_notification", "Confirmed non-delivery and an idle destination permit one same-payload authorized retry.",
+                return answer("retry_notification", "Confirmed non-delivery and verified write endpoint recovery permit one same-payload authorized retry.",
                               controller_event=payload, key=key)
         return answer("check_controller_receipt", "Read delivery history, Controller state or the shared receipt; unknown is not non-delivery and delivered is not received.", key=key)
 

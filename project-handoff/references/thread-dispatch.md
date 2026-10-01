@@ -21,6 +21,7 @@ Validate the route attempt with `scripts/validate_dispatch_route.py` before sele
 - Match the user-provided or currently verified path unambiguously. Never guess a project id, host, checkout, or worktree.
 - Do not create a projectless task as a fallback unless the user authorized projectless execution.
 - If the surface lacks visible-task creation, produce a complete portable handoff. Do not silently substitute a hidden subagent.
+- Keep read discovery separate from the write endpoint. For cross-device sends, read [cross-device transport](cross-device-transport.md) and retain the caller-specific creation or successful-delivery endpoint; `list`/`read`/`wait` cannot overwrite it.
 
 ## Visible-task exclusivity
 
@@ -80,7 +81,7 @@ Visible-task authority and field authority are separate. A user who only invokes
 - **Purpose**: Continue or correct an existing visible task.
 - **Use when**: The worker needs a scoped correction, user intervention must be synchronized, a downstream gate failed, or a running lane must pause/abort.
 - **Do not use when**: Creating the initial task.
-- **Failure handling**: Unknown delivery first needs history covering the original request/payload; a few recent or truncated summaries cannot establish absence. Save the actual target thread/host, original payload/identity and receipt. For explicit not-delivered or active writer, wait/read the same target and retry that payload only after fresh verified idle, the declared cooldown/budget, and continuing direct user messaging authority. Never convert unknown into not-delivered or create another chat as recovery.
+- **Failure handling**: Save the exact request before sending and distinguish accepted, explicitly rejected and unknown delivery. Follow [cross-device transport](cross-device-transport.md) to restore the original write endpoint after a confirmed rejection. `idle` and a successful read do not prove write ownership. A timeout or absent history alone does not permit another send. Continue waiting/reading results independently of reverse notifications.
 - **Route rule**: Preserve the task's effective model/reasoning route. Do not pass a new model or `thinking` value unless the user explicitly requested that route change; in particular, keep `luna-max` at `max`.
 - **Retired automatic route**: For an existing GPT-5.6 Sol/Luna/Terra task, verify the task id and original effective route from readback and its historical receipt before declaring `route_changed=false`. The offline guard's compatibility allowance validates that declaration only; it does not establish task existence or original routing. Use its original effective model/effort, including when its historical alias has since changed meaning. This exception never authorizes new automatic GPT-5.6 creation or migration to GPT-6.
 
@@ -126,7 +127,7 @@ For those continuing obligations, each dispatch names the result reader, next ch
 ## Failure and replacement rules
 
 - The one synchronization retry is a whitelist, not a general second attempt. It covers only reading an already identified task after a classified creation-visibility or prompt-readback delay, or retrying title metadata after a title delay.
-- `unsupported_parameter`, `invalid_request`, unsupported model/reasoning, permission, authentication, quota, and provider/model failures must not be retried under that allowance.
+- `unsupported_parameter`, generic `invalid_request`, unsupported model/reasoning, permission, authentication, quota, and provider/model failures must not be retried under that allowance. Classify the actual message/stage first: a writer conflict or transport timeout follows the separate transport recovery contract, preserving task and model.
 - Never create a second task because the first request rejected `reasoning.summary`, `thinking`, or another parameter. Removing or changing the parameter is a route mutation, not synchronization recovery.
 - Before a worker retry, record the failure, artifacts, validation, attempted correction, and remaining retry budget.
 - Continue the existing task when its context and outputs remain safe; otherwise create a replacement only after marking the old task superseded and its unintegrated outputs stale.
