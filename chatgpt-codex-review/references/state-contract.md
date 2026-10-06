@@ -81,8 +81,8 @@ Luna 的 `artifact_receipt` 保存完整 JSON 到独立文件，回 Astra 小回
 | `browser_recovered` | 同一 URL、实际 observed_at、old_space_id、browser_context={space_id,page_label,ownership:"agent"}、recovery_evidence_ref、request_status=present/absent/unknown；已发另核对原 user_message_id/prompt_sha256 与已知 assistant_message_id | 保存旧→新映射后继续原收件/发送门；未知/身份不符先 reconcile，不重发；actual 恢复才结束事故预算，不能绕过用户 pause/人类门 |
 | `scheduled_observation` / `inline_observation` | 与 observation 同样的原始字段；durable 需新鲜 followup_view，inline 需 turn 执行绑定；错误需 error_fingerprint | Luna 独立去重/稳定性门禁，返回 observer_updates，主 state_updates 为空；无变化静默 |
 | `scheduled_artifacts` / `inline_artifacts` | 当前绑定的完整 receipt 与时间、模式回读 | 保存最新实际附件观测与 SHA；必需缺件仅继续 capture，收齐后产生一次 artifact_receipt 小回执；文件重验失败覆盖旧 ready |
-| `observer_delivery` | notification_key、delivery_status=delivered/not_delivered/unknown/active_writer、实际 observed_at/delivery_evidence_ref、destination_thread_id/destination_host | 同 Controller 目的地的真实投递回执，仅写 Luna 独立记录；delivered 不等于 received |
-| `notification_check` | 实际 observed_at 与模式执行/readback；可带 notification_key、delivery_readback=present/absent/unknown、destination_status=idle/active_writer/unknown、write_endpoint_recovery | 只查收讫/投递，不开已收齐网页；非 unknown 读回及写入口恢复须目标匹配、新鲜且不早于上次投递；idle 不证明可以重发 |
+| `observer_delivery` | notification_key、实际 attempt_id、delivery_status=delivered/not_delivered/unknown/active_writer、实际 observed_at/delivery_evidence_ref、destination_thread_id/destination_host | 同 Controller 目的地的真实投递回执，仅写 Luna 独立记录；delivered 不等于 received |
+| `notification_check` | 实际 observed_at 与模式执行/readback；可带 notification_key、delivery_readback=present/absent/unknown、destination_status=idle/active_writer/unknown、write_endpoint_recovery；稍晚完成的 requested_output_collection 另绑定原 notification_key/notification_receipt_sha256 | 只查收讫/投递，不开已收齐网页；非 unknown 读回及写入口恢复须目标匹配、新鲜且不早于上次投递；idle 不证明可以重发 |
 | `controller_received` | 已读 notification_key、notification_receipt_sha256 及真实读取 evidence；传最新 Luna record | 同次记收讫；采集已闭合且原事件尚未处理时 process_saved_result 返回原 payload 供 Controller 本地应用，不能以再启表代替处理 |
 | `web_progress` | 当前 URL/请求、原 execution_scope/followup_mode 及 actionable_progress=true、actionable_progress_ref | Controller 核实新可行动证据，真 scope/mode 变化拒绝旧事件，不误报完成或自动派修 |
 | `artifact_receipt` | `receipt`（helper 原始 JSON）、本次真实校验后的 observed_at 与证据 | 保存主 state 当前证明；与最新 Luna 证明一致且必需快照已应用才解锁文件依赖步骤；旧无时间回执不覆盖新证明 |
@@ -130,7 +130,13 @@ unknown 核对原请求 key/payload 的目的地历史和实际投递回执；�
 
 repair_loop 的 assessment 确认问题与争议并存时先派独立确认修复；file_dependent_findings 在 required 文件存在时必须明确，dispatchable/pending 分开。新当前文件交同一个 Sol 继续，不建重叠 writer；局部交付不清空 pending，处理后明确 addressed_file_findings，未闭合不能下一轮。worker 不可擅换 github/mcp/local_packet 路线；Controller 的显式换路用关联的新 run 保留旧证据。repair_loop completed 要 clean 当前 review、当前 required 附件、绑定本地检查与交付；review_only 要完整 coverage、当前 required 附件和报告交付，开放建议保留，只有验收合同明确要求的检查才需 validation。review_only passed=false 保留当前失败证据与 required_unverified，在 validating 交报告；可 terminal=true 结束报告义务，但 acceptance_passed=false，不能宣称检查通过或派修。scope 变化使旧审查/交付记录失效。无隐含一次返修预算。
 
-`next_action.py` 的 `valid=false/input_valid=false`、退出码 2 表示旧版本、字段缺失、错轮次/来源/合同/host 或非法转换。保留旧 valid/退出码接口；退出码 0 和 input_valid=true 仅表示建议计算成功，不证明输入事实或整个 run 完成。`submission_ready` 仅在本 helper 已核对声明的发送前提时为 true，缺跟进等 ensure 动作均为 false；还须按 browser-platforms/browser-loop 核实实际驱动、UI、上传及发送。终态报告、合法输入与发送就绪不能混称。浏览器最多三次有退避的连续错误刷新是页面恢复预算，跟修复轮数无关；正常生成不刷新，发送未知不重发。
+`next_action.py` 的 `valid=false/input_valid=false`、退出码 2 表示旧版本、字段缺失、错轮次/来源/合同/host 或非法转换。保留旧 valid/退出码接口；退出码 0 和 input_valid=true 仅表示建议计算成功，不证明输入事实或整个 run 完成。`submission_ready` 只在 `action=submit_once` 时为 true；`followup_ready`、未知发送核对及缺口动作均为 false，跟进就绪不能当发送许可；还须按 browser-platforms/browser-loop 核实实际驱动、UI、上传及发送。终态报告、合法输入与发送就绪不能混称。浏览器最多三次有退避的连续错误刷新是页面恢复预算，跟修复轮数无关；正常生成不刷新，发送未知不重发。
+
+### 投递尝试与稍晚到达的完整性证据
+
+`notify_controller/retry_notification` 返回 `notification_attempt_id`，同时在独立 ledger 写入该通知的 `attempt_id/attempt_history`。实际发送与 `observer_delivery.attempt_id` 使用同一 ID；原 notification_key、controller_event、receipt SHA 保持不变。只对唯一一次历史投递允许省略 attempt ID；多次尝试无法归属时返回 reconcile_notification_attempt，仅核对该回执，原件收取和本地处理继续。每次尝试的实际结果保留，旧尝试失败不能撤销另一尝试 delivered/unknown；一旦有送达事实就占用对应通知额度。迟到 unknown 也不抹掉同一次明确追加前拒绝。unknown 仍不是未投递，不据此新增尝试。
+
+完整正文已经稳定保存后，输出覆盖核对可以稍晚形成。将 requested_output_collection 与原正文 SHA、requirements_ref、evidence_ref 绑定；同一回复的后续 scheduled_observation 可以追加证明，或 notification_check 带原 notification_key/notification_receipt_sha256 在本地追加。证明保存为 output_collection_proofs，原 controller_event/key/payload/SHA 不改写，不新增通知身份。只有原始回复确为完整稳定、非中断且必需附件齐全时，忠实 policy 才能允许第一次通知；不要求先完成 Controller QA，也不重新打开已收齐网页。重复或错正文/要求/receipt 的证明不产生第二次发送。
 
 ## 本地包事件
 

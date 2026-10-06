@@ -123,7 +123,7 @@ class ReadinessAndExistingOwnerTests(unittest.TestCase):
         view = followup(current, checked_seconds=20, evidence_ref="actual-rearmed-view")
         report = HELPER.decide(current, self.checkpoint(current, followup_view=view))
         self.assertEqual(report["action"], "followup_ready")
-        self.assertTrue(report["submission_ready"])
+        self.assertFalse(report["submission_ready"])
         self.assertEqual(report["state_updates"]["followup"], view)
         self.assertEqual(current["followup"]["status"], "PAUSED")
         for changed in ({"checked_at": current["followup"]["checked_at"]},
@@ -258,7 +258,7 @@ class NotificationPolicyTests(unittest.TestCase):
                 followup_view=followup(current, checked_seconds=20, evidence_ref="fresh-" + checkpoint))
             ready = HELPER.decide(current, incoming)
             self.assertEqual(ready["action"], "followup_ready")
-            self.assertEqual(ready["submission_ready"], checkpoint == "before_submit")
+            self.assertFalse(ready["submission_ready"])
 
     def test_collected_requested_report_notifies_before_controller_receipt_or_qa(self):
         current = self.limited(["review_completed"])
@@ -296,6 +296,163 @@ class NotificationPolicyTests(unittest.TestCase):
             "evidence_ref": "runtime/actual-return.json", "destination_thread_id": current["controller_thread_id"],
             "destination_host": current["controller_host"]}
         self.assertEqual(HELPER.decide(current, incoming, progress["observer_updates"])["action"], "followup_ready")
+
+
+class WebReviewRegressionTests(unittest.TestCase):
+    """Independent review counterexamples: ordering must not change authority."""
+
+    def current(self):
+        current = authorized(state())
+        current["prepared_request"]["requirements_ref"] = "source/original-review-request.md"
+        current["submitted_user_message_id"] = "user-message"
+        current["controller_notification_authorization"]["policy"].update(
+            max_deliveries=1, triggers=["review_completed"])
+        return current
+
+    def proof(self, current):
+        return {"complete": True, "requirements_ref": current["prepared_request"]["requirements_ref"],
+                "body_sha256": "c" * 64, "evidence_ref": "coverage/same-original-report.json"}
+
+    def full(self, current, proof=True):
+        fields = {"requested_output_collection": self.proof(current)} if proof else {}
+        first = HELPER.decide(current, scheduled(current, **fields))
+        return HELPER.decide(current, scheduled(current, 10, **fields), first["observer_updates"])
+
+    def retried(self):
+        current = self.current()
+        full = self.full(current)
+        key = full["notification_key"]
+        first_id = full.get("notification_attempt_id", "attempt-1")
+        failed_event = {**delivery(current, key, "not_delivered", 11), "attempt_id": first_id,
+                        "attempted_at": full["observer_updates"]["notifications"][0]["attempted_at"]}
+        failed = HELPER.decide(current, failed_event, full["observer_updates"])
+        pending = failed["observer_updates"]["notifications"][0]
+        retry = HELPER.decide(current, notification_check(current, 72,
+            destination_thread_id=current["controller_thread_id"], destination_host=current["controller_host"],
+            destination_status="idle", readback_observed_at="2026-01-01T00:01:12+00:00",
+            readback_evidence_ref="transport/restored.json",
+            write_endpoint_recovery={"notification_key": key, "receipt_sha256": pending["receipt_sha256"],
+                "attempted_at": pending["attempted_at"], "evidence_ref": "transport/restored.json"}),
+            failed["observer_updates"])
+        self.assertEqual(retry["action"], "retry_notification")
+        return current, full, failed_event, retry
+
+    def test_old_attempt_failure_cannot_release_delivered_notification_allowance(self):
+        current, full, failed_event, retry = self.retried()
+        key = full["notification_key"]
+        second_id = retry.get("notification_attempt_id", "attempt-2")
+        delivered = HELPER.decide(current, {**delivery(current, key, "delivered", 73),
+            "attempt_id": second_id}, retry["observer_updates"])
+        late = HELPER.decide(current, {**failed_event, "observed_at": "2026-01-01T00:01:14+00:00"},
+                            delivered["observer_updates"])
+        self.assertEqual(late["observer_updates"]["notifications"][0]["delivery_status"], "delivered")
+        self.assertEqual(late["observer_updates"]["notifications"][0]["delivery_observed_at"],
+                         delivered["observer_updates"]["notifications"][0]["delivery_observed_at"])
+        self.assertFalse(HELPER.notification_authorized(current, late["observer_updates"]))
+        current["round"] = 2
+        current["request_token"] = "same-authority-round-2"
+        current["used_request_tokens"].append(current["request_token"])
+        first = HELPER.decide(current, scheduled(current, 80, requested_output_collection=self.proof(current)),
+                              late["observer_updates"])
+        second = HELPER.decide(current, scheduled(current, 90, requested_output_collection=self.proof(current)),
+                               first["observer_updates"])
+        self.assertEqual(second["action"], "save_receipt_for_controller")
+
+    def test_old_rejection_cannot_clear_unknown_retry_or_invent_a_third_attempt(self):
+        current, full, failed_event, retry = self.retried()
+        second_id = retry["notification_attempt_id"]
+        self.assertNotEqual(second_id, failed_event["attempt_id"])
+        unknown = HELPER.decide(current, {**delivery(current, full["notification_key"], "unknown", 73),
+            "attempt_id": second_id}, retry["observer_updates"])
+        late = HELPER.decide(current, {**failed_event, "observed_at": "2026-01-01T00:01:14+00:00"},
+                            unknown["observer_updates"])
+        self.assertEqual(late["observer_updates"]["notifications"][0]["delivery_status"], "unknown")
+        self.assertEqual(late["observer_updates"]["notifications"][0]["next_check_at"],
+                         unknown["observer_updates"]["notifications"][0]["next_check_at"])
+        self.assertFalse(HELPER.notification_authorized(current, late["observer_updates"]))
+        check = HELPER.decide(current, notification_check(current, 150), late["observer_updates"])
+        self.assertFalse(check["activate_controller"])
+        self.assertEqual(check["observer_updates"]["notifications"][0]["attempts"], 2)
+
+    def test_retry_receipt_without_attempt_identity_requires_reconciliation(self):
+        current, full, _, retry = self.retried()
+        for fields in ({}, {"attempt_id": "unrelated-attempt"}):
+            report = HELPER.decide(current, {**delivery(current, full["notification_key"], "not_delivered", 73),
+                **fields}, retry["observer_updates"])
+            self.assertEqual(report["action"], "reconcile_notification_attempt")
+            self.assertEqual(report["observer_updates"]["notifications"], retry["observer_updates"]["notifications"])
+
+    def test_late_collection_proof_unlocks_first_notification_without_replacing_payload(self):
+        current = self.current()
+        full = self.full(current, proof=False)
+        self.assertEqual(full["action"], "save_receipt_for_controller")
+        original = copy.deepcopy(full["controller_event"])
+        original_digest = full["observer_updates"]["notifications"][0]["receipt_sha256"]
+        late = HELPER.decide(current, scheduled(current, 20, requested_output_collection=self.proof(current)),
+                            full["observer_updates"])
+        self.assertEqual(late["action"], "notify_controller")
+        self.assertEqual(late["controller_event"], original)
+        self.assertEqual(late["observer_updates"]["notifications"][0]["receipt_sha256"], original_digest)
+        self.assertEqual(late["observer_updates"]["notifications"][0]["attempts"], 1)
+
+    def test_late_unknown_does_not_erase_definitive_failure_of_the_same_attempt(self):
+        current = self.current()
+        full = self.full(current)
+        key = full["notification_key"]
+        failed = HELPER.decide(current, delivery(current, key, "not_delivered", 11), full["observer_updates"])
+        late = HELPER.decide(current, delivery(current, key, "unknown", 12), failed["observer_updates"])
+        self.assertEqual(late["observer_updates"]["notifications"][0]["delivery_status"], "not_delivered")
+        self.assertTrue(HELPER.notification_authorized(current, late["observer_updates"]))
+
+    def test_receipt_check_can_append_collection_proof_without_webpage_or_duplicate_send(self):
+        current = self.current()
+        full = self.full(current, proof=False)
+        item = full["observer_updates"]["notifications"][0]
+        incoming = notification_check(current, 20, notification_key=item["key"],
+            notification_receipt_sha256=item["receipt_sha256"], requested_output_collection=self.proof(current))
+        late = HELPER.decide(current, incoming, full["observer_updates"])
+        self.assertEqual(late["action"], "notify_controller")
+        self.assertFalse(late["observe_webpage"])
+        duplicate = HELPER.decide(current, {**incoming, "observed_at": "2026-01-01T00:00:30+00:00"},
+                                  late["observer_updates"])
+        self.assertFalse(duplicate["activate_controller"])
+        self.assertEqual(len(duplicate["observer_updates"]["output_collection_proofs"]), 1)
+        self.assertEqual(duplicate["observer_updates"]["notifications"][0]["attempts"], 1)
+
+    def test_late_proof_cannot_rebind_body_requirements_receipt_or_interrupted_reply(self):
+        current = self.current()
+        full = self.full(current, proof=False)
+        item = full["observer_updates"]["notifications"][0]
+        for change in ({"body_sha256": "d" * 64}, {"requirements_ref": "other-request.md"},
+                       {"evidence_ref": ""}, {"complete": False}):
+            late = HELPER.decide(current, scheduled(current, 20,
+                requested_output_collection={**self.proof(current), **change}), full["observer_updates"])
+            self.assertFalse(late["activate_controller"])
+            self.assertEqual(late["observer_updates"]["notifications"][0]["attempts"], 0)
+        mismatched = HELPER.decide(current, notification_check(current, 20, notification_key=item["key"],
+            notification_receipt_sha256="d" * 64, requested_output_collection=self.proof(current)), full["observer_updates"])
+        self.assertFalse(mismatched["activate_controller"])
+        first = HELPER.decide(current, scheduled(current, response_interrupted=True))
+        stopped = HELPER.decide(current, scheduled(current, 10, response_interrupted=True), first["observer_updates"])
+        late = HELPER.decide(current, scheduled(current, 20, requested_output_collection=self.proof(current)), stopped["observer_updates"])
+        self.assertFalse(late["activate_controller"])
+
+    def test_only_resolved_not_sent_gate_is_submission_ready(self):
+        current = authorized(state("ready_to_submit"))
+        ready = HELPER.decide(current, {**submission(current), "status": "not_sent", "definitive_absence": True})
+        self.assertEqual(ready["action"], "submit_once")
+        self.assertTrue(ready["submission_ready"])
+
+    def test_unknown_send_stays_not_ready_when_heartbeat_is_rearmed(self):
+        current = authorized(state("ready_to_submit"))
+        unknown = HELPER.decide(current, {**submission(current), "status": "unknown"})
+        current = apply(current, unknown)
+        self.assertEqual(current["phase"], "submitting")
+        ready = HELPER.decide(current, event(current, "followup_check", checkpoint="before_submit",
+            observed_at="2026-01-01T00:00:20+00:00", followup_view=followup(current, checked_seconds=20,
+                evidence_ref="actual-rearmed-unknown-send.json")))
+        self.assertEqual(ready["action"], "followup_ready")
+        self.assertFalse(ready["submission_ready"])
 
 
 if __name__ == "__main__":

@@ -952,6 +952,16 @@ def requested_output_collected(state, ledger, payload):
     if not isinstance(reply, dict):
         return False
     proof = reply.get("requested_output_collection") or {}
+    # Completeness evidence can arrive after capture. Keep the original payload
+    # immutable and accept only an append-only proof for that exact receipt.
+    if ledger:
+        reply_key = notification_key(ledger["binding"], {"kind": "reply",
+            "message": reply.get("assistant_message_id"), "sha256": reply.get("body_sha256")})
+        original = next((item for item in ledger.get("notifications", []) if item.get("key") == reply_key), {})
+        additions = [item for item in ledger.get("output_collection_proofs", [])
+                     if item.get("key") == reply_key and item.get("receipt_sha256") == original.get("receipt_sha256")]
+        if additions:
+            proof = additions[-1]["proof"]
     prior = reply.get("prior_observation") or (payload.get("prior_observation") if payload.get("type") == "observation" else None) or {}
     if not prior and ledger:
         completed = next((item.get("controller_event") for item in reversed(ledger.get("notifications", []))
@@ -1011,11 +1021,58 @@ def notification_permission(state, ledger=None, *, trigger=None, key=None, paylo
     history = [*(ledger or {}).get("notification_history", []), *(ledger or {}).get("notifications", [])]
     reserved = {item.get("key") for item in history if item.get("key") != key
                 and item.get("attempts", 1) > 0
-                and item.get("delivery_status", item.get("status")) not in {"not_delivered", "active_writer"}
+                and (item.get("delivery_accepted") is True or any(
+                    attempt.get("status") == "delivered" for attempt in item.get("attempt_history", []))
+                    or item.get("delivery_status", item.get("status")) not in {"not_delivered", "active_writer"})
                 and (item.get("controller_event") or {}).get("run_id", state["run_id"]) == state["run_id"]}
     if policy["max_deliveries"] is not None and len(reserved) >= policy["max_deliveries"]:
         return False, "notification_delivery_limit_exhausted"
     return True, "authorized"
+
+
+def notification_attempt_id(item):
+    identity = {key: item.get(key) for key in ("key", "attempts", "attempted_at")}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def begin_notification_attempt(item, when):
+    """One receipt can have several attempts; each retains its own outcome."""
+    item = {**item, "status": "pending", "attempts": item.get("attempts", 0) + 1,
+            "attempted_at": stamp(when), "next_check_at": stamp(when + timedelta(seconds=60))}
+    item["attempt_id"] = notification_attempt_id(item)
+    item["attempt_history"] = [*item.get("attempt_history", []),
+        {"attempt_id": item["attempt_id"], "attempted_at": item["attempted_at"], "status": "unknown"}]
+    item["delivery_status"] = "unknown"
+    return item
+
+
+def append_output_collection_proof(state, ledger, event):
+    proof = event.get("requested_output_collection")
+    if not isinstance(proof, dict) or proof.get("complete") is not True:
+        return
+    key = event.get("notification_key")
+    if event["type"] in {"scheduled_observation", "inline_observation"}:
+        key = notification_key(ledger["binding"], {"kind": "reply",
+            "message": event.get("assistant_message_id"), "sha256": event.get("body_sha256")})
+    original = next((item for item in ledger["notifications"] if item.get("key") == key), None)
+    if original is None:
+        return
+    payload = original.get("controller_event") or {}
+    if (payload.get("type") != "observation" or notification_digest(payload) != original.get("receipt_sha256")
+            or proof.get("body_sha256") != payload.get("body_sha256")
+            or proof.get("requirements_ref") != (state.get("prepared_request") or {}).get("requirements_ref")
+            or not nonempty(proof.get("evidence_ref"))
+            or event["type"] == "notification_check" and event.get("notification_receipt_sha256") != original["receipt_sha256"]
+            or event["type"] != "notification_check" and (
+                event.get("request_user_message_id") != payload.get("request_user_message_id")
+                or event.get("assistant_message_id") != payload.get("assistant_message_id"))):
+        return
+    addition = {"key": key, "receipt_sha256": original["receipt_sha256"], "proof": dict(proof),
+                "observed_at": event["observed_at"]}
+    history = ledger.get("output_collection_proofs", [])
+    if not any(item.get("key") == key and item.get("receipt_sha256") == original["receipt_sha256"]
+               and item.get("proof") == proof for item in history):
+        ledger["output_collection_proofs"] = [*history, addition]
 
 
 def notification_authorized(state, ledger=None, *, trigger=None, key=None, payload=None):
@@ -1139,13 +1196,15 @@ def scheduled_observation(state, event, saved):
             schedule_action, observe_webpage = "pause_if_active", False
         elif outstanding and state["phase"] not in {"paused", "blocked"}:
             schedule_action = "keep_active"
+        attempt = next((item.get("attempt_id") for item in ledger["notifications"] if item.get("key") == key), None)
         return {"action": action, "reason": reason, "phase": state["phase"], "terminal": False,
                 "activate_controller": action in {"notify_controller", "retry_notification", "return_to_controller"},
                 "activate_developer": False, "observe_webpage": observe_webpage,
                 "schedule_action": "establish_durable" if action == "ensure_durable_followup" else
                     "none" if state.get("followup_mode", "durable") == "inline" else schedule_action,
                 "state_updates": {},
-                "observer_updates": ledger, "notification_key": key, "controller_event": controller_event}
+                "observer_updates": ledger, "notification_key": key, "notification_attempt_id": attempt,
+                "controller_event": controller_event}
 
     kind = event["type"]
     inline = state.get("followup_mode", "durable") == "inline"
@@ -1169,15 +1228,39 @@ def scheduled_observation(state, event, saved):
             require(notification_authorized(state, ledger, trigger=notification_trigger(pending), key=key,
                                            payload=pending.get("controller_event")),
                     "delivered notification lacks direct user communication authority or destination binding")
-        ledger["notifications"] = [({**item, "status": event["delivery_status"] if item.get("status") != "received" else "received",
-                                     "delivery_status": event["delivery_status"],
-                                     "evidence_ref": event["delivery_evidence_ref"], "delivery_observed_at": stamp(when),
-                                     "destination_thread_id": event["destination_thread_id"], "destination_host": event["destination_host"],
-                                     "next_check_at": stamp(when + timedelta(seconds=60))}
-                                    if item.get("key") == key else item)
-                                   for item in ledger["notifications"]]
+        history = [dict(item) for item in pending.get("attempt_history", [])]
+        if not history and pending.get("attempts") == 1:
+            history = [{"attempt_id": notification_attempt_id(pending), "attempted_at": pending.get("attempted_at"),
+                        "status": pending.get("delivery_status", "unknown")}]
+        attempt = event.get("attempt_id")
+        if not attempt and len(history) == 1 and pending.get("attempts") == 1:
+            attempt = history[0]["attempt_id"]  # Unambiguous legacy single attempt only.
+        target = next((item for item in history if item["attempt_id"] == attempt), None)
+        if target is None or event.get("attempted_at", target["attempted_at"]) != target["attempted_at"]:
+            return answer("reconcile_notification_attempt", "Receipt cannot be attributed to a known send attempt; preserve delivery facts and continue local collection.", key=key)
+        outcome = event["delivery_status"]
+        if target.get("status") == "delivered" or outcome == "unknown" and target.get("status") in {"not_delivered", "active_writer"}:
+            outcome = target["status"]
+        target.update(status=outcome,
+                      evidence_ref=event["delivery_evidence_ref"], observed_at=stamp(when))
+        accepted = pending.get("delivery_accepted") is True or pending.get("delivery_status") == "delivered" or any(
+            item["status"] == "delivered" for item in history)
+        status = "delivered" if accepted else "unknown" if any(item["status"] == "unknown" for item in history) else history[-1]["status"]
+        receipts = pending.get("delivery_receipts", [])
+        actual = {"attempt_id": attempt, "status": event["delivery_status"], "observed_at": stamp(when),
+                  "evidence_ref": event["delivery_evidence_ref"]}
+        current_receipt = ({"evidence_ref": event["delivery_evidence_ref"], "delivery_observed_at": stamp(when),
+                            "next_check_at": stamp(when + timedelta(seconds=60))}
+                           if attempt == history[-1]["attempt_id"] else {})
+        pending = {**pending, "attempt_history": history, "delivery_accepted": accepted,
+                   "status": "received" if pending.get("status") == "received" else status,
+                   "delivery_status": status, "delivery_receipts": receipts if actual in receipts else [*receipts, actual],
+                   "destination_thread_id": event["destination_thread_id"], "destination_host": event["destination_host"],
+                   **current_receipt}
+        ledger["notifications"] = [pending if item.get("key") == key else item for item in ledger["notifications"]]
         return answer("record_notification_delivery", "Delivery and Controller receipt are distinct; retain receipt checks without reopening the webpage.")
 
+    append_output_collection_proof(state, ledger, event)
     outstanding = next((item for item in ledger["notifications"] if item.get("status") != "received"), None)
     if state["phase"] in {"paused", "blocked"}:
         return answer("pause_followup", "Preserve unreceived results and their checkpoint while this run is stopped or blocked.",
@@ -1236,7 +1319,8 @@ def scheduled_observation(state, event, saved):
                     and (attempted is None or checked >= timestamp(attempted)),
                     "delivery readback is stale or predates the last delivery attempt")
         if readback == "present":
-            pending = {**pending, "status": "delivered", "delivery_status": "delivered", "readback_evidence_ref": event["readback_evidence_ref"]}
+            pending = {**pending, "status": "delivered", "delivery_status": "delivered", "delivery_accepted": True,
+                       "readback_evidence_ref": event["readback_evidence_ref"]}
             ledger["notifications"] = [pending if item["key"] == key else item for item in ledger["notifications"]]
         permitted, permission_reason = notification_permission(state, ledger, trigger=notification_trigger(pending), key=key,
                                                                payload=pending.get("controller_event"))
@@ -1244,7 +1328,7 @@ def scheduled_observation(state, event, saved):
             payload = pending.get("controller_event")
             require(isinstance(payload, dict) and notification_digest(payload) == pending.get("receipt_sha256"),
                     "notification needs the original saved payload and receipt SHA")
-            pending = {**pending, "attempts": 1, "attempted_at": stamp(when), "next_check_at": stamp(when + timedelta(seconds=60))}
+            pending = begin_notification_attempt(pending, when)
             ledger["notifications"] = [pending if item["key"] == key else item for item in ledger["notifications"]]
             return answer("notify_controller", "The faithfully mapped policy now permits this original saved receipt once.", controller_event=payload, key=key)
         if pending.get("status") in {"not_delivered", "active_writer"}:
@@ -1257,9 +1341,7 @@ def scheduled_observation(state, event, saved):
                 payload = pending.get("controller_event")
                 require(isinstance(payload, dict) and notification_digest(payload) == pending.get("receipt_sha256"),
                         "retry needs the original saved payload and its receipt SHA")
-                pending = {**pending, "status": "pending", "attempts": pending.get("attempts", 1) + 1,
-                           "attempted_at": stamp(when), "next_check_at": stamp(when + timedelta(seconds=60)),
-                           "write_endpoint_recovery": recovery}
+                pending = {**begin_notification_attempt(pending, when), "write_endpoint_recovery": recovery}
                 ledger["notifications"] = [pending if item["key"] == key else item for item in ledger["notifications"]]
                 return answer("retry_notification", "Confirmed non-delivery and verified write endpoint recovery permit one same-payload authorized retry.",
                               controller_event=payload, key=key)
@@ -1365,11 +1447,14 @@ def scheduled_observation(state, event, saved):
     controller_event["notification_receipt_sha256"] = digest
     trigger = {"reply": "stable_reply", "artifacts": "required_artifacts", "blocker": "material_blocker", "progress": "actionable_progress"}[notification_material["kind"]]
     permitted, permission_reason = notification_permission(state, ledger, trigger=trigger, key=key, payload=controller_event)
-    ledger["notifications"] = [*ledger["notifications"], {"key": key, "status": "pending",
+    pending = {"key": key, "status": "pending",
                 "receipt_sha256": digest, "controller_event": controller_event,
                 "trigger": trigger,
-                "attempts": 1 if not inline and permitted else 0, "attempted_at": stamp(when),
-                "next_check_at": stamp(when + timedelta(seconds=60)), "evidence": event["evidence"]}]
+                "attempts": 0, "attempted_at": stamp(when),
+                "next_check_at": stamp(when + timedelta(seconds=60)), "evidence": event["evidence"]}
+    if not inline and permitted:
+        pending = begin_notification_attempt(pending, when)
+    ledger["notifications"] = [*ledger["notifications"], pending]
     action = ("return_to_controller" if inline else "notify_controller" if permitted else
               "map_notification_policy" if permission_reason == "notification_policy_needs_mapping" else "save_receipt_for_controller")
     return answer(action, "One new actionable receipt is ready; Controller verifies it before any authorized developer work. " + ("" if permitted or inline else permission_reason + "; collection and local processing remain authorized."),
@@ -1956,9 +2041,7 @@ def decide(state, event, observer_record=None):
                 "backoff_and_diagnose"}:
             answer.update(action="request_browser_input", reason="Browser gate remains active; preserve saved material and process local work or receipts only.")
     answer["input_valid"] = True
-    answer["submission_ready"] = (answer["action"] == "submit_once"
-        or event.get("type") == "followup_check" and event.get("checkpoint") == "before_submit"
-        and answer["action"] == "followup_ready" and prepared_request(candidate))
+    answer["submission_ready"] = answer["action"] == "submit_once"
     answer["submission_readiness_scope"] = "declared prerequisites only; actual browser/UI evidence is still required"
     return answer
 
