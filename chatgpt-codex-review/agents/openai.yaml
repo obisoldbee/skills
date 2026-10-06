@@ -1,4 +1,4 @@
 interface:
   display_name: "ChatGPT ↔ Codex Review"
-  short_description: "Run web review with Luna observation and authorized repair"
-  default_prompt: "Use $chatgpt-codex-review with Astra high and Luna max for web IO and quiet observation; use Sol max only for authorized repair. Resolve new family names with current project-handoff, preserve explicit overrides, and distinguish review-only delivery from the repair loop."
+  short_description: "Web review with local upload, fixed sources, and authorized repair"
+  default_prompt: "Use $chatgpt-codex-review with Astra high and Luna max for web IO and quiet observation; use Sol max only for authorized repair. Resolve new family names with current project-handoff, preserve explicit overrides, and distinguish review-only delivery from the repair loop. New web research/review defaults to a verified durable Luna heartbeat and a working result-return route before submission. Inline is only for collecting an already complete reply or an explicit user current-turn limit. Check outstanding collection before ending the turn; slow generation and exhausted refresh attempts do not close it."

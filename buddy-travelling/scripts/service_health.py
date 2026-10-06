@@ -10,6 +10,7 @@ import secrets
 import sqlite3
 import subprocess
 from zoneinfo import ZoneInfo
+from report_common import parse_space_id, space_id_text
 
 NAMES = {'volcengine-invites-monitor':'方舟众测', 'ikuuu-daily-checkin':'Ikuuu',
          'minimax-agent-daily-checkin':'MiniMax', 'buddy-travelling':'WorkBuddy'}
@@ -154,7 +155,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--phase',choices=['maintenance','available','unknown'],required=True)
     parser.add_argument('--page',choices=['closed','preserved','unconfirmed','not_created'],required=True)
-    parser.add_argument('--space-id',type=int,help='Actual numeric space ID; required when a space was created')
+    parser.add_argument('--space-id',type=parse_space_id,
+                        help='Actual Ego integer or runtime:kind:id; required when a page was created')
     parser.add_argument('--evidence',default='',help='Short redacted current visible evidence')
     parser.add_argument('--detail',default='',help='Short actual business result, not model advice')
     parser.add_argument('--chat-id',required=True)
@@ -167,7 +169,7 @@ def main():
     if args.page != 'not_created' and args.space_id is None:
         parser.error('actual space ID required')
     page = {'closed':'已关闭','preserved':'已保留','unconfirmed':'关闭未确认','not_created':'未创建'}[args.page]
-    if args.space_id is not None: page += f'（空间 {args.space_id}）'
+    if args.space_id is not None: page += f'（{space_id_text(args.space_id)}）'
     result = observe(args.state_dir,service,args.phase,
         lambda key,notice:send_notice(args.config,args.chat_id,key,notice),
         page=page,evidence=args.evidence,detail=args.detail)

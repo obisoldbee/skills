@@ -41,6 +41,7 @@ class BoundaryTests(unittest.TestCase):
             socket, "create_connection", side_effect=AssertionError("network forbidden")
         ))
         self.transport = self.enterContext(mock.patch.object(agnes.urllib.request, "urlopen"))
+        self.enterContext(mock.patch.object(agnes, "authenticated_urlopen", new=self.transport))
         self.methods = []
 
     def response(self, route):

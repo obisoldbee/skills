@@ -38,12 +38,14 @@ def pdf_bytes(
     identifier: str = "DOI: 10.1000/one",
     title: str = "",
 ) -> bytes:
-    metadata = f"\n{identifier}\n".encode("ascii") if identifier else b"\n"
+    fields = []
+    if identifier:
+        kind, value = identifier.split(":", 1) if ":" in identifier else ("PMCID", identifier)
+        fields.append(f"/{kind.strip()} ({value.strip()})")
     if title:
-        metadata += (
-            f"1 0 obj\n<< /Title ({title}) >>\nendobj\n"
-            "trailer\n<< /Info 1 0 R >>\n"
-        ).encode("utf-8")
+        fields.append(f"/Title ({title})")
+    metadata = ("1 0 obj\n<< " + " ".join(fields) +
+                " >>\nendobj\ntrailer\n<< /Info 1 0 R >>\n").encode("utf-8")
     if len(metadata) + 4 > size:
         raise ValueError("fixture size is too small")
     return b"%PDF" + metadata + b"x" * (size - 4 - len(metadata))
@@ -82,7 +84,7 @@ class ManifestV2ContractTest(unittest.TestCase):
             exact.write_bytes(pdf_bytes())
             receipt = contract.verify_pdf(exact, root, row, identity_match_method="filename_identifier", identity_match_evidence=exact.name)
             self.assertTrue(receipt["validated"])
-            self.assertEqual("pdf_bytes_doi", receipt["identity_match"]["method"])
+            self.assertEqual("pdf_metadata_doi", receipt["identity_match"]["method"])
             self.assertEqual(contract.PDF_MIN_BYTES + 1, receipt["bytes"])
 
     def test_pdf_gate_rejects_path_escape(self) -> None:

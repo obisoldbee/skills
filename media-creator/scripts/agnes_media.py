@@ -26,6 +26,17 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+class NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
+    """Authenticated API calls never follow redirects or resend a POST."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def authenticated_urlopen(request, *, timeout):
+    return urllib.request.build_opener(NoCredentialRedirect()).open(request, timeout=timeout)
+
+
 DEFAULT_BASE_URL = "https://apihub.agnes-ai.com"
 IMAGE_MODEL = "agnes-image-2.5-flash"
 VIDEO_MODEL = "agnes-video-2.5-flash"
@@ -427,7 +438,7 @@ def request_json(
             method=method,
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with authenticated_urlopen(request, timeout=timeout) as response:
             result = json.loads(response.read().decode("utf-8"))
     except json.JSONDecodeError as exc:
         raise AgnesError("Agnes returned invalid JSON") from exc

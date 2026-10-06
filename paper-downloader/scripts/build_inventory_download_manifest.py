@@ -21,6 +21,7 @@ from manifest_contract import (  # noqa: E402
     SCHEMA,
     atomic_write_json,
     canonical_identity,
+    collection_role,
     declared_output_path,
     declared_output_root,
     empty_pdf_receipt,
@@ -288,6 +289,12 @@ def build_rows(
                 "pmcid_followup_required": False,
                 "pdf": empty_pdf_receipt(),
             }
+            role = first_value(raw, "collection_role")
+            reason = first_value(raw, "collection_role_reason")
+            if role or reason:
+                row["collection_role"] = role or "supplementary"
+                row["collection_role_reason"] = reason
+                collection_role(row)
             key = identity_key(row)
             if key and key in first_by_identity:
                 row["duplicate_of"] = first_by_identity[key]
@@ -321,6 +328,7 @@ def build_manifest(
     path: Path,
     output_root: Path,
     inventory_format: str = "auto",
+    target_count: int | None = None,
 ) -> dict[str, Any]:
     root = declared_output_root(output_root)
     source_sha = sha256_file(path)
@@ -334,6 +342,7 @@ def build_manifest(
         "reconciled_at": None,
         "declared_output_root": str(root),
         "paper_root": "papers",
+        "target_count": target_count,
         "inventory": {
             "source_path": str(path.expanduser().resolve()),
             "sha256": source_sha,
@@ -352,6 +361,7 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--format", choices=("auto", "markdown", "csv"), default="auto")
+    parser.add_argument("--target-count", type=int, help="Requested target quota; supplementary rows never count toward it.")
     parser.add_argument(
         "--include-duplicates",
         action="store_true",
@@ -363,7 +373,7 @@ def main() -> int:
     root = declared_output_root(args.output_root)
     output = declared_output_path(args.output, root)
     require_distinct_paths(inventory_input=args.input, manifest_output=output)
-    payload = build_manifest(args.input, root, args.format)
+    payload = build_manifest(args.input, root, args.format, target_count=args.target_count)
     validate_manifest(payload, output_root=root)
     receipt = atomic_write_json(output, payload)
     validate_manifest(json.loads(output.read_text(encoding="utf-8")), output_root=root)

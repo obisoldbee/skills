@@ -22,9 +22,11 @@ from manifest_contract import (  # noqa: E402
     atomic_write_bytes,
     atomic_write_json,
     canonical_identity,
+    collection_role,
     declared_output_path,
     declared_output_root,
     exact_status_counts,
+    quota_counts,
     is_within,
     load_manifest,
     relative_output_path,
@@ -138,13 +140,14 @@ def completion_blockers(rows: list[dict[str, Any]], output_root: Path | None = N
         status = status_of(row)
         disposition = str(row.get("disposition") or "eligible")
         reason = str(row.get("failure_reason") or "").strip()
-        if status in queued:
+        supplementary = collection_role(row) == "supplementary"
+        if status in queued and not supplementary:
             blockers.append(f"{row_id}:unresolved_status:{status}")
-        if status == "needs_manual_review" and disposition not in {"excluded_do_not_cite"}:
+        if status == "needs_manual_review" and disposition not in {"excluded_do_not_cite"} and not supplementary:
             blockers.append(f"{row_id}:unresolved_status:needs_manual_review")
-        if row.get("pubmed_followup_required") is True:
+        if row.get("pubmed_followup_required") is True and not supplementary:
             blockers.append(f"{row_id}:pubmed_followup_required")
-        if row.get("pmcid_followup_required") is True:
+        if row.get("pmcid_followup_required") is True and not supplementary:
             blockers.append(f"{row_id}:pmcid_followup_required")
         if status != "downloaded" and not reason:
             blockers.append(f"{row_id}:non_download_failure_reason_missing")
@@ -191,6 +194,7 @@ def reference_links(row: dict[str, Any]) -> str:
 
 def write_coverage(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict[str, Any]:
     counts = exact_status_counts(rows)
+    quota = quota_counts(rows, getattr(args, "target_count", None))
     missing_reason = [
         row for row in non_download_rows(rows)
         if not str(row.get("failure_reason") or "").strip()
@@ -207,6 +211,7 @@ def write_coverage(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
         f"- source_inventory_sha256: `{args.inventory_sha256}`",
         f"- source_inventory_rows: {args.inventory_rows}",
         f"- manifest_rows: {len(rows)}",
+        *[f"- {key}: {value}" for key, value in quota.items()],
         f"- rows_with_identifier: {sum(1 for row in rows if has_identifier(row))}",
         f"- rows_missing_failure_reason: {len(missing_reason)}",
         f"- browser_non_download_rows_missing_observable_evidence: {len(missing_browser_evidence)}",
@@ -218,6 +223,12 @@ def write_coverage(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict
         "## Coverage Boundary",
         "",
         args.note or "Complete frozen inventory; downloaded claims passed disk readback.",
+        "Target quota and supplementary collection are separate. Counterevidence is retained and disclosed, never used to fill a target shortfall.",
+        "",
+        "## Supplementary Material (Excluded From Target Quota)",
+        "",
+        *[f"- {row['row_id']}: {row.get('title', '')} | {row['status']} | {row.get('collection_role_reason', '')}"
+          for row in rows if collection_role(row) == "supplementary"],
         "",
     ]
     if missing_reason:
@@ -342,6 +353,7 @@ def main() -> int:
     args.manifest_sha256 = sha256_file(args.manifest)
     args.inventory_sha256 = sha256_file(args.inventory)
     args.inventory_rows = manifest["inventory"]["row_count"]
+    args.target_count = manifest.get("target_count")
     manifest_descriptor = input_descriptor(args.manifest, root)
     inventory_descriptor = input_descriptor(args.inventory, root)
     coverage_receipt = write_coverage(args, manifest["rows"])
@@ -350,7 +362,12 @@ def main() -> int:
     verify_written_artifact(args.failed_out, failed_receipt)
     receipt = {
         "schema": REPORT_RECEIPT_SCHEMA,
-        "completion_state": "complete",
+        "completion_state": "complete" if not any(
+            collection_role(row) == "supplementary" and row["status"] in {
+                "pending", "browser_required", "manual_browser_required", "paywalled_or_no_pdf", "needs_manual_review"
+            } for row in manifest["rows"]
+        ) else "target_processing_complete_supplementary_pending",
+        "quota": quota_counts(manifest["rows"], manifest.get("target_count")),
         "manifest": manifest_descriptor,
         "inventory": inventory_descriptor,
         "inventory_rows_sha256": manifest["inventory"]["rows_sha256"],

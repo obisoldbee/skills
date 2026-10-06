@@ -15,9 +15,9 @@ All network activity in this playbook is serialized through
 `shared-egress-ip:paper-download`. Separate shards, processes, task spaces, or
 write directories do not permit concurrent requests from the same public IP.
 
-Use the separately registered `$ego-browser` as the primary interactive route.
+Select a callable, task-capable browser by explicit choice, then applicable caller preferences, then macOS Ego / Windows Tabbit defaults.
 Read [ego-browser-route.md](ego-browser-route.md) before browser work. The local
-Playwright scripts remain bounded fallbacks only when Ego is unavailable and
+Playwright scripts remain bounded fallbacks only when the selected browser is unavailable and
 the user did not explicitly require it.
 
 Use the formal scripts in `../scripts/` for inventory preparation, first-pass
@@ -46,7 +46,7 @@ acquisition, persistence, reconciliation, and an allowed browser fallback:
 - `pdf_receiver.py`: local receiver when the route posts browser-fetched PDFs.
 
 Do not create a package-local downloader unless it is explicitly being proposed
-as a new formal tool patch. Do not switch from Ego to Playwright silently.
+as a new formal tool patch. Do not switch browser runtimes silently.
 
 ## Script Selection
 
@@ -57,19 +57,19 @@ Use this order before taking manual browser actions:
 | Broad package inventory exists | `build_inventory_download_manifest.py` | Convert `paper-source-inventory.md` or `source-library-frozen.md` into manifest rows. |
 | Need local/OA/public-route first pass | `manifest_pdf_downloader.py` | Local precheck, Europe PMC render, NCBI OA package, PMC PDF, DOI/provided PDF URL. |
 | DOI rows remain unresolved | `build_browser_followup_inputs.py` | Classify follow-up rows and create the bound result journal. |
-| Publisher or PubMed/PMC page needs interaction | `$ego-browser` | Primary real-page route; observe, act, and verify in one named task space. |
-| Ego unavailable and fallback allowed; publisher page has PDF/download menu | `doi_downloader.py` | One bounded fallback attempt for an explicit journal row. |
-| Ego unavailable and fallback allowed; PMCID row remains unresolved | `pmc_downloader.py` | One bounded fallback attempt for an explicit journal row. |
-| Ego unavailable and fallback allowed; unchecked PMID remains | `pubmed_downloader.py` | One bounded PubMed full-text-link attempt for an explicit journal row. |
+| Publisher or PubMed/PMC page needs interaction | Platform-selected browser | Primary real-page route; observe, act, and verify in one named task space. |
+| Selected browser unavailable and fallback allowed; publisher page has PDF/download menu | `doi_downloader.py` | One bounded fallback attempt for an explicit journal row. |
+| Selected browser unavailable and fallback allowed; PMCID row remains unresolved | `pmc_downloader.py` | One bounded fallback attempt for an explicit journal row. |
+| Selected browser unavailable and fallback allowed; unchecked PMID remains | `pubmed_downloader.py` | One bounded PubMed full-text-link attempt for an explicit journal row. |
 | Browser/process interrupted | `rebuild_manifest.py` | Reconcile files already on disk back into the manifest. |
 | Need final reports | `summarize_download_manifest.py` | Write `download-coverage.md` and `failed-downloads.md`. |
 
 For AHA/JAHA/Circulation rows, DOI prefix `10.1161` is classified as `JAHA_AHA` by `extract_doi_papers.py`. If the page shows a `Download` menu with a `PDF` item, that is a browser-follow-up target for `doi_downloader.py`; do not leave it as `access_blocked` because raw HTTP got 403.
 
 Before an allowed `doi_downloader.py`, `pmc_downloader.py`, or
-`pubmed_downloader.py` fallback, record why Ego was unavailable and confirm the
-user did not mandate Ego. Then use `with_playwright_python.sh` so the script uses
-the Python interpreter that owns the local `playwright` CLI. If the wrapper
+`pubmed_downloader.py` fallback, record why the selected browser was unavailable and confirm the
+user did not mandate a different browser. On POSIX use `with_playwright_python.sh` so the script uses
+the Python interpreter that owns the local `playwright` CLI. On Windows, do not invoke that shell wrapper as PowerShell; use an already verified Python/Playwright runtime directly, or stay with the platform browser. If the wrapper
 fails, the route is blocked by the local runtime, not by the paper source.
 Record `blocked_runtime_missing_python_playwright` and do not summarize the row
 as a paper access failure.

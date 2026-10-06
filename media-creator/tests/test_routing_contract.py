@@ -48,6 +48,37 @@ class RoutingContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.registry = json.loads(ROUTES.read_text(encoding="utf-8"))
 
+    def test_windows_launcher_is_metadata_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            launcher = base / "Tabbit/LocalAgent/bin/tabbit-cli.exe"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_bytes(b"not an executable; must never be run")
+            with mock.patch.dict(os.environ, {"LOCALAPPDATA": tmp}):
+                result = route_checker.tabbit_metadata("Windows", base)
+                self.assertTrue(result["present"])
+                self.assertEqual(result["resolved"], str(launcher))
+                self.assertFalse(result["invoked"])
+                self.assertEqual(result["connection"], "not_tested")
+                launcher.unlink()
+                self.assertFalse(route_checker.tabbit_metadata("Windows", base)["present"])
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertFalse(route_checker.tabbit_metadata("Windows", base)["present"])
+
+    def test_browser_policy_rejects_os_provider_fallback_and_shared_cookie_claim(self) -> None:
+        for field, value in (("fallback_when", ["platform_is_not_Darwin"]),
+                             ("primary_preconditions", {"platform": "Darwin"})):
+            registry = copy.deepcopy(self.registry)
+            registry["policies"]["non_codex_text_to_image"][field] = value
+            errors = []
+            route_validator.validate_registry(registry, errors)
+            self.assertTrue(any("non-Darwin" in error for error in errors), errors)
+        registry = copy.deepcopy(self.registry)
+        registry["browser_platforms"]["codex_browser_state"] = "chrome_shared"
+        errors = []
+        route_validator.validate_registry(registry, errors)
+        self.assertTrue(any("browser platform policy" in error for error in errors), errors)
+
     def test_codex_ordinary_image_generation_stays_native(self) -> None:
         policy = self.registry["scope"]["codex_ordinary_image_generation"]
         self.assertEqual(policy["action"], "exclude")
@@ -75,7 +106,7 @@ class RoutingContractTests(unittest.TestCase):
         self.assertEqual(contract["planner"], "originating_main_task")
         self.assertTrue(contract["final_payload"]["required_before_handoff"])
         self.assertEqual(contract["luna_max"]["route"], "luna-max")
-        self.assertEqual(contract["luna_max"]["model"], "gpt-5.6-luna")
+        self.assertEqual(contract["luna_max"]["model"], "gpt-6-luna")
         self.assertEqual(contract["luna_max"]["reasoning"], "max")
         self.assertEqual(contract["luna_max"]["thread"], "visible")
         self.assertEqual(contract["luna_max"]["surface"], "visible_thread")
@@ -138,17 +169,17 @@ class RoutingContractTests(unittest.TestCase):
                 self.assertEqual(executor["kind"], "authority_gated_browser_execution")
                 current_task = executor["current_task"]
                 self.assertEqual(current_task["kind"], "verified_browser_executor")
-                self.assertEqual(current_task["preferred_command"], "ego-browser")
+                self.assertEqual(current_task["preferred_command"], "platform_selected_browser")
                 self.assertFalse(current_task["requires_visible_task_creation_authority"])
                 visible_task = executor["visible_task"]
                 self.assertEqual(visible_task["kind"], "project_handoff_visible_thread")
                 self.assertEqual(visible_task["orchestrator"], "project-handoff")
                 self.assertEqual(visible_task["route"], "luna-max")
-                self.assertEqual(visible_task["model"], "gpt-5.6-luna")
+                self.assertEqual(visible_task["model"], "gpt-6-luna")
                 self.assertEqual(visible_task["reasoning"], "max")
                 self.assertEqual(visible_task["surface"], "visible_thread")
                 self.assertTrue(visible_task["requires_visible_task_creation_authority"])
-                self.assertEqual(visible_task["worker"]["command"], "ego-browser")
+                self.assertEqual(visible_task["worker"]["command"], "platform_selected_browser")
                 handoff = route["browser_handoff"]
                 self.assertEqual(
                     handoff["required_when"],
@@ -156,11 +187,11 @@ class RoutingContractTests(unittest.TestCase):
                 )
                 self.assertEqual(handoff["orchestrator"], "project-handoff")
                 self.assertEqual(handoff["luna_route"], "luna-max")
-                self.assertEqual(handoff["model"], "gpt-5.6-luna")
+                self.assertEqual(handoff["model"], "gpt-6-luna")
                 self.assertEqual(handoff["reasoning"], "max")
                 self.assertEqual(handoff["thread"], "visible")
                 self.assertEqual(handoff["surface"], "visible_thread")
-                self.assertEqual(handoff["worker_executor"], "ego-browser")
+                self.assertEqual(handoff["worker_executor"], "platform_selected_browser")
                 self.assertEqual(handoff["execution_role"], "browser_worker")
                 self.assertEqual(handoff["handoff_depth"], 1)
                 self.assertFalse(handoff["recursive_dispatch"])
@@ -195,24 +226,24 @@ class RoutingContractTests(unittest.TestCase):
             },
         )
         self.assertTrue(cross_harness["requirements_are_conjunctive"])
-        self.assertEqual(cross_harness["preferred_local_executor"], "ego-browser")
+        self.assertEqual(cross_harness["preferred_local_executor"], "platform_selected_browser")
         self.assertFalse(cross_harness["is_fallback_after_luna_creation_failure"])
         self.assertFalse(cross_harness["explicit_luna_request_may_downgrade"])
         submission = contract["submission"]
         self.assertEqual(submission["pre_submission_manual_or_login_check"], "handoff_and_pause")
-        self.assertEqual(submission["nonzero_or_ambiguous_cost"], "pause_before_submission")
+        self.assertEqual(submission["unknown_over_budget_or_new_purchase_cost"], "pause_before_submission")
         self.assertFalse(submission["duplicate_submission"])
         self.assertFalse(submission["post_submission_provider_switch"])
         self.assertEqual(
             submission["download_retry"], "same_submitted_result_only"
         )
 
-    def test_twenty_browser_envelopes_jointly_validate_authority_and_execution(self) -> None:
+    def test_browser_envelopes_jointly_validate_authority_and_execution(self) -> None:
         fixture = json.loads(BROWSER_ENVELOPE_CASES.read_text(encoding="utf-8"))
         bases = fixture["bases"]
         cases = fixture["cases"]
         self.assertEqual(3, len(bases))
-        self.assertEqual(20, len(cases))
+        self.assertEqual(32, len(cases))
 
         with tempfile.TemporaryDirectory() as temporary:
             for case in cases:
@@ -341,8 +372,7 @@ class RoutingContractTests(unittest.TestCase):
     def test_chatgpt_web_requires_darwin_ego_and_runtime_login(self) -> None:
         route = route_by_id(self.registry, "chatgpt-web-image")
         preconditions = route["runtime_preconditions"]
-        self.assertEqual(preconditions["platform"], "Darwin")
-        self.assertTrue(preconditions["ego_browser"])
+        self.assertEqual(preconditions["browser_capability"], "runtime_verified")
         self.assertTrue(preconditions["chatgpt_login"])
         self.assertEqual(preconditions["login_check"], "runtime_only")
         self.assertEqual(

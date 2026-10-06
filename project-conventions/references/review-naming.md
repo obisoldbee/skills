@@ -57,7 +57,7 @@ If the scope doesn't fit any of the above, propose a new value and document it h
 - This is the **start time** of the review, not the completion time.
 - Example: `143052` = 14:30:52 (2:30:52 PM)
 
-The second-precision timestamp reduces accidental collisions; it is not a concurrency guarantee. Project-local admission plus an atomic no-clobber create is the guarantee.
+The second-precision timestamp reduces accidental collisions; it is not a concurrency guarantee. Atomic no-clobber creation prevents overwriting an existing report; ordinary independent reports require no admission claim.
 
 **Relaxation for single-agent projects**: When only one agent (or human) creates reviews, date-precision is acceptable — omit `HHMMSS` and use `YYYY-MM-DD-<reviewer>-<scope>.md`. HHMMSS is mandatory only when multiple agents may create reviews concurrently. If a project transitions from single-agent to multi-agent, existing date-precision files remain valid; new files adopt HHMMSS from that point.
 
@@ -74,7 +74,7 @@ The second-precision timestamp reduces accidental collisions; it is not a concur
 
 ## Collision Handling Procedure
 
-Even with second-precision timestamps, two agents could start reviews in the same second, or an agent could resume work after a delay and reuse a timestamp. Choose the name while reading, then obtain `scoped-writer --write-file <exact-review-path>` before creating it. An isolated-worktree review may instead use its admitted worktree scope. Do not reserve the entire reviews directory for one report:
+Even with second-precision timestamps, two agents could start reviews in the same second, or an agent could resume work after a delay and reuse a timestamp. Choose one exact report path and create it with no-clobber semantics; no claim is required under worktree-first. Existing shared-file edits use a separate worktree or one agreed integrator. Do not reserve the entire reviews directory for one report:
 
 ### Step 1: Generate the Planned Name
 

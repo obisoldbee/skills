@@ -1,6 +1,10 @@
 # 浏览器执行交接 Envelope
+浏览器先按 [宿主偏好与平台选择](browser-platforms.md) 执行：先考虑当前可调用且满足能力的用户常用/已订阅 harness 浏览器（含 Mcode）及已导入数据的 Codex 浏览器；没有适用偏好时 macOS 默认 Ego、Windows 默认 Tabbit，其他已连接入口作备用。后文 Ego 示例只适用于 macOS；不存在的 Ego 不是 Windows 业务阻碍。
 
-这份合同供发起任务的主任务、当前任务的浏览器执行器、`project-handoff` visible-task surface 和 ego-browser worker 共享。它只规定执行与任务创建的分轴授权边界，不替代主任务对用户意图、输入文件、输出位置或 provider 选择的判断。
+
+注册表的 `platform_selected_browser` 是选路标记，不是可执行命令，也不是 envelope executor 值。按 `browser_platforms` 解析后填实际 `ego-browser` / `tabbit` / `chrome` / `codex-browser` / `mcode-browser`；离线校验不证明连接、登录或下载可用。
+
+这份合同供发起任务的主任务、当前任务的浏览器执行器、`project-handoff` visible-task surface 和 所选浏览器 worker 共享。它只规定执行与任务创建的分轴授权边界，不替代主任务对用户意图、输入文件、输出位置或 provider 选择的判断。
 
 ## 主任务先完成规划
 
@@ -54,7 +58,7 @@ MiniMax Web Music 的 `final_provider_payload` 精确包含 `title`、`mode`（`
   "created_and_validated_by": "originating_main_task",
   "luna": {
     "route": "luna-max",
-    "model": "gpt-5.6-luna",
+    "model": "gpt-6-luna",
     "reasoning": "max",
     "thread": "visible",
     "surface": "visible_thread"
@@ -86,12 +90,36 @@ python3 -B scripts/validate_browser_envelope.py envelope.json
 
 ## Thread 与跨 Harness 规则
 
-先判定用户是否显式要求新可见任务。有该授权时，ChatGPT Web 图片和 MiniMax Web Music 使用精确的 `luna-max` visible thread（`gpt-5.6-luna` + `max`），由该 thread 中的 ego-browser worker 操作网页、监控一次提交、下载并验证产物。主任务不要把普通 thread、模型别名或隐藏后台任务当作等价物。
+先判定用户是否显式要求新可见任务。有该授权时，ChatGPT Web 图片和 MiniMax Web Music 使用精确的 `luna-max` visible thread（`gpt-6-luna` + `max`），由该 thread 中的 所选浏览器 worker 操作网页、监控一次提交、下载并验证产物。主任务不要把普通 thread、模型别名或隐藏后台任务当作等价物。
 
-没有该授权时，若当前任务已验证存在可用浏览器执行器，并能完成登录态复用、页面状态读取、文件上传（如需要）和浏览器上下文下载，就在当前任务执行同一 envelope；ego-browser 仍是首选。若当前任务无该能力，返回 `needs_visible_task_authority` 并停止，不自行创建任务。若用户明确要求 Luna，创建失败或 thread 不可用就暂停并报告，不降级到本地或其他 provider。
+没有该授权时，若当前任务已验证存在可用浏览器执行器，并能完成登录态复用、页面状态读取、文件上传（如需要）和浏览器上下文下载，就在当前任务执行同一 envelope；按 browser-platforms 的平台策略选择执行器。若当前任务无该能力，返回 `needs_visible_task_authority` 并停止，不自行创建任务。若用户明确要求 Luna，创建失败或 thread 不可用就暂停并报告，不降级到本地或其他 provider。
 
 ## 提交前与提交后
 
-登录、验证码、人工确认、`user is controlling`/失配状态、非零费用、费用不明确或未经授权的付款/订阅都在提交前 handoff 并停止。提交按钮只操作一次，随后保留任务状态和结果身份；等待超时、页面刷新或下载错误都不能再次提交，也不能静默切 provider。下载失败只重试同一已提交结果的浏览器内下载。
+登录、验证码、人工确认、`user is controlling`/失配状态、费用未知、超出已授权剩余预算或需要新购买/订阅都在提交前 handoff 并停止。提交按钮只操作一次，随后保留任务状态和结果身份；等待超时、页面刷新或下载错误都不能再次提交，也不能静默切 provider。下载失败只重试同一已提交结果的浏览器内下载。
 
 完成条件必须同时包括：网页任务确实结束、产物已下载到调用方指定位置、文件为非零普通文件、类型与路由匹配，并有 SHA-256 读回记录。页面 toast、试听片段、按钮点击、任务 ID 或 worker 自报完成都不是最终成功证据。
+
+### 已授权预算
+
+用户已给本次生成的明确预算时，已知费用在剩余预算内可以执行，无须再次确认。
+预算必须绑定同一费用单位（如 CNY、USD 或页面积分），不能自行换算或推测订阅权益。
+首次打开页面前 envelope 可以没有 `cost`；此时 `cost_preflight_valid=false`，不代表允许提交。
+在提交前读回实时费用与余额，附上以下 `cost` 对象并再次验证，只有 `cost_preflight_valid=true`
+才继续。授权来源须能追溯到用户请求；validator 校验字段，执行器仍需核实页面和真实授权。
+新购买/订阅应交回独立的获授权流程，不由生成 worker 自动办理。
+
+```json
+{
+  "cost": {
+    "quoted_cost": 2,
+    "unit": "CNY",
+    "authorized_budget": 5,
+    "authority_source": "user message authorizing this generation up to CNY 5",
+    "requires_purchase_or_subscription": false
+  }
+}
+```
+
+免费且页面确认无需新购买时记录 quoted_cost=0、authorized_budget=0，authority_source 可为空。
+超预算、未知费用或费用单位不一致时停止；不可用超时或下载失败作为重新付费提交的理由。

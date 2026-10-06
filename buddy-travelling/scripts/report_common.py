@@ -1,5 +1,6 @@
 """Small, offline presentation contract. No browser, network or state writes."""
 import json
+import re
 import sys
 
 
@@ -11,6 +12,28 @@ def short_text(value, name, limit=80):
     return value.strip()
 
 
+def validate_space_id(value):
+    """Keep legacy Ego integers or an observed runtime:kind:id, without coercion."""
+    if type(value) is int and value >= 0:
+        return value
+    if (isinstance(value, str) and len(value) <= 256 and "```" not in value
+            and re.fullmatch(
+                r"(?:ego-browser|tabbit|chrome|codex-browser|mcode-browser):"
+                r"(?:space|group|tab):[^\s\x00-\x1f\x7f]+", value)):
+        return value
+    raise ValueError("space_id must be a nonnegative integer or runtime:kind:id")
+
+
+def parse_space_id(value):
+    """argparse adapter preserving the original decimal CLI contract."""
+    return validate_space_id(int(value) if re.fullmatch(r"[0-9]+", value) else value)
+
+
+def space_id_text(value):
+    value = validate_space_id(value)
+    return f"空间 {value}" if type(value) is int else f"页面 {value}"
+
+
 def page_text(page):
     status = page["status"]
     labels = {"closed": "已关闭", "preserved": "已保留", "unconfirmed": "关闭未确认", "failed": "关闭失败",
@@ -18,10 +41,10 @@ def page_text(page):
     if status not in labels:
         raise ValueError("unsupported page status")
     value = labels[status]
-    if status in ("preserved", "unconfirmed", "failed") and page.get("space_id") is not None:
-        if type(page["space_id"]) is not int or page["space_id"] < 0:
-            raise ValueError("space_id must be a nonnegative integer")
-        value += f"（空间 {page['space_id']}）"
+    if page.get("space_id") is not None:
+        identity = space_id_text(page["space_id"])
+        if status in ("preserved", "unconfirmed", "failed"):
+            value += f"（{identity}）"
     return value
 
 

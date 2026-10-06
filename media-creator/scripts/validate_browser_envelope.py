@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 
 SCHEMA = "media-creator-browser-envelope/v1"
+BROWSER_EXECUTORS = {"ego-browser", "tabbit", "chrome", "codex-browser", "mcode-browser"}
 EXECUTION_MODES = {"execute"}
 NON_EXECUTION_MODES = {"prompt", "planning", "preview", "dry_run"}
 ROUTES = {"chatgpt-web-image", "minimax-web-music"}
@@ -142,6 +144,27 @@ def validate_payload(route: str, payload: Any, errors: list[str]) -> None:
         )
 
 
+def validate_cost(cost: Any, errors: list[str]) -> None:
+    fields = {"quoted_cost", "unit", "authorized_budget", "authority_source",
+              "requires_purchase_or_subscription"}
+    if not exact_fields(cost, fields, "cost", errors):
+        return
+    for field in ("quoted_cost", "authorized_budget"):
+        value = cost.get(field)
+        if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+            add_error(errors, f"cost.{field} must be a known finite non-negative amount")
+    required_string(cost.get("unit"), "cost.unit", errors)
+    # This branch handles an already funded generation budget, never a purchase flow.
+    if cost.get("requires_purchase_or_subscription") is not False:
+        add_error(errors, "new purchase or subscription requires a separate authorized flow")
+    if errors:
+        return
+    if cost["quoted_cost"] > cost["authorized_budget"]:
+        add_error(errors, "quoted cost exceeds the remaining authorized budget")
+    if cost["quoted_cost"] > 0:
+        required_string(cost.get("authority_source"), "cost.authority_source", errors)
+
+
 def validate_authority(
     authority: Any,
     expected_provider: bool,
@@ -197,6 +220,9 @@ def validate_envelope(envelope: Any) -> dict[str, Any]:
         expected_fields.add("side_effects")
     if visible_execution:
         expected_fields.update(VISIBLE_FIELDS)
+    if "cost" in envelope:
+        expected_fields.add("cost")
+        validate_cost(envelope["cost"], errors)
     exact_fields(envelope, expected_fields, "envelope", errors)
 
     if envelope.get("schema") != SCHEMA:
@@ -268,8 +294,9 @@ def validate_envelope(envelope: Any) -> dict[str, Any]:
                 add_error(errors, "current-task execution requires handoff_depth=0")
             if envelope.get("execution_location") != "current_task":
                 add_error(errors, "ordinary browser generation must execute in current_task")
-            if envelope.get("executor") != "ego-browser":
-                add_error(errors, "current-task execution requires executor=ego-browser")
+            if (not isinstance(envelope.get("executor"), str)
+                or envelope.get("executor") not in BROWSER_EXECUTORS):
+                add_error(errors, "current-task execution requires a supported browser executor (runtime verification is separate)")
         elif request_authority == "explicit_visible_task":
             validate_authority(envelope.get("authority"), True, True, errors)
             if envelope.get("execution_role") != "browser_worker":
@@ -280,8 +307,9 @@ def validate_envelope(envelope: Any) -> dict[str, Any]:
                 add_error(errors, "visible execution requires handoff_depth=1")
             if envelope.get("execution_location") != "luna_visible_task":
                 add_error(errors, "visible execution requires execution_location=luna_visible_task")
-            if envelope.get("executor") != "ego-browser":
-                add_error(errors, "visible execution requires executor=ego-browser")
+            if (not isinstance(envelope.get("executor"), str)
+                or envelope.get("executor") not in BROWSER_EXECUTORS):
+                add_error(errors, "visible execution requires a supported browser executor (runtime verification is separate)")
             if envelope.get("orchestrator") != "project-handoff":
                 add_error(errors, "visible execution requires orchestrator=project-handoff")
             if envelope.get("created_and_validated_by") != "originating_main_task":
@@ -292,7 +320,7 @@ def validate_envelope(envelope: Any) -> dict[str, Any]:
             luna = envelope.get("luna")
             expected_luna = {
                 "route": "luna-max",
-                "model": "gpt-5.6-luna",
+                "model": "gpt-6-luna",
                 "reasoning": "max",
                 "thread": "visible",
                 "surface": "visible_thread",
@@ -311,6 +339,7 @@ def validate_envelope(envelope: Any) -> dict[str, Any]:
         "errors": errors,
         "provider_calls": False,
         "secrets_read": False,
+        "cost_preflight_valid": "cost" in envelope and not errors,
         "envelope": envelope,
     }
 

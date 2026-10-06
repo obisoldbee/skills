@@ -5,6 +5,8 @@ description: Read, summarize, evaluate, or fact-check public webpages and WeChat
 
 # Web Bookmark Intelligence
 
+先在真实可调用且满足任务能力的入口中，按用户已有订阅、常用工具和已验证登录态选路；Mcode（MiniMax Code）内置 Browser 也是候选。在 Mcode 内可用原生工具，从 Codex 调用则须已验证的桥接，安装了 mcode CLI 或支持 BYOK 不证明可控制桌面 Browser。已通过产品入口导入 Chrome 数据并核实登录的 Codex 内置浏览器可优先复用；导入不等于持续共享 profile。没有适用偏好时才采用下述平台默认。
+
 Background:
 
 Read and evaluate public web content without binding the task to a particular Agent, browser, or capture product. A bare Skill invocation does not authorize file creation, archiving, adoption, installation, or publication.
@@ -40,8 +42,8 @@ When handling a supplied webpage or WeChat article, say in the first short progr
 Choose the primary route before opening or fetching the page.
 
 1. If the user explicitly selected a browser or retrieval tool, that choice overrides the default priority. Use that route and obey its own fallback and stop rules.
-2. Otherwise inspect the Skills and tools listed in the current session for a purpose-built page-extraction or browser-control route. Read the applicable Skill completely and follow its stated selection priority. For example, when `ego-browser` is listed, its contract prefers it over built-in browser automation and web fetch for page extraction, so use it first. This is conditional capability discovery, not a required edition or dependency of `web-bookmark-intelligence`.
-3. Only when no applicable purpose-built route is available, use the current runtime's authorized generic web or browser capability.
+2. Otherwise select among currently callable, task-capable routes using caller-supplied subscription/frequent-use and verified session preferences, including Mcode Browser or an imported and verified Codex browser session under the boundary above. If no applicable preference selects a route, inspect the current Skills and tools for a purpose-built page-extraction or browser-control route and follow its stated priority. Read the selected Skill/API completely. For browser extraction without an applicable preference, default to Ego on macOS and Tabbit on Windows; a listed Ego Skill does not imply a Windows client exists. Read the selected runtime’s current Skill and check connection/page extraction. If the default is absent/unavailable, prefer connected Chrome when its existing login session is needed, or the Codex built-in browser for public/local pages or its independent session. The built-in browser does not automatically inherit Chrome cookies. Do not install software, export profiles or switch browsers to bypass login, tool denial or user takeover. This is conditional capability discovery, not a required edition or dependency of `web-bookmark-intelligence`.
+3. A generic browser selected by explicit choice or an applicable verified preference need not wait for purpose-built routes to fail. Otherwise use the current runtime's authorized generic web or browser capability only when no applicable purpose-built route is available.
 4. A static fetch that returns only metadata is a probe, not the one allowed rendered-browser attempt. It must not prevent use of the selected browser route.
 5. If the selected route reports an ordinary bootstrap or sandbox-only availability failure, follow that route's documented recovery once. Then use at most one materially different authorized route if its contract permits fallback. A listed Skill or healthy link does not prove execution availability; its executable may still be unavailable. Do not switch tools to evade an explicit safety-policy, access-control, CAPTCHA, login, or user-control stop.
 6. If a tool rejects the URL before navigation, report that the selected automation route was blocked. Do not claim that the webpage itself is inaccessible unless a request actually reached the page and established that fact.
@@ -50,7 +52,7 @@ Examples:
 
 | Situation | Required action |
 | --- | --- |
-| WeChat link plus “如何评价”, and `ego-browser` is listed | Use `ego-browser` first, read the substantive body, return a response only |
+| WeChat link plus “如何评价” | Use the verified platform-selected browser, read the substantive body, return a response only |
 | WeChat link plus “如何评价”, with no purpose-built route listed | Use the runtime's authorized generic browser, return a response only |
 | A chosen browser rejects the URL by an explicit safety policy | Stop that browser route; report the route-level blocker without calling the page unavailable |
 | WeChat link plus “保存到本地” | Enter durable mode; do not confuse the archive request with ordinary review |

@@ -1,11 +1,13 @@
 ---
 name: buddy-travelling
-description: "使用 ego-browser 完成 Buddy 每日礼物领取、关闭弹窗及一次旅行派遣，或只查询旅行状态；保留单次派出和证据不足不重试的边界。"
+description: "使用按平台选择的浏览器完成 Buddy 每日礼物领取、关闭弹窗及一次旅行派遣，或只查询旅行状态；保留单次派出和证据不足不重试的边界。"
 metadata:
   short-description: "每日领取 Buddy 礼物并处理一次旅行"
 ---
 
 # Buddy Travelling
+
+先在真实可调用且满足任务能力的入口中，按用户已有订阅、常用工具和已验证登录态选路；Mcode（MiniMax Code）内置 Browser 也是候选。在 Mcode 内可用原生工具，从 Codex 调用则须已验证的桥接，安装了 mcode CLI 或支持 BYOK 不证明可控制桌面 Browser。已通过产品入口导入 Chrome 数据并核实登录的 Codex 内置浏览器可优先复用；导入不等于持续共享 profile。没有适用偏好时才采用下述平台默认。
 
 ## 用户报告合同（所有模式）
 
@@ -28,19 +30,13 @@ metadata:
 | Allowed devices | `any` |
 | Required network | `any` |
 
-依赖当前可用的 ego-browser、ordinary reachability to `workbuddy.cn` 和 existing authenticated growth-center page。完整读取当前 ego-browser Skill；不硬编码应用版本路径。Do not install, log in, reconfigure the environment, or collect credentials.
+依赖 ordinary reachability to `workbuddy.cn` 和 existing authenticated growth-center page。Do not install, log in, reconfigure the environment, or collect credentials.
 
-**工具入口是 shell 中的 `ego-browser nodejs`，不要求宿主提供浏览器 MCP。** 有执行命令的工具即可调用；Trae Browser 插件、Computer Use 和 MCP 工具列表都不能代替实际连接测试。需要浏览器时，直接按 ego-browser Skill 创建一次空间并打开目标页。仅需诊断连接时可执行以下只读命令，不创建空间：
+用户指定浏览器优先；否则先按上文从满足能力的入口中选择适用的用户偏好，仍未选定时才采用 macOS Ego / Windows Tabbit 默认。Windows 没有 Ego 客户端不算业务阻碍，不尝试 macOS 命令。先完整读取当前所选浏览器 Skill，确认可访问 `workbuddy.cn`、真实登录态、DOM 观察和语义点击能力。Tabbit 未安装/连接恢复失败时，需既有 Chrome 登录态就用已连接 Chrome；其他情况可用已验证的 Codex 内置浏览器。内置浏览器有独立状态，不自动继承 Chrome 登录。
 
-```sh
-ego-browser nodejs <<'EOF'
-console.log(await listTaskSpaces());
-EOF
-```
+Windows Tabbit 使用稳定入口 `& "$env:LOCALAPPDATA\Tabbit\LocalAgent\bin\tabbit-cli.exe"`；先按本机 Skill 用 `diagnose` 检查连接。多行中文脚本写 UTF-8 无 BOM 临时文件，再用 CMD 重定向给 `nodejs`，不用 POSIX heredoc 或 PowerShell 管道。使用当前文档中的真实 API，不读隐藏 endpoint 或调用版本目录内的服务。创建一次任务组，记录真实 group/tab ID，按 ID 复用，不按同名猜选；浏览器 Skill 存在不等于连接成功。
 
-命令不存在才查 `command -v ego-browser` 和已安装的 `$HOME/.local/bin/ego-browser`，存在则用该路径调用。实际报沙箱连接错误时，使用宿主已授权的执行权限重试连接一次；权限不足如实报告，不绕过限制。只有真实调用失败且上述适用恢复失败，才能报告运行环境不可用，并在内部保存命令、退出码及简短错误。尚未调用就是“未尝试”，不是“不可用”；已被可靠旧回执拦截而无需浏览器时也不要额外推断工具不可用。
-
-运行时包只读；唯一新增写入是维护通知的外部状态目录（见下方规则）。派出跨进程去重仍由调用者保存并提供 receipt；维护状态文件不是派出账本，不能代替或清除原回执。同日旧回执禁止的是再次派出；如有已记录维护，可只观察服务恢复、关闭并通知，仍不得派出。
+macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命令不在 PATH 时可检查已安装的 `$HOME/.local/bin/ego-browser`。只有真实调用和适用恢复都失败才能说不可用。发生权限拒绝、验证码或用户接管时不能靠换浏览器绕过；连接失败且无业务提交时可按上述备用入口继续。已触发派出但状态未知时，换载体也须核对原结果，不能再派一次。
 
 ## 服务维护（所有自动化必读）
 
@@ -49,7 +45,7 @@ EOF
 ## 流程
 
 1. 对日常派出流程，先按下方“旧回执与历史记录”确定输入来源，再用 [buddy_contract.py](scripts/buddy_contract.py) 的 `previous_receipt_gate(service_day, previous_receipt)` 验证日期和可选旧回执。同日 `dispatch_attempted:true`、`terminal_for_day:true` 或 `retry_allowed:false` 禁止再次派出；旧回执格式错误则停止派出。门槛只限制业务动作，不禁止必要的只读核验。用户后来明确要求只领返回礼物时，可以独立领取，但不得清除、覆盖旧派出回执或据此再次派出。
-2. 建立本轮 ego-browser 任务空间，打开页面并等待加载。首次可操作状态以间隔 2 秒的两次一致观察为准（倒计时只需同为旅行中，不要求秒数相等），最多观察 20 秒；持续变化或状态相互冲突则停止，不猜测缓存、账号或昨日动作。每次点击前用最新 `snapshot()`，点击后等待 2–4 秒重新观察。只读查询不点击；缺少登录时执行下方“未登录通知”，用户接管时按 ego-browser 规则交接/停止。
+2. 建立本轮所选浏览器的独立任务空间/组，打开页面并等待加载。首次可操作状态以间隔 2 秒的两次一致观察为准（倒计时只需同为旅行中，不要求秒数相等），最多观察 20 秒；持续变化或状态相互冲突则停止，不猜测缓存、账号或昨日动作。每次点击前用最新 DOM/语义快照，点击后等待 2–4 秒重新观察。只读查询不点击；缺少登录时执行下方“未登录通知”，用户接管时按所选浏览器规则交接/停止。
 3. 按下表选择入口，再执行对应步骤；不要从按钮共同祖先或邻居借文本来分类。
 
    | 当前稳定状态 | 进入分支 |
@@ -71,7 +67,7 @@ EOF
    - 其他禁用原因、缺失、重复或未知状态：`blocked`，不试点、不重试。
 7. 点击一次“派猫猫旅行”，确认目的地弹窗和“确定派出”。有指定目的地时，必须是唯一、可用、精确匹配的选项，选中后读回；否则 `destination_unavailable`，不得退回默认地点。未指定时保留唯一可用的已选默认值并读回名称。轮播可通过当前可见活动点的 `is-active` 状态和显示地点交叉确认，不能只取第一个选项。
 8. 点击一次“确定派出”后立即记 `dispatch_attempted:true`。把实际目的地、同一旅行状态容器的当前文案和新倒计时传给 `dispatch_receipt()`，以它返回的唯一 receipt 判定结果。页面实际形式为“Buddy 正在咖啡馆采风中...”；文本节点边界的空白差异由 helper 处理，目的地仍须精确匹配。DOM 分开的文本可按同一状态容器顺序拼接，不得借用其他卡片。任一读回失败都为 `dispatch_outcome_unknown`，当天禁止再次派出。不得另用 `make_receipt(completed_cycle)` 覆盖 helper 结果、手写一份相反结论，或照抄历史“helper 有 bug”的解释；运行时发现冲突按未确认报告，修改代码属于独立维护任务。
-9. **必经收尾**：执行 [task-space-cleanup.md](references/task-space-cleanup.md)。本 Skill 的“结束/停止/即结束”只停止业务操作，不允许跳过收尾。派出成功、已在旅行、每日耗尽、无待领礼物、只领礼物成功、正常查询均先 `await task.finish({ keep: [] })` 并确认整个 space 已关闭，再报告；已确认维护也关闭；仅未解决的异常或用户接管才保留/交接。不得为保留倒计时或已领取弹窗留下正常结果页。
+9. **必经收尾**：执行 [task-space-cleanup.md](references/task-space-cleanup.md)。本 Skill 的“结束/停止/即结束”只停止业务操作，不允许跳过收尾。派出成功、已在旅行、每日耗尽、无待领礼物、只领礼物成功、正常查询均先按所选运行时的关闭步骤，确认本任务空间/页已关闭，再报告；已确认维护也关闭；仅未解决的异常或用户接管才保留/交接。不得为保留倒计时或已领取弹窗留下正常结果页。
 
 任何点击最多一次。成功后不再开始第二轮；未知状态不通过重新打开弹窗或重复派出来“确认”。
 
@@ -93,11 +89,11 @@ EOF
 
 ## 未登录通知
 
-1. 页面明确显示 WorkBuddy 登录界面或要求重新登录时，记 `auth_required`；只有卡片缺失、空白或网络错误不能判定未登录。停止领取和派出，按当前 ego-browser 规则交接登录页面；记录交接是否成功，不替用户登录、不收集凭据。
+1. 页面明确显示 WorkBuddy 登录界面或要求重新登录时，记 `auth_required`；只有卡片缺失、空白或网络错误不能判定未登录。停止领取和派出，按当前所选浏览器规则交接登录页面；记录交接是否成功，不替用户登录、不收集凭据。
 2. 非只读任务必须检查调用者提供的 `lark_chat_id` 与机器人发送授权，读取当前可用的 `lark-im`、`lark-shared` 及其发送和输出契约参考。参数、CLI 或授权缺失时报告 `notification_status:needs_configuration`，保留登录阻塞结果。交接失败不免除通知，消息如实说明需手动打开登录页面。
-3. 使用 `lark-cli im +messages-send --as bot --chat-id <lark_chat_id> --text <通知正文> --idempotency-key <幂等键>` 发送一次。正文为简短中文：日期、WorkBuddy 未登录、本轮领取/派出是否已执行（按实际证据）、请在 ego-browser 登录后回复继续；可附已核验的任务空间标识及固定成长中心链接。不得包含账号、凭据、Cookie 或登录重定向查询串。幂等键用 `buddy-<service_day>-auth-required`，不超过 50 字符；参数安全传递，不能把页面文本拼成可执行 shell 代码。
+3. 使用 `lark-cli im +messages-send --as bot --chat-id <lark_chat_id> --text <通知正文> --idempotency-key <幂等键>` 发送一次。正文为简短中文：日期、WorkBuddy 未登录、本轮领取/派出是否已执行（按实际证据）、请在本轮浏览器页面登录后回复继续；可附已核验的任务空间标识及固定成长中心链接。不得包含账号、凭据、Cookie 或登录重定向查询串。幂等键用 `buddy-<service_day>-auth-required`，不超过 50 字符；参数安全传递，不能把页面文本拼成可执行 shell 代码。
 4. 调用前在本轮上下文记已尝试；相同运行续接时不重复发送。CLI 的幂等窗口只有一小时，不能当作全天去重账本。退出码为 0、JSON `ok:true` 且 `data.message_id` 存在才记 `notification_status:sent` 并保留消息 ID；明确失败记 `failed`，结果不明记 `unknown`。不得仅凭命令已执行声称通知成功，不自动重发、不切换用户身份、不修改 CLI 的 strict mode、认证或环境配置。
-5. 通知结果不改变业务结果：保留 `auth_required`、真实 dispatch 字段及 `next_action:browser_handoff`，不自动重试。用户明确登录完成并要求继续时，按 ego-browser 规则续接原任务，从最新页面恢复第 2 步；保留此前派出尝试和终止边界，不把人工续接当作新一轮派出许可。只读查询仅报告需登录，不发送通知。
+5. 通知结果不改变业务结果：保留 `auth_required`、真实 dispatch 字段及 `next_action:browser_handoff`，不自动重试。用户明确登录完成并要求继续时，按所选浏览器规则续接原任务，从最新页面恢复第 2 步；保留此前派出尝试和终止边界，不把人工续接当作新一轮派出许可。只读查询仅报告需登录，不发送通知。
 
 ## 输出与回执
 

@@ -17,6 +17,7 @@ REQUIRED_FILES = {
     "config/routes.json",
     "references/agnes-image.md",
     "references/agnes-video.md",
+    "references/browser-platforms.md",
     "references/browser-handoff-envelope.md",
     "references/chatgpt-web-image.md",
     "references/local-skill-audit.md",
@@ -154,7 +155,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
     if (
         not isinstance(luna_max, dict)
         or luna_max.get("route") != "luna-max"
-        or luna_max.get("model") != "gpt-5.6-luna"
+        or luna_max.get("model") != "gpt-6-luna"
         or luna_max.get("reasoning") != "max"
         or luna_max.get("thread") != "visible"
         or luna_max.get("surface") != "visible_thread"
@@ -232,7 +233,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
     worker = execution.get("worker", {})
     if (
         not isinstance(worker, dict)
-        or worker.get("executor") != "ego-browser"
+        or worker.get("executor") != "platform_selected_browser"
         or worker.get("execution_role") != "browser_worker"
         or worker.get("handoff_depth") != 1
         or worker.get("recursive_dispatch") is not False
@@ -244,7 +245,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         not isinstance(current_task_browser, dict)
         or current_task_browser.get("capability")
         != "runtime_verified_browser_executor"
-        or current_task_browser.get("executor_preference") != "ego-browser"
+        or current_task_browser.get("executor_preference") != "platform_selected_browser"
         or current_task_browser.get("execution_role") != "browser_executor"
         or current_task_browser.get("handoff_depth") != 0
         or current_task_browser.get("recursive_dispatch") is not False
@@ -267,7 +268,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
             },
         )
         or cross_harness.get("requirements_are_conjunctive") is not True
-        or cross_harness.get("preferred_local_executor") != "ego-browser"
+        or cross_harness.get("preferred_local_executor") != "platform_selected_browser"
         or cross_harness.get("is_fallback_after_luna_creation_failure") is not False
         or cross_harness.get("explicit_luna_request_may_downgrade") is not False
     ):
@@ -276,13 +277,26 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
     if (
         not isinstance(submission, dict)
         or submission.get("pre_submission_manual_or_login_check") != "handoff_and_pause"
-        or submission.get("nonzero_or_ambiguous_cost") != "pause_before_submission"
+        or submission.get("unknown_over_budget_or_new_purchase_cost") != "pause_before_submission"
         or submission.get("duplicate_submission") is not False
         or submission.get("post_submission_provider_switch") is not False
         or submission.get("download_retry") != "same_submitted_result_only"
     ):
         errors.append("browser submission contract must pause safely and prevent duplicates/switches")
 
+    browser_policy = registry.get("browser_platforms", {})
+    if (browser_policy.get("defaults") != {"Darwin": "ego-browser", "Windows": "tabbit"}
+        or browser_policy.get("explicit_user_choice") != "first"
+        or browser_policy.get("fallbacks") != ["chrome", "codex-browser"]
+        or browser_policy.get("selection") != "runtime_verified_task_capabilities"
+        or browser_policy.get("preference_source") != "caller_subscription_familiarity_verified_session"
+        or browser_policy.get("native_executors") != ["mcode-browser"]
+        or browser_policy.get("native_access") != "current_harness_or_verified_bridge"
+        or browser_policy.get("chrome_import") != "product_ui_then_verify_site_session"
+        or browser_policy.get("codex_browser_state") != "independent"
+        or browser_policy.get("chrome_session") != "connected_chrome_only"
+        or browser_policy.get("after_submission") != "reconcile_same_request_before_any_retry"):
+        errors.append("browser platform policy must preserve platform, capability, session and retry boundaries")
     policies = registry.get("policies", {})
     text_policy = policies.get("non_codex_text_to_image", {}) if isinstance(policies, dict) else {}
     if (
@@ -293,6 +307,9 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         or text_policy.get("post_submission_cross_provider_fallback") != "none"
     ):
         errors.append("non-Codex text-to-image priority or fallback policy is invalid")
+    if (text_policy.get("primary_preconditions") != {"browser_capability": "runtime_verified", "chatgpt_login": "required_at_runtime"}
+        or text_policy.get("fallback_when") != ["browser_capability_absent_before_browser_route_selection"]):
+        errors.append("a non-Darwin host alone must not trigger a provider fallback")
     fallback_exclusions = text_policy.get("fallback_exclusions", [])
     if (
         "luna_creation_failed" not in fallback_exclusions
@@ -317,8 +334,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
     chatgpt = route_by_id(registry, "chatgpt-web-image")
     chatgpt_preconditions = chatgpt.get("runtime_preconditions", {})
     if (
-        chatgpt_preconditions.get("platform") != "Darwin"
-        or chatgpt_preconditions.get("ego_browser") is not True
+        chatgpt_preconditions.get("browser_capability") != "runtime_verified"
         or chatgpt_preconditions.get("chatgpt_login") is not True
         or chatgpt_preconditions.get("login_check") != "runtime_only"
         or chatgpt_preconditions.get("current_task_browser_capability")
@@ -326,7 +342,7 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         or chatgpt_preconditions.get("visible_task_dispatch")
         != "explicit_authority_only"
     ):
-        errors.append("ChatGPT Web must require Darwin, ego-browser, and a runtime-confirmed login")
+        errors.append("ChatGPT Web must require a runtime-verified browser and login")
 
     browser_route_ids = ("chatgpt-web-image", "minimax-web-music")
     for route_id in browser_route_ids:
@@ -340,19 +356,19 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         if (
             executor.get("kind") != "authority_gated_browser_execution"
             or current_executor.get("kind") != "verified_browser_executor"
-            or current_executor.get("preferred_command") != "ego-browser"
+            or current_executor.get("preferred_command") != "platform_selected_browser"
             or current_executor.get("requires_visible_task_creation_authority")
             is not False
             or visible_executor.get("kind") != "project_handoff_visible_thread"
             or visible_executor.get("orchestrator") != "project-handoff"
             or visible_executor.get("route") != "luna-max"
-            or visible_executor.get("model") != "gpt-5.6-luna"
+            or visible_executor.get("model") != "gpt-6-luna"
             or visible_executor.get("reasoning") != "max"
             or visible_executor.get("surface") != "visible_thread"
             or visible_executor.get("requires_visible_task_creation_authority")
             is not True
-            or worker_executor.get("kind") != "external_browser_cli"
-            or worker_executor.get("command") != "ego-browser"
+            or worker_executor.get("kind") != "runtime_verified_browser"
+            or worker_executor.get("command") != "platform_selected_browser"
             or worker_executor.get("vendored") is not False
         ):
             errors.append(
@@ -363,11 +379,11 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
             != "visible_task_creation_authority_explicit"
             or handoff.get("orchestrator") != "project-handoff"
             or handoff.get("luna_route") != "luna-max"
-            or handoff.get("model") != "gpt-5.6-luna"
+            or handoff.get("model") != "gpt-6-luna"
             or handoff.get("reasoning") != "max"
             or handoff.get("thread") != "visible"
             or handoff.get("surface") != "visible_thread"
-            or handoff.get("worker_executor") != "ego-browser"
+            or handoff.get("worker_executor") != "platform_selected_browser"
             or handoff.get("execution_role") != "browser_worker"
             or handoff.get("handoff_depth") != 1
             or handoff.get("recursive_dispatch") is not False
@@ -409,15 +425,14 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         errors.append("MiniMax Web Music route identity or default selection is invalid")
     web_preconditions = web_music.get("runtime_preconditions", {})
     if (
-        web_preconditions.get("platform") != "Darwin"
-        or web_preconditions.get("ego_browser") is not True
+        web_preconditions.get("browser_capability") != "runtime_verified"
         or web_preconditions.get("minimax_web_login") is not True
         or web_preconditions.get("current_task_browser_capability")
         != "runtime_verified"
         or web_preconditions.get("visible_task_dispatch")
         != "explicit_authority_only"
     ):
-        errors.append("MiniMax Web Music must require eligible macOS/ego-browser runtime conditions")
+        errors.append("MiniMax Web Music must require runtime-verified browser conditions")
     web_payload = web_music.get("payload", {})
     if (
         web_payload.get("default_count") != 1

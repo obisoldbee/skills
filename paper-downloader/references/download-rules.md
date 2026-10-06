@@ -63,14 +63,13 @@ Try routes in this order when available:
 
 If PMCID exists, the PMCID route outranks the DOI/publisher route for follow-up because PMC often exposes author manuscripts even when the publisher page looks paywalled. If PMID exists but PMCID is missing from the input row, PubMed full-text links are a required discovery step before the row is surrendered.
 
-When the publisher page visibly exposes `Download -> PDF`, `PDF`, or a download menu, use the registered `$ego-browser` as the primary interactive route:
+When the publisher page visibly exposes `Download -> PDF`, `PDF`, or a download menu, use the [platform-selected browser](ego-browser-route.md) as the interactive route:
 
 1. `extract_doi_papers.py` to classify DOI rows by publisher without network access.
-2. `$ego-browser` to inspect the real page, operate visible controls, and capture the observed URL/title or stable PDF URL.
+2. The selected browser to inspect the real page, operate visible controls, and capture the observed URL/title or stable PDF URL.
 3. The canonical downloader to persist and validate the resulting PDF under the declared output root.
 4. `doi_downloader.py`, `pmc_downloader.py`, or `pubmed_downloader.py` only as a
-   recorded fallback when Ego is unavailable and the user did not explicitly
-   require it.
+   recorded fallback under the platform fallback contract, preserving explicit browser choice.
 
 Do not substitute another browser merely because it is convenient. If the user explicitly selected Ego, an Ego failure is a blocker until the user changes the route.
 
@@ -121,9 +120,9 @@ Downloaded PDFs must:
   disk-derived identity method and evidence;
 - be counted in the final disk-state check.
 
-A `%PDF` header and size alone do not prove paper identity. Only a strict-boundary
-DOI/PMID/PMCID found in the actual PDF bytes or an exact PDF Title metadata
-match may bind the file. Filename, route URL, and response/client headers do not
+A `%PDF` header and size alone do not prove paper identity. Only a primary
+DOI/PMID/PMCID in PDF Info metadata or an exact PDF Title metadata
+match may bind the file; contradictory titles reject a match. A DOI in references is a candidate clue only. Filename, route URL, and response/client headers do not
 independently prove identity. Otherwise preserve the candidate and use
 `needs_manual_review` rather than `downloaded`.
 

@@ -34,6 +34,7 @@ from manifest_contract import (  # noqa: E402
     declared_output_root,
     empty_pdf_receipt,
     exact_status_counts,
+    quota_counts,
     is_within,
     load_manifest,
     relative_output_path,
@@ -461,12 +462,16 @@ def process_row(row: dict[str, Any], args: argparse.Namespace, local_roots: list
     return result
 
 
-def write_status(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def write_status(path: Path, rows: list[dict[str, Any]], target_count: int | None = None) -> dict[str, Any]:
     counts = exact_status_counts(rows)
     lines = [
         "# Download Status",
         "",
-        "## Counts",
+        "## Target quota and supplementary materials",
+        "",
+        *[f"- {key}: {value}" for key, value in quota_counts(rows, target_count).items()],
+        "",
+        "## Counts (all rows, not target quota)",
         "",
         *[f"- {key}: {value}" for key, value in sorted(counts.items())],
         "",
@@ -544,7 +549,7 @@ def main() -> int:
     if sha256_file(args.input) != source_manifest_sha:
         raise ValueError("source manifest changed before first-pass manifest write")
     manifest_receipt = save_manifest(args.manifest_out, manifest, args.output_root)
-    status_receipt = write_status(args.status_out, out_rows)
+    status_receipt = write_status(args.status_out, out_rows, manifest.get("target_count"))
     reread = load_manifest(args.manifest_out, output_root=args.output_root)
     disk = verify_downloaded_collection(reread, args.output_root)
 
@@ -554,6 +559,7 @@ def main() -> int:
             {
                 "rows": len(out_rows),
                 "counts": counts,
+                "quota": quota_counts(out_rows, manifest.get("target_count")),
                 "manifest": {
                     "path": relative_output_path(args.manifest_out, args.output_root),
                     **manifest_receipt,

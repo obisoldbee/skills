@@ -12,7 +12,6 @@ import sys
 
 
 EXPECTED_LINK = "../../GitHub/others-manager"
-CONTROLLER_TASK = "01a02f30-1b11-7dc2-affb-c28566c168f0"
 
 
 def git_root(path: Path) -> Path | None:
@@ -79,7 +78,7 @@ def validate(wrapper: Path, package: Path, pool: Path) -> list[str]:
     if agents.is_file():
         text = agents.read_text(encoding="utf-8")
         for phrase in (
-            CONTROLLER_TASK,
+            "current user-authorized workspace integrator",
             "Delegated Luna workers may only inventory",
             "active exclusive writer capability",
             "fast-forward-only",

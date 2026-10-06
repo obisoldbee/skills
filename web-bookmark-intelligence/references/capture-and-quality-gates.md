@@ -12,7 +12,7 @@ public URL -> authorized browser or retrieval tool -> case-local HTML/media
   -> assess_capture_evidence.py -> optional purpose notes/action cards
 ```
 
-The Agent selects the route before access. An explicit user browser choice wins; otherwise it must first discover applicable page-extraction or browser-control Skills listed in the current session, read the selected route's contract, and obey its priority. Only when no purpose-built route applies may it default to a generic runtime browser. A static metadata probe does not consume the rendered-browser route.
+The Agent selects the route before access using the [Skill entry's retrieval priority](../SKILL.md#select-the-retrieval-route-before-access): explicit choice, then applicable caller preferences among callable, task-capable routes, then purpose-built and platform defaults. A generic browser selected by explicit choice or a verified preference need not wait for purpose-built routes to fail. Read the selected route's contract and preserve its recovery and stop rules. A static metadata probe does not consume the rendered-browser route.
 
 An ordinary bootstrap or sandbox-only availability failure may use the selected route's documented recovery once. An explicit safety-policy, access-control, CAPTCHA, login, or user-control stop must not be bypassed through another tool. A route rejected before navigation proves only that route was blocked, not that the webpage was inaccessible. Do not expose executor versions, hashes, or internal compatibility codes unless the user requested a capture diagnostic.
 
@@ -21,6 +21,8 @@ Static HTML is a fast probe, not a completion claim. A page is never complete me
 ## Body And Media Gates
 
 The local DOM pass threshold is two substantive paragraphs and at least 400 meaningful characters. The gate records `body_provenance`, `body_evidence_state`, image count, canvas presence, and a `dom_noise_or_placeholder` flag. It keeps `meta_description` separate and always sets `meta_description_as_body: false`.
+
+Login/loading words inside substantive prose do not by themselves establish an access wall. The local heuristic rejects short prompts or prompt-dominated bodies; the Agent must still inspect actual login/CAPTCHA overlays and the visible article extent. A local text pass never authorizes bypassing access controls or claiming that hidden remainder text was read.
 
 | DOM condition | Gate route | What may become final after evidence fusion |
 | --- | --- | --- |

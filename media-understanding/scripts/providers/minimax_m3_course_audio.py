@@ -33,6 +33,17 @@ from minimax_request_state import (  # noqa: E402
 )
 
 
+class NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
+    """Authenticated API calls never follow redirects or resend a POST."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def authenticated_urlopen(request, *, timeout):
+    return urllib.request.build_opener(NoCredentialRedirect()).open(request, timeout=timeout)
+
+
 DEFAULT_ENDPOINT = "https://api.minimaxi.com/anthropic/v1/messages"
 DEFAULT_MODEL = "MiniMax-M3"
 DEFAULT_ENV_FILE = str(Path.home() / ".codex" / "secrets" / "minimax.env")
@@ -395,7 +406,7 @@ def call_m3(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=args.timeout) as response:
+        with authenticated_urlopen(request, timeout=args.timeout) as response:
             raw_text = response.read().decode("utf-8", "replace")
             try:
                 body: Any = json.loads(raw_text) if raw_text.strip() else {}

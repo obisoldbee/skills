@@ -106,11 +106,12 @@ Visible-task authority and field authority are separate. A user who only invokes
 6. Normalize and validate the real creation receipt against the exact pre-dispatch attempt and argument projection.
 7. Set title.
 8. Confirm delivery from the receipt or read back once.
-9. Return task receipt.
+9. Follow progress with bounded waits, collect the returned result, and perform [Controller quality review](result-collection.md).
+10. Continue authorized corrections and the applicable integration gate, then report receipt, reviewed version, verdict, evidence, and delivery state.
 
-Before closing dispatch-only, also satisfy any initial progress wait/readback required by the live host. This ends the dispatch request, not the worker's substantive work. If the user requested completion, monitoring, or integration, continue bounded waits and verify the lane's declared outputs and checks before reporting that result complete.
+Only explicit `dispatch_only` may end after step 8 plus the live host's initial progress wait/readback. Record the user's instruction and follow-up owner; report worker work and review pending. A request to create an Agent to repair, analyze, or deliver something includes collection and quality review by default. The user does not have to separately ask the Controller to wait.
 
-For those continuing obligations, each dispatch names the result reader, next check time/entry and Controller receipt responsibility. A running Controller should use `wait_threads`/`read_thread` to collect the worker result even when the worker's reverse message failed with active writer; messages are hints, not the only collection route. Record receipt in the same state/log update that assesses the actual result or shared independent receipt. Across turns, use an actual verified observer and resumable schedule. An already selected Luna policy, such as chatgpt-codex-review or an explicit user choice, uses a verified Luna owner; respect explicit other model/effort choices and do not select/modify an unrequested axis for ordinary handoff. Reuse a suitable visible task and request new visible creation only under direct user authority. No Controller heartbeat or fake background promise. Development/build waiting remains open independently of any completed Web capture subtask.
+Each dispatch names the result reader, readable return location, next check entry, and quality gate. Choose the executor before cadence: a selected Luna-max observer handles specified mechanical checks; the Controller handles actionable decisions and quality review. Bind automation to that actual executor/model rather than putting Luna instructions on an Astra heartbeat. Short bounded inline reads remain useful, but long/uncertain waits should use the verified observer or a real completion trigger. Reuse authorized automation and cursors, back off and stay quiet when unchanged. Once background observation and result return/resumption are verified, the current turn may end with an interim pending status. Missing reverse messages and transport failures do not cancel collection or quality review. See [result collection](result-collection.md) for the bounded objective, route, escalation, and receipt contract. Development/build waiting remains open independently of any completed Web capture subtask.
 
 ## Multi-lane lifecycle
 
@@ -118,8 +119,8 @@ For those continuing obligations, each dispatch names the result reader, next ch
 2. Create all currently ready, conflict-free lanes in one wave, within the live concurrency cap.
 3. Validate every real creation receipt, then immediately record each ready task id or queued client id, actual tool, role, dependencies, route, expected outputs, and last cursor/time.
 4. Wait on the wave with bounded calls while keeping target-specific cursors.
-5. Reconcile final task state, direct user-to-worker changes, output artifacts, and lane validation.
-6. Mark a passed lane `succeeded_pending_integration`; keep missing or failed gates in `needs_fix`, `blocked`, `failed`, or `aborted`.
+5. Reconcile final task state, direct user-to-worker changes, and output artifacts; record `received_pending_review` and perform the Controller quality review.
+6. Only after that review passes, mark the lane `succeeded_pending_integration`; keep missing or failed gates in `needs_fix`, `blocked`, `failed`, or `aborted` and continue authorized corrections. A worker's success label alone does not pass the gate.
 7. Create each dependent lane just in time from freshly verified upstream artifacts.
 8. Let only the integration owner reconcile cross-lane changes, run all declared integration checks applicable to the final deliverable, and mark work `integrated`.
 9. Archive only under the explicit lifecycle rule above.

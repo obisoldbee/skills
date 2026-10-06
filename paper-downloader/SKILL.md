@@ -5,6 +5,8 @@ description: Download and verify academic PDFs and references from DOI, PMID, PM
 
 # Paper Downloader
 
+先在真实可调用且满足任务能力的入口中，按用户已有订阅、常用工具和已验证登录态选路；Mcode（MiniMax Code）内置 Browser 也是候选。在 Mcode 内可用原生工具，从 Codex 调用则须已验证的桥接，安装了 mcode CLI 或支持 BYOK 不证明可控制桌面 Browser。已通过产品入口导入 Chrome 数据并核实登录的 Codex 内置浏览器可优先复用；导入不等于持续共享 profile。没有适用偏好时才采用下述平台默认。
+
 ## Purpose
 
 Perform real paper acquisition after the user authorizes the named sources, network use, browser route, and output root. This Skill is not merely a retrieval plan: it runs the bundled downloaders when their prerequisites are present, validates every PDF, reconciles disk state, and records exact outcomes. It does not judge medical claims, treat a download as Akashic adoption, or bypass access controls.
@@ -40,7 +42,7 @@ Constraints: These rules protect lawful access, user credentials, package bounda
 - Do not bypass paywalls, CAPTCHA, DRM, login walls, robots blocks, rate limits, or other access controls. Never use shadow libraries, leaked credentials, pasted cookies, or disabled TLS verification.
 - When a human verification or institutional-login page appears, preserve the receipt and ask the user to complete it; do not automate the challenge.
 - Treat outbound HTTP, browser, and download activity through one public IP as the shared mutable resource `shared-egress-ip:paper-download`. Permit one active network lane by default. Other workers may do only offline inventory, hash, PDF, or report validation until the Controller transfers the token.
-- Prefer the separately registered `$ego-browser` for interactive browser follow-up. Use another browser runtime only when Ego is unavailable and the user did not explicitly require it; record the fallback trigger before switching.
+- Follow `references/ego-browser-route.md`: explicit browser choice first, then caller-supplied subscription/frequent-use and verified session preferences among callable, task-capable routes. Only without an applicable preference use macOS Ego / Windows Tabbit defaults and their verified fallbacks. Record runtime and selection or fallback reason; do not bypass authentication or resend unknown requests.
 - Do not store browser profiles, cookies, tokens, passwords, or session databases in the package. Runtime browser data belongs under a temporary directory.
 - Do not add PDFs to Git or write outside the declared output root. In Akashic mode, do not write `03-metadata`, `04-extracts`, `05-wiki`, `10-events`, `11-reports`, or `99-system`.
 - The declared output root must be neither the Skill package nor any ancestor or
@@ -81,10 +83,10 @@ Every tool contract below states its purpose, when to use or not use it, paramet
 
 ### Browser follow-up
 
-- Primary tool: separately registered `$ego-browser`, using one named task space for the active download lane.
+- Primary browser: the runtime selected under `references/ego-browser-route.md`, honoring explicit choice and applicable caller preferences before platform defaults; use one owned task space/group for the active download lane.
 - Preparation tools: `scripts/build_browser_followup_inputs.py`,
   `scripts/extract_doi_papers.py`, and `scripts/extract_pmcids.py`.
-- Fallback tools: `scripts/doi_downloader.py`, `scripts/pmc_downloader.py`, and `scripts/with_playwright_python.sh` only when Ego is unavailable and the user did not mandate it.
+- Fallback tools: `scripts/doi_downloader.py`, `scripts/pmc_downloader.py`, and `scripts/with_playwright_python.sh` only under the platform fallback contract and when the user did not mandate a different runtime. The `.sh` wrapper requires a compatible POSIX shell; do not prescribe it as a native PowerShell command.
 - PubMed fallback: `scripts/pubmed_downloader.py` for one explicitly selected,
   unchecked PMID journal row under the same fallback boundary.
 - Use for: publisher/PMC rows that remain unresolved after the first pass, with explicit browser/network authorization and the shared-egress token.
@@ -96,7 +98,7 @@ Every tool contract below states its purpose, when to use or not use it, paramet
   current manifest before it navigates or reads a request body. A failure
   attempt remains in the journal. `downloaded` still requires the common
   disk/identity gate.
-- Failure: hand off the Ego task space on CAPTCHA/login/human checks and mark `manual_browser_required`. If Ego is unavailable, record the exact failure before an allowed fallback. If fallback Playwright is missing, record `blocked_runtime_missing_python_playwright`; do not mark paper rows failed.
+- Failure: hand off the selected browser page on CAPTCHA/login/human checks and mark `manual_browser_required`. If the selected browser is unavailable, record the exact failure before an allowed fallback. If fallback Playwright is missing, record `blocked_runtime_missing_python_playwright`; do not mark paper rows failed.
 - Retry: obey the bounded route and smoke-batch rules in `download-rules.md`; never loop the same blocker across the whole inventory.
 - Stop: release the network token before another lane starts; do not run browser or download requests concurrently through the same public IP.
 
@@ -114,7 +116,7 @@ Every tool contract below states its purpose, when to use or not use it, paramet
 
 ### Shoulong page capture
 
-- Tool: separately registered top-level `$web-bookmark-intelligence` with `profile=shoulong` and its WorkBuddy wrapper.
+- Tool: separately registered top-level `$web-bookmark-intelligence` with its current `profile=shoulong` contract, executed by the current Agent through an authorized available runtime. WorkBuddy is an explicitly selected legacy route only.
 - Use for: a serial, resumable list of public Shoulong article URLs before extracting explicit text citations.
 - Do not use for: image OCR, media interpretation, screenshot evidence mining, or discovering papers from page images.
 - Failure: preserve case-local capture receipts; a failed page does not invalidate other completed pages.
@@ -131,8 +133,8 @@ Task: Download and verify every in-scope paper that has a lawful route, then rep
    do-not-cite rows.
 5. Acquire the shared-egress token, run the dependency-light first pass with one network worker, and validate any local/OA PDF immediately. Parallel workers may only perform offline work.
 6. Build DOI/publisher follow-up batches and PMCID follow-up queues. Check PubMed full-text links whenever PMID exists and no PDF has been found.
-7. Run interactive browser follow-up through `$ego-browser` with one named task
-   space, pacing, and bounded smoke batches. Record each outcome in the prepared
+7. Run interactive browser follow-up through the platform-selected browser with one owned task
+   space/group, pacing, and bounded smoke batches. Record each outcome in the prepared
    row-bound result journal; then apply/reconcile it idempotently. Keep
    user-assisted verification points open for the user; never solve them
    automatically. Use Playwright only under the declared fallback rule.
@@ -198,8 +200,8 @@ For each row, record the stable identifier, source coordinate/disposition,
 duplicate lineage, input/source page, every attempted route, one exact `status`,
 exact failure reason, observed browser URL/title, failure screenshot or error,
 and one `pdf` receipt with path, `bytes`, SHA-256, magic and identity-match
-evidence derived from the PDF bytes. A strict-boundary DOI/PMID/PMCID in the
-actual PDF bytes or an exact PDF Title metadata match is required; filename,
+evidence derived from the PDF bytes. A primary DOI/PMID/PMCID in the referenced PDF Info
+metadata or an exact PDF Title metadata match is required; contradictory titles reject a match; filename,
 route URL, response header, and client-supplied strings are claims only and
 cannot independently prove identity. Never add `download_status`,
 size-kilobyte fields, or route-specific
@@ -215,8 +217,8 @@ Success criteria: Close every gate below; partial acquisition must be labeled pa
 
 - Every downloaded file exists inside the declared output root, is reread from
   disk, starts with `%PDF`, is strictly larger than 5120 bytes, has exact bytes
-  and SHA-256, and has a strict identifier match in its actual bytes or an exact
-  PDF Title metadata match.
+  and SHA-256, and has a primary identifier in PDF Info metadata or an exact
+  PDF Title metadata match, without a contradictory title.
 - Manifest counts and PDF set exactly match disk readback; extra, missing,
   tampered, or escaped paths fail. Every non-download row has a specific reason
   and every browser-attempted blocker has observable evidence or a screenshot
@@ -225,3 +227,22 @@ Success criteria: Close every gate below; partial acquisition must be labeled pa
 - All applicable legal fallback routes were either attempted or explicitly marked unavailable; repeated same-blocker batches stop according to the bounded rule.
 - Shoulong page capture, when used, remains text-only for this workflow and produces no image-derived paper tasks.
 - No credential, browser profile, unapproved path, Git addition, formal Akashic write, or access-control bypass occurred.
+
+## 目标数量与补充资料
+
+按任务约定区分 `collection_role=target` 与 `supplementary`，后者须填写
+`collection_role_reason`（如 counterevidence、critique、background）。本任务约定的反方论文
+可以收录、引用、批判并充实资料库，但作为补充材料，不占目标文献数量。分类按任务范围，
+不能为了凑数改标签，也不能因观点相反而丢弃证据。缺省历史行仍为 target。
+
+在冻结 inventory 前记录分类，用 `build_inventory_download_manifest.py --target-count 50`
+锁定目标数量；报告分别列 `target_downloaded`、`target_remaining`、`supplementary_downloaded`。
+49 篇目标 + 1 篇补充 = 目标 49/50、补充 1；50 篇目标 + 1 篇补充 = 目标 50/50、补充 1。
+没有显式数量时按合格且去重后的目标行数计算。所有 downloaded 仍须通过相同身份与文件核验。
+
+论文身份与收录用途独立：参考文献中的目标 DOI 只是候选线索；主体是另一篇论文时，
+按那篇论文的真实标题/标识建立补充条目，不能覆盖原目标行或抵扣缺口。
+PDF Info 元数据中的主体标识或精确标题可供 helper 核验；矛盾标题或只有任意字节 DOI
+保留为 needs_manual_review，不删除候选，也不声称已确认目标论文。此 helper 不替代完整 PDF
+结构解析或人工主体审阅。冻结后发现补充材料时，在独立输出根建立补充 inventory/run，
+或经有记录的版本化重新规划保留旧 inventory 与回执；不得静默追加、改写冻结行或污染磁盘对账。

@@ -2199,6 +2199,26 @@ def validate_acquisition_receipt(
     return payload_path, receipt, operation_verified
 
 
+def target_quota(source_rows: list[dict[str, Any]], requested: Any = MIN_REVIEWABLE) -> dict[str, int]:
+    if type(requested) is not int or requested < MIN_REVIEWABLE:
+        fail("invalid_target_quota", "target_publication_count must be an integer at least 30")
+    counts = {"target": 0, "supplementary": 0}
+    for row in source_rows:
+        role = row.get("collection_role", "target")
+        if role not in counts:
+            fail("invalid_collection_role", "collection_role must be target or supplementary")
+        if role == "supplementary":
+            require_nonempty_string(row.get("collection_role_reason"), "collection_role_reason")
+        if row.get("reviewable") is True and not row.get("duplicate_of"):
+            counts[role] += 1
+    if counts["target"] < requested:
+        fail("collection_not_ready", "target quota excludes supplementary publications",
+             target_reviewable=counts["target"], target_requested=requested,
+             supplementary_reviewable=counts["supplementary"])
+    return {"target_requested": requested, "target_reviewable": counts["target"],
+            "supplementary_reviewable": counts["supplementary"]}
+
+
 def validate_source_row(
     row: dict[str, Any],
     index: int,
@@ -3014,8 +3034,7 @@ def validate_run(
         )
         if reviewable:
             reviewable_source_ids.append(source_id)
-    if reviewable_count < MIN_REVIEWABLE:
-        fail("collection_not_ready", "fewer than 30 publications are reviewable", reviewable=reviewable_count)
+    quota = target_quota(source_rows, manifest.get("target_publication_count", MIN_REVIEWABLE))
     reviewable_source_ids = sorted(reviewable_source_ids)
     reviewable_ids_sha = source_ids_sha256(reviewable_source_ids)
     if manifest.get("reviewable_source_count") != reviewable_count:
@@ -3291,6 +3310,7 @@ def validate_run(
         "runtime": runtime,
         "acquisition_executor": acquisition_executor,
         "reviewable_source_count": reviewable_count,
+        "quota": quota,
         "reviewable_source_ids_sha256": reviewable_ids_sha,
         "topic_experts_completed": 8,
         "akashic_lookup_complete": True,

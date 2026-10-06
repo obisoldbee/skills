@@ -38,7 +38,7 @@ Audit whether the skill preserves complete handoff, validates dependency/conflic
 Output format:
 - Language: Chinese.
 - Fields: status, files_inspected, findings, confidence, risks, recommended_next_step.
-- Required lane status: succeeded_pending_integration, needs_fix, blocked, or failed.
+- Required worker status: result_ready, needs_fix, blocked, or failed; the Controller records quality acceptance.
 - Maximum findings: 10.
 
 Success criteria:
@@ -49,6 +49,9 @@ Success criteria:
 
 Progress state:
 - Registry/status/log: no files for this fixture; return one lane receipt.
+- Result collection: the Controller reads the complete returned response and cited evidence; reverse notification is unnecessary.
+- Follow-up: bounded inline collection for this short read-only audit; no timer or external task is created by this fixture.
+- Quality review: the Controller checks the reported findings against the original audit scope and cited sources, then records accepted, needs_fix, or blocked before integration.
 - Sync: the Controller reconciles the final response and any direct user intervention before integration.
 - Ready when: the audit fields and evidence rules are complete.
 - Stop with DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT, or ABORTED; retry budget is zero.

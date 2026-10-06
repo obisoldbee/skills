@@ -40,3 +40,12 @@ MiniMax Web Music 是当前通用原创歌曲/纯音乐 BGM 路由，使用实�
 ## 未来纳入门槛
 
 任何 `observed_not_routed` 候选要进入默认或显式路线，必须先确认：当前官方/运行时模型、可用输入模式、鉴权来源、配额语义、提交与轮询 ID、结果 URL/下载、重复提交风险、错误合同和回归测试。盘点本身不授予 provider 调用或复制 Skill 的权限。
+
+## Shared browser-policy maintenance
+
+The identical `references/browser-platforms.md` copies in media-creator and
+chatgpt-codex-review are maintained together. After changing that policy, run
+`python3 -B media-creator/scripts/check_browser_platform_copies.py <repository-root>`.
+This read-only maintenance check detects missing or drifted copies; it is not a runtime
+cross-package dependency. Each published package retains its full local reference.
+Package-specific summaries and executor contracts still require contextual review.

@@ -1,19 +1,108 @@
-# 源码路线与固定输入
+# 审查材料路线与固定输入
 
-输入是原始需求、项目指引、精确审查范围、真实源码版本、披露/上传/推送权限和验收项。先核实用户提供的仓库 URL 或项目登记关联；无 local remote 只说明本地未配置，不证明 GitHub 仓库不存在。用本地 Git 工具核实根、remote、HEAD、dirty 差异及 LFS/submodule；`scripts/route_source.py` 只是本地发现辅助，不能覆盖已核实的远端仓库证据。实际远端 commit 是否存在、网页是否有读取权限，由宿主工具/网页读回填入 evidence，不从本地 remote 地址猜测。选择和权限在 run 内复用，只有事实变化才重核。
+输入为原始需求、项目指引、完整审查范围、真实文件版本、披露/上传权限和验收项。
+代码、文档与研究资料都可以使用本地包，不要求资料项目先有 Git 或 MCP。
+仅准备材料与实际网页 review 分开；复用当前任务已覆盖的打包/上传授权，不要求重复批准。
 
-## GitHub 默认路线
+## 选择路线
 
-发现 GitHub remote 后固定完整 commit；默认优先 `origin`，需要其他 remote 时在路由输入显式填 `github_remote`，核实仓库身份。helper 输出标准、不含凭据的仓库 URL。`evidence.github` 的 `repository`, `commit`, `remote_has_commit`, `web_can_read`, `evidence_ref` 必须来自实际核查；两项 true 才 `ready`。缺少证据就是待核查，false 就是 GitHub 路线内的访问/发布问题。HTTPS remote 含认证信息时仅用于识别，不写进可分享结果。
+使用 `scripts/route_source.py --project <project> --evidence <tool-observations.json>`。
+`evidence.source_route` 可为 `auto`（默认）、`github`、`mcp`、`local_packet`。
+显式路线优先；未指定时：
 
-本地没有对应 remote、但用户已给 GitHub 地址时，可在 evidence 填 `declared_github_url`，并在 `github` 证据中填 `repository_verified=true`、仓库身份、完整 commit 与真实 `evidence_ref`。未核实身份仍是 unknown。仅核实远端、没有可检查的本地 Git 工作树时，`working_tree_dirty=null`，不能当成本地工作树干净的证明。
+| 事实 | 结果 |
+|---|---|
+| 已核实 GitHub 仓库、固定版本且 Web 可读 | github |
+| GitHub 存在但本轮修改未提交，或已证实远端/网页访问不可用 | local_packet，冻结当前授权范围原件 |
+| 无 GitHub，且已有配置/真实读回支持的 MCP 快照 | mcp |
+| 本地文档、其他托管或无可用 MCP | local_packet；未打包返回 packet_needed，继续准备包 |
+| 用户指定本地打包上传 | local_packet；不让仓库/发布/MCP 状态阻挡 |
+| 用户只许 GitHub 或 MCP，所选路线缺条件 | 报告该路线的真实缺口，不擅改用户约束 |
 
-工作树变动默认 `freeze_commit`，避免悄悄遗漏本次修改。确认仅是范围外差异时，可提供 `dirty_scope_disposition=excluded_from_review` 与 `dirty_scope_evidence_ref`，把被排除文件和原因记录在 run；审查范围内修改须先冻结新提交。固定 commit 链接、相关入口和原始需求一同发给 Web。GitHub 路线本身不授权 push、建库、公开或合并。已获本次推送授权时，按项目规则提交/推送新版本并核实远端 SHA；未授权时保留本地成果并准确说明待发布步骤。不拿旧远端 commit 审查新代码，不因访问失败改送整个 ZIP 或切 MCP。
+GitHub 探测 unknown 时查明；不能凭缺少 local remote 否定用户已给的仓库 URL。
+用户已指定本地包时无需先查远端。初次自动选路和已发送 run 的绑定不同：后者不能原地换 source_route；
+确需换路时冻结新 run，关联旧 run 和旧资料，沿用原网页对话及已有授权，不重发已发送消息。
 
-复审请求指向新完整 commit 和 diff 入口，附真实本地测试回执、未验项、上一轮逐项处置与待复审点。完整原始源码仍通过固定仓库版本可取，摘要不能替代。已获准的补充附件可由 Luna 发送；它们不改变 GitHub 源码 route。
+## 本地打包上传
 
-## 无 GitHub 仓库时的 MCP 路线
+Controller 冻结 `<MATERIAL_ROOT>`、本轮 `<RUN_ROOT>`、完整文件清单和来源；输入只读，
+输出是 RUN_ROOT 下不存在的独立目录。多个来源可由调用方在既有授权下按来源目录保留原件，
+不得因打包方便遗漏原始要求、在范围内的未提交/未跟踪文件、规则、差异或必要测试证据。
+目录选择不自动涵盖其中秘密或无关文件。清单中的排除项逐项说明原因，缺失材料不得伪装已收录。
+Git 项目还需核对根、remote、HEAD、dirty、LFS 和 submodule；指针文件或 gitlink 不代表已包含对应原件。
+本地包读取当前实际文件，不能只用 git archive HEAD 而漏掉本轮未提交修改。
 
-本地 Git 但无 GitHub remote、其他托管 remote 或确无 Git 仓库，使用宿主实际已配置的 MCP 内容访问。`evidence.mcp` 必须含 `configured=true`, `server`, `tool`, `version`, `snapshot_sha256`, `manifest_sha256`, `evidence_ref`；快照只覆盖用户允许的文件与原始要求，清单记录路径/大小/hash/来源。保存工具真实读取回执，证明 Web 端能访问本轮固定内容。未配置就报告接入信息缺口；不伪造服务、不自行部署新服务、不偷偷 ZIP 回退。
+将实际相对文件路径写到 selection.json，不递归盲打整个工作区。示例字段需绑定当前请求：
 
-原始资料全部保留在允许边界内。GitHub/MCP 的文件可见性和网页实际读到哪些内容分别核实；一个本地 PASS 不能替代网页读回。任何路线都先排除凭据、Cookie、私钥和无关私人内容。来源自报 SHA 没有可信对照时只说本次接收计算，不能称与原件一致。网页输出的 ZIP/PNG/JSON 等独立遵守 [附件合同](state-contract.md)，由 Luna 真下载保存和验证；输出附件不是源码路线。
+```json
+{
+  "scope": "本轮文档结论与对应规则原件的 review",
+  "authority_ref": "当前用户要求网页复审这些材料的消息",
+  "files": ["原始要求.md", "规则/任务书.md", "研究/结论.md", "验证/测试.txt"],
+  "exclusions": [{"path": "缺失附件.pdf", "reason": "来源未提供下载权限；不声称已覆盖"}]
+}
+```
+
+```bash
+python3 -B <skill-root>/scripts/local_packet.py build \
+  --root <MATERIAL_ROOT> --selection <RUN_ROOT/selection.json> \
+  --output <RUN_ROOT/source-round-1>
+python3 -B <skill-root>/scripts/local_packet.py verify \
+  --archive <RUN_ROOT/source-round-1/source.zip> \
+  --manifest <RUN_ROOT/source-round-1/SOURCE_MANIFEST.json>
+```
+
+helper 不执行上传，拒绝现有输出目录、越界/链接/重复路径及明确的凭据文件名；不会代替内容披露审查。
+ZIP 内为 `files/<原相对路径>` 的原字节及 SOURCE_MANIFEST.json；外部清单与内部清单相同，
+逐文件记录 bytes/SHA-256。打包时源文件变化或校验不一致就失败，重新冻结一致版本后继续。
+不覆盖旧包。helper 校验实际 ZIP/清单，返回 `ready_to_upload`、`uploaded=false`、
+`web_read_verified=false` 和 source binding；这三项不能混写成 review 完成。
+
+将输出路径交给 route helper：
+
+```json
+{
+  "source_route": "local_packet",
+  "local_packet": {
+    "archive_path": "<absolute RUN_ROOT/source-round-1/source.zip>",
+    "manifest_path": "<absolute RUN_ROOT/source-round-1/SOURCE_MANIFEST.json>"
+  }
+}
+```
+
+route helper 会重新读回实际文件，不接受仅自报一个 hash；`source_id=packet:<archive_sha256>`，
+`source_binding` 精确包含 `archive_sha256`、`manifest_sha256`。绝对本地路径与验证回执另存，
+不把它们当作 Web 可访问 URL。若运行主机不同，Luna 先核验其可读的同一包字节。
+
+Luna 使用已验证浏览器能力上传 source.zip，可附清单便于查阅；UI 核对文件名、上传完成，
+发送后核对本轮消息附件。保存 `source_upload` 回执：archive_sha256、manifest_sha256、
+archive_name、upload_complete=true、evidence_ref；证据必须来自真实上传与读回，不得从本地 PASS 推导。
+未知发送/上传状态先核对原消息和草稿，不能重复上传/提交。请网页 reviewer 先列实际可读原件、
+清单与缺口，再分析；需要工具展开 ZIP 时核实实际支持，不能把上传卡片当已阅读。
+完整覆盖 assessment 还需绑定本轮 `source_readback_id` 与实际内容读取证据 `source_readback_ref`。
+
+大小/格式不支持时，在同一授权范围分批传原件，维护覆盖全部输入的总清单与每批摘要，
+记录实际上传表示与原 packet 的映射；不能把“摘要包”冒充完整包。当前 helper 的 source_upload
+结构只验证单个原 ZIP 上传；分批路径保留原件和回执后扩展相应合同，不能伪造单包上传成功。
+修复后重新打包、验证新 hash/清单，产生新 source 身份；旧网页意见不能验收新版本。
+
+## GitHub 路线
+
+使用实际核实的 remote/用户给出的仓库身份和完整 commit。evidence.github 包含 repository、commit、
+remote_has_commit、web_can_read、evidence_ref；两项 true 才 ready。本地 remote 或 commit 不证明网页可读。
+用户给 URL 但本地无对应 remote 时，使用 declared_github_url，加 repository_verified=true 和真实证据。
+
+自动路线下当前修改可直接打包；显式 GitHub 路线须冻结新提交并按已有授权发布。
+仅范围外 dirty 变动可用 dirty_scope_disposition=excluded_from_review 与 dirty_scope_evidence_ref 排除。
+不得用旧远端版本验当前未提交文件。无推送授权不强迫用户授权发布；本地上传有独立的正式分支。
+补充附件不会悄悄改变当前已发送 run 的源码身份。
+
+## MCP 路线
+
+只用真实已配置且可供网页读取的内容快照。evidence.mcp 包含 configured=true、server、tool、version、
+snapshot_sha256、manifest_sha256、evidence_ref，范围清单记录路径/大小/hash/来源，并保留原文读取证据。
+默认选路缺少 MCP 就继续本地打包，不把安装/部署服务作为 review 前置要求。
+用户明确只许 MCP 时才保留 mcp_connection_needed；不伪造连接或自行公开文件服务。
+
+三种路线都保存完整原始材料，记录已知缺口；源码/资料可见与 Web 实际读取分别核实。
+网页返回的报告/ZIP/PNG/JSON 是输出附件，继续由 verify_artifacts.py 按独立附件合同验证。

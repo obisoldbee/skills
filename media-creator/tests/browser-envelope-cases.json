@@ -58,7 +58,7 @@
       "created_and_validated_by": "originating_main_task",
       "luna": {
         "route": "luna-max",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "reasoning": "max",
         "thread": "visible",
         "surface": "visible_thread"
@@ -100,40 +100,60 @@
     {
       "id": "valid-current-task-depth-zero",
       "base": "current-image",
-      "expected": {"valid": true}
+      "expected": {
+        "valid": true
+      }
     },
     {
       "id": "valid-visible-worker-depth-one",
       "base": "visible-music",
-      "expected": {"valid": true}
+      "expected": {
+        "valid": true
+      }
     },
     {
       "id": "valid-planning-zero-side-effects",
       "base": "planning-image",
-      "expected": {"valid": true}
+      "expected": {
+        "valid": true
+      }
     },
     {
       "id": "valid-prompt-zero-side-effects",
       "base": "planning-image",
-      "set": {"mode": "prompt"},
-      "expected": {"valid": true}
+      "set": {
+        "mode": "prompt"
+      },
+      "expected": {
+        "valid": true
+      }
     },
     {
       "id": "valid-preview-zero-side-effects",
       "base": "planning-image",
-      "set": {"mode": "preview"},
-      "expected": {"valid": true}
+      "set": {
+        "mode": "preview"
+      },
+      "expected": {
+        "valid": true
+      }
     },
     {
       "id": "valid-dry-run-zero-side-effects",
       "base": "planning-image",
-      "set": {"mode": "dry_run"},
-      "expected": {"valid": true}
+      "set": {
+        "mode": "dry_run"
+      },
+      "expected": {
+        "valid": true
+      }
     },
     {
       "id": "reject-ordinary-request-expands-visible-authority",
       "base": "current-image",
-      "set": {"authority.visible_task_creation_authority": true},
+      "set": {
+        "authority.visible_task_creation_authority": true
+      },
       "expected": {
         "valid": false,
         "error_contains": "authority.visible_task_creation_authority must be false"
@@ -142,7 +162,9 @@
     {
       "id": "reject-current-task-depth-one",
       "base": "current-image",
-      "set": {"handoff_depth": 1},
+      "set": {
+        "handoff_depth": 1
+      },
       "expected": {
         "valid": false,
         "error_contains": "current-task execution requires handoff_depth=0"
@@ -151,7 +173,9 @@
     {
       "id": "reject-visible-worker-depth-zero",
       "base": "visible-music",
-      "set": {"handoff_depth": 0},
+      "set": {
+        "handoff_depth": 0
+      },
       "expected": {
         "valid": false,
         "error_contains": "visible execution requires handoff_depth=1"
@@ -160,7 +184,9 @@
     {
       "id": "reject-visible-worker-without-provider-authority",
       "base": "visible-music",
-      "set": {"authority.provider_execution_authority": false},
+      "set": {
+        "authority.provider_execution_authority": false
+      },
       "expected": {
         "valid": false,
         "error_contains": "authority.provider_execution_authority must be true"
@@ -169,7 +195,9 @@
     {
       "id": "reject-worker-created-visible-task",
       "base": "visible-music",
-      "set": {"created_and_validated_by": "browser_worker"},
+      "set": {
+        "created_and_validated_by": "browser_worker"
+      },
       "expected": {
         "valid": false,
         "error_contains": "created_and_validated_by=originating_main_task"
@@ -178,7 +206,9 @@
     {
       "id": "reject-second-submission",
       "base": "current-image",
-      "set": {"submission_limit": 2},
+      "set": {
+        "submission_limit": 2
+      },
       "expected": {
         "valid": false,
         "error_contains": "execute mode requires submission_limit=1"
@@ -187,7 +217,9 @@
     {
       "id": "reject-recursive-dispatch",
       "base": "visible-music",
-      "set": {"recursive_dispatch": true},
+      "set": {
+        "recursive_dispatch": true
+      },
       "expected": {
         "valid": false,
         "error_contains": "recursive_dispatch must be false"
@@ -196,7 +228,9 @@
     {
       "id": "reject-provider-switch-after-submission",
       "base": "current-image",
-      "set": {"provider_switch_after_submission": true},
+      "set": {
+        "provider_switch_after_submission": true
+      },
       "expected": {
         "valid": false,
         "error_contains": "provider_switch_after_submission must be false"
@@ -205,7 +239,9 @@
     {
       "id": "reject-download-retry-resubmission",
       "base": "visible-music",
-      "set": {"download_retry": "resubmit"},
+      "set": {
+        "download_retry": "resubmit"
+      },
       "expected": {
         "valid": false,
         "error_contains": "download_retry=same_submitted_result_only"
@@ -214,7 +250,9 @@
     {
       "id": "reject-planning-provider-authority",
       "base": "planning-image",
-      "set": {"authority.provider_execution_authority": true},
+      "set": {
+        "authority.provider_execution_authority": true
+      },
       "expected": {
         "valid": false,
         "error_contains": "authority.provider_execution_authority must be false"
@@ -223,7 +261,9 @@
     {
       "id": "reject-planning-opens-browser",
       "base": "planning-image",
-      "set": {"side_effects.open_browser": true},
+      "set": {
+        "side_effects.open_browser": true
+      },
       "expected": {
         "valid": false,
         "error_contains": "side_effects.open_browser must be false"
@@ -232,7 +272,9 @@
     {
       "id": "reject-worker-creative-rewrite",
       "base": "visible-music",
-      "set": {"worker_creative_rewrite": true},
+      "set": {
+        "worker_creative_rewrite": true
+      },
       "expected": {
         "valid": false,
         "error_contains": "worker_creative_rewrite must be false"
@@ -241,7 +283,9 @@
     {
       "id": "reject-visible-luna-route-drift",
       "base": "visible-music",
-      "set": {"luna.reasoning": "high"},
+      "set": {
+        "luna.reasoning": "high"
+      },
       "expected": {
         "valid": false,
         "error_contains": "luna must exactly match the luna-max visible-thread route"
@@ -250,10 +294,147 @@
     {
       "id": "reject-web-music-count-two",
       "base": "visible-music",
-      "set": {"final_provider_payload.count": 2},
+      "set": {
+        "final_provider_payload.count": 2
+      },
       "expected": {
         "valid": false,
         "error_contains": "final_provider_payload.count must be exactly 1"
+      }
+    },
+    {
+      "id": "tabbit-current-image",
+      "base": "current-image",
+      "set": {
+        "executor": "tabbit",
+        "final_provider_payload.output_path": "C:\\Temp\\media-result.png"
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "tabbit-visible-music",
+      "base": "visible-music",
+      "set": {
+        "executor": "tabbit",
+        "final_provider_payload.output_path": "C:\\Temp\\media-result.mp3"
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "chrome-current-image",
+      "base": "current-image",
+      "set": {
+        "executor": "chrome",
+        "final_provider_payload.output_path": "C:\\Temp\\media-result.png"
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "chrome-visible-music",
+      "base": "visible-music",
+      "set": {
+        "executor": "chrome",
+        "final_provider_payload.output_path": "C:\\Temp\\media-result.mp3"
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "codex-browser-current-image",
+      "base": "current-image",
+      "set": {
+        "executor": "codex-browser",
+        "final_provider_payload.output_path": "C:\\Temp\\media-result.png"
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "codex-browser-visible-music",
+      "base": "visible-music",
+      "set": {
+        "executor": "codex-browser",
+        "final_provider_payload.output_path": "C:\\Temp\\media-result.mp3"
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "reject-unresolved-platform-selector",
+      "base": "current-image",
+      "set": {
+        "executor": "platform_selected_browser"
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": "supported browser executor"
+      }
+    },
+    {
+      "id": "windows-no-duplicate-submit",
+      "base": "current-image",
+      "set": {
+        "executor": "tabbit",
+        "submission_limit": 2
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": "submission_limit=1"
+      }
+    },
+    {
+      "id": "windows-preview-no-browser",
+      "base": "planning-image",
+      "set": {
+        "executor": "tabbit"
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": "must not select an executor"
+      }
+    },
+    {
+      "id": "reject-non-string-executor",
+      "base": "current-image",
+      "set": {
+        "executor": [
+          "tabbit"
+        ]
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": "supported browser executor"
+      }
+    },
+    {
+      "id": "mcode-current-task-browser",
+      "base": "current-image",
+      "set": {
+        "executor": "mcode-browser"
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "mcode-no-implicit-visible-thread",
+      "base": "current-image",
+      "set": {
+        "executor": "mcode-browser",
+        "authority.visible_task_creation_authority": true
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": "visible_task_creation_authority must be false"
       }
     }
   ]

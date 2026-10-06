@@ -17,7 +17,11 @@ domain judgment, or dispatch Skills.
    `project-conventions`. Use this Skill only after the exact document work package is fixed.
 3. Treat initialization and adoption as local structural work. Permit byte reads for size and
    SHA-256 integrity only. Do not semantically read documents, play media, run OCR/ASR, call a
-   provider, or upload content without separate scope and authorization.
+   provider, or upload content without scope and authorization covering that action.
+   Reuse authorization already given in the same request: “整理并分析这些文档” covers
+   local organization and semantic reading/analysis of the named documents. Do not ask
+   again merely because those are different stages. External uploads/provider calls
+   still need authorization covering their destination and content.
 4. Treat a UI-visible chat attachment as a pointer, not durable evidence. Require one real,
    readable regular file and preserve it before depending on it. If unavailable, report exactly
    `not_preserved` and stop downstream use.

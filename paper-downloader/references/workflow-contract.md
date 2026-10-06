@@ -28,14 +28,24 @@ status manifest. Reconciliation records `reconciled_at`, preserves an unknown
 
 Inventory parsing is explicit `auto|markdown|csv`; zero parsed rows fail. The
 manifest binds the inventory bytes, ordered row ids, and full frozen row
-projection. PDF identity comes only from a strict identifier in actual PDF
-bytes or an exact PDF Title metadata match, never a filename, route, or header.
+projection. PDF identity comes from a primary identifier in the referenced PDF Info
+metadata or an exact PDF Title metadata match; conflicting titles reject a match, never a filename, route, or header.
 Final reporting rereads manifest, inventory and disk after persistence and
-refuses a `complete` receipt while any queue/follow-up/manual-review gate or
-required blocker evidence remains.
+refuses target-processing closure while any target queue/follow-up/manual-review gate or
+required blocker evidence remains. Supplementary pending states are disclosed separately.
 
 Network concurrency defaults to one active lane per public egress IP. Multiple
 workers may run offline validation concurrently, but disjoint output paths are
 not evidence that their network effects are independent. Interactive browser
-follow-up prefers the registered `$ego-browser`; a different browser is a
-recorded fallback, not an implicit substitute.
+follow-up uses the contract in [browser routing](ego-browser-route.md): explicit choice, then applicable caller preferences among callable, task-capable routes, then platform defaults and verified fallbacks. Browser choice never removes shared-egress serialization.
+
+### Supplementary collection and quota
+
+Freeze optional `collection_role` (`target` by default, or `supplementary`) and
+`collection_role_reason` with each inventory row. The role is bound by the row hash.
+Set manifest `target_count` from the requested quota (`--target-count`); supplementary
+rows never satisfy it. Report target and supplementary totals separately, deduplicated
+by publication identity. Unresolved supplementary candidates do not block target processing
+closure, but remain explicitly pending; they do not count as downloaded. A complete
+processing receipt is not a claim that `quota.target_quota_met` is true. Keep and analyze
+counterevidence under its own true identity rather than relabeling it as a requested paper.

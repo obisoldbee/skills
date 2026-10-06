@@ -1,16 +1,20 @@
 # 必经收尾：正常关闭 space 后才结束
 
-读取当前 ego-browser Skill，以其 API 和控制权规则为准。本文只管理本轮空间，不清理历史同名空间或其他任务。
+读取当前所选浏览器 Skill，以其 API 和控制权规则为准。本文只管理本轮空间，不清理历史同名空间或其他任务。
 
 ## 分支
 
 - **确认维护**：按 [service-maintenance.md](service-maintenance.md) 判断后，与正常结果共用下方关闭步骤；每轮关闭空间，首次维护和恢复各通知一次，持续维护静默。不能因为本轮没签到/没旅行就保留维护页。
 
 - 正常结果：completed_cycle、already_travelling、daily_limit_reached、无待领礼物、只领礼物已完成以及正常只读查询。只停止业务操作，**不能直接 return、输出最终报告或结束任务**；必须走下方关闭步骤。
-- 发生问题：未登录、验证码/人工确认、未确认为维护的网络或页面异常、业务证据不确定、用户接管。停止业务操作，遵守 ego-browser 停止规则；需要用户处理时 `await task.handOff()` 并核验，保留空间并报告原因。不调用 finish 伪装正常结束，不夺回用户控制。
+- 发生问题：未登录、验证码/人工确认、未确认为维护的网络或页面异常、业务证据不确定、用户接管。停止业务操作，遵守所选浏览器停止规则；需要用户处理时使用其真实人工交接接口（Ego 为 `await task.handOff()`）并核验，保留空间并报告原因。不调用 finish 伪装正常结束，不夺回用户控制。
 - 未创建空间：记 `not_created`，不为收尾新建空间。业务门槛在开网页前结束时也不创建空间；若同轮已经创建，则按真实正常/异常结果收尾。
 
-## 正常关闭步骤（所有正常分支共用）
+## Windows Tabbit / Chrome / Codex 内置浏览器
+
+正常分支先保存业务证据，再关闭本任务创建的页。Tabbit 对确认全为自己创建且仍持有控制的组使用当前 CLI 的 `finish --task <本轮任务名> --discard`，核对 `keep:false`、`closedTabIds` 及组清单；混有用户页时只关闭 own pages 再 finish；默认 finish 会保留组，不能单凭 `finished:true` 声称页面已关。恢复必须依据真实 group/tab ID。Chrome/IAB 用实际暴露的 close API，只关闭本任务创建的标签；借用的用户页面仅释放控制，不关闭。不要调用 Ego 的 taskSpace/finish 参数，也不要按同名批量关闭。下面的收尾记录与异常规则共用。
+
+## macOS Ego 正常关闭步骤（仅此运行时）
 
 1. 只创建本轮一个 TaskSpace，创建时记录数字 `task.spaceId`，使用其初始 p1。后续 heredoc 只按该 ID 恢复，不按名字猜选，不新建空间恢复错误。保存已取得的业务证据后停止网站操作。
 2. 同一 heredoc 用已有 task；跨 heredoc 用 `const task = await taskSpace(TASK_ID)`，TASK_ID 必须替换为本轮实际数字。只调用一次 `const receipt = await task.finish({ keep: [] })` 并等待返回，输出脱敏回执。禁止省略 keep、保留 p1、`keep:"all"`、旧布尔参数和旧完成/交接辅助接口。

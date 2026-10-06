@@ -33,12 +33,14 @@ def inventory_one(identifier_column: str = "doi", identifier: str = "10.1000/one
 
 
 def pdf_bytes(identifier: str = "DOI: 10.1000/one", title: str = "") -> bytes:
-    metadata = f"\n{identifier}\n".encode("ascii") if identifier else b"\n"
+    fields = []
+    if identifier:
+        kind, value = identifier.split(":", 1) if ":" in identifier else ("PMCID", identifier)
+        fields.append(f"/{kind.strip()} ({value.strip()})")
     if title:
-        metadata += (
-            f"1 0 obj\n<< /Title ({title}) >>\nendobj\n"
-            "trailer\n<< /Info 1 0 R >>\n"
-        ).encode("utf-8")
+        fields.append(f"/Title ({title})")
+    metadata = ("1 0 obj\n<< " + " ".join(fields) +
+                " >>\nendobj\ntrailer\n<< /Info 1 0 R >>\n").encode("utf-8")
     return b"%PDF" + metadata + b"x" * (contract.PDF_MIN_BYTES + 32)
 
 
@@ -314,14 +316,14 @@ class FirstPassAndRebuildHardeningTest(unittest.TestCase):
             root = Path(temporary)
             source = root / "inventory.md"
             source.write_text(
-                "| row_id | title | doi |\n|---|---|---|\n"
-                "| R1 | One | 10.1000/one |\n| R2 | Two | 10.1000/two |\n",
+                "| row_id | title | doi | pmid |\n|---|---|---|---|\n"
+                "| R1 |  | 10.1000/one |  |\n| R2 |  |  | 12345678 |\n",
                 encoding="utf-8",
             )
             manifest = inventory_builder.build_manifest(source, root)
             papers = root / "papers"
             papers.mkdir()
-            (papers / "both.pdf").write_bytes(pdf_bytes("DOI: 10.1000/one DOI: 10.1000/two"))
+            (papers / "both.pdf").write_bytes(pdf_bytes().replace(b"/DOI (10.1000/one)", b"/DOI (10.1000/one) /PMID (12345678)"))
             with self.assertRaisesRegex(ValueError, "bijection"):
                 rebuild_manifest.reconcile_manifest(manifest, root, papers)
 

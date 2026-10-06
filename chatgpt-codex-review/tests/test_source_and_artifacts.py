@@ -36,7 +36,7 @@ def binding(root):
 
 
 class RouteTests(unittest.TestCase):
-    def test_github_route_is_sticky_when_access_fails_and_sanitizes_credentials(self):
+    def test_explicit_github_route_is_sticky_and_sanitizes_credentials(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             git(root, "init", "-q")
@@ -51,7 +51,7 @@ class RouteTests(unittest.TestCase):
                              ("github", "verify_remote_commit_and_web_access"))
             self.assertEqual(pending["remote_url"], "https://github.com/owner/project.git")
             self.assertNotIn("secret", json.dumps(pending))
-            observed = {"github": {"repository": "owner/project", "commit": head,
+            observed = {"source_route": "github", "github": {"repository": "owner/project", "commit": head,
                                    "remote_has_commit": False, "web_can_read": False}}
             self.assertEqual(ROUTE.select(root, observed)["status"], "github_access_blocked")
             observed["github"].update(remote_has_commit=True, web_can_read=True,
@@ -63,19 +63,19 @@ class RouteTests(unittest.TestCase):
                                       dirty_scope_evidence_ref="scope/checked.json")
             self.assertEqual(ROUTE.select(root, observed)["status"], "ready")
 
-    def test_local_git_without_github_and_plain_directory_use_mcp(self):
+    def test_local_directory_uses_packet_unless_mcp_is_ready(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self.assertEqual(ROUTE.select(root, {})["status"], "mcp_connection_needed")
+            self.assertEqual(ROUTE.select(root, {})["status"], "packet_needed")
             git(root, "init", "-q")
             git(root, "remote", "add", "origin", "https://gitlab.com/a/b.git")
-            self.assertEqual(ROUTE.select(root, {})["route"], "mcp")
+            self.assertEqual(ROUTE.select(root, {})["route"], "local_packet")
             evidence = {"mcp": {"configured": True, "server": "host-server", "tool": "read_content",
                                 "version": "v1", "snapshot_sha256": "c" * 64,
                                 "manifest_sha256": "d" * 64, "evidence_ref": "tool/readback.json"}}
             self.assertEqual(ROUTE.select(root, evidence)["source_id"], "mcp:" + "c" * 64)
             git(root, "remote", "set-url", "origin", "https://github.com/owner/project.git")
-            self.assertEqual(ROUTE.select(root, evidence)["route"], "github")
+            self.assertEqual(ROUTE.select(root, {**evidence, "source_route": "github"})["route"], "github")
 
     def test_unknown_github_url_never_becomes_mcp(self):
         with tempfile.TemporaryDirectory() as directory:

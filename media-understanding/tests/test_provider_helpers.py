@@ -36,6 +36,16 @@ REQUEST_STATE = load_module(
 
 
 class ProviderHelperTests(unittest.TestCase):
+    def test_export_dotenv_and_environment_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "synthetic.env"
+            path.write_text("# comment\nexport AGNES_API_KEY='fixture-key'\nAGNES_MODEL=model\n")
+            with mock.patch.dict(AGNES.os.environ, {}, clear=True):
+                self.assertEqual(ROUTES.dotenv_values(path), AGNES.load_env(path))
+                self.assertEqual("fixture-key", AGNES.load_env(path)["AGNES_API_KEY"])
+            with mock.patch.dict(AGNES.os.environ, {"AGNES_API_KEY": "environment-fixture"}, clear=True):
+                self.assertEqual("environment-fixture", AGNES.load_env(path)["AGNES_API_KEY"])
+
     def analysis_args(self, *, resume: bool = False, retries: int = 3) -> argparse.Namespace:
         return argparse.Namespace(
             resume=resume,
@@ -332,7 +342,7 @@ class ProviderHelperTests(unittest.TestCase):
             for module in (AUDIO, VIDEO):
                 with self.subTest(module=module.__name__), mock.patch.object(
                     module, "build_payload", return_value={}
-                ), mock.patch.object(module.urllib.request, "urlopen", return_value=EmptyResponse()):
+                ), mock.patch.object(module, "authenticated_urlopen", return_value=EmptyResponse()):
                     if module is VIDEO:
                         result = module.call_m3("key", module.DEFAULT_ENDPOINT, args.model, media, "prompt", args)
                     else:
@@ -450,8 +460,8 @@ class ProviderHelperTests(unittest.TestCase):
                     return payload
 
                 with mock.patch.object(module, "build_payload", side_effect=swapping_builder), mock.patch.object(
-                    module.urllib.request,
-                    "urlopen",
+                    module,
+                    "authenticated_urlopen",
                     return_value=Response(),
                 ) as urlopen:
                     if module is VIDEO:

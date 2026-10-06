@@ -101,6 +101,8 @@ Construct every expert attempt from these flat labeled sections. Substitute only
 
 ```text
 Background:
+Workflow: research-qa-orchestrator
+phase: expert_review
 This is attempt {{attempt_no}} for expert {{expert_id}} in candidate package {{package_id}}. Passing requires a separate audit. File creation or task return is not acceptance.
 
 Materials:
@@ -113,6 +115,7 @@ Materials:
 - Frozen-set path and SHA-256: {{frozen_set_path}} / {{frozen_set_sha256}}
 - Live Akashic rule path: ${HOME}/Documents/Akashic/90-project-rules/current/05-文献分级与创作.md
 - Required live-rule SHA-256 baseline: {{rule_sha256}}
+- Declared output paths inside output_package: {{attempt_path}}, {{coverage_path}}, {{artifact_receipt_path}}, {{runtime_operation_receipt_path}}
 - For retry only: {{previous_attempt_path}} and {{rejection_decision_path}}
 
 Task:
@@ -125,7 +128,8 @@ Constraints:
 - Review every ID in the delivered reviewable-source roster and write the exact coverage JSON; a selective subset is not a completed lane.
 - Separate evidence, attributable opinion, inference, conflicts, counterexamples, limits, and falsification triggers.
 - Do not read other expert drafts. Do not give personal medical instructions.
-- Write only the declared attempt file and receipt inside the package.
+- Write only the declared attempt, coverage JSON, and artifact receipt paths inside the package.
+- The originating runtime records the runtime operation receipt at its declared path from actual dispatch and result readback; the expert must not fabricate host-tool evidence or create a task to obtain it.
 
 Output format:
 - Candidate Markdown with fixed sections for claims, cited evidence, conflicts/limits, counterexamples, non-evidence opinion, and unresolved questions.

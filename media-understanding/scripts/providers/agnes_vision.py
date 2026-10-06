@@ -18,6 +18,19 @@ from typing import Any, Dict, Optional
 
 
 DEFAULT_ENV = Path.home() / ".codex" / "secrets" / "agnes.env"
+
+
+class NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
+    """Authenticated API calls never follow redirects or resend a POST."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def authenticated_urlopen(request, *, timeout):
+    return urllib.request.build_opener(NoCredentialRedirect()).open(request, timeout=timeout)
+
+
 DEFAULT_BASE_URL = "https://apihub.agnes-ai.com/v1"
 DEFAULT_MODEL = "agnes-3.0-flash"
 
@@ -29,6 +42,8 @@ def load_env(path: Path) -> Dict[str, str]:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
+            if line.startswith("export "):
+                line = line[7:].strip()
             key, value = line.split("=", 1)
             values[key.strip()] = value.strip().strip("'\"")
     for key in ("AGNES_API_KEY", "AGNES_BASE_URL", "AGNES_MODEL"):
@@ -147,7 +162,7 @@ def call_agnes(
     )
     started = time.time()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with authenticated_urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             status_code = resp.status
     except urllib.error.HTTPError as exc:

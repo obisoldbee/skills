@@ -282,3 +282,12 @@ run_initialized -> plugin_validated -> live_rule_pinned
 `completion.json` binds the final event-line SHA, reviewable count/roster hash, `topic_experts_completed: 8`, complete Akashic lookup, structurally validated download payloads, structurally validated acquisition/runtime-operation receipt counts, `experts_passed: 8`, the package-declared passing synthesis receipt, `runtime_execution_verified: false`, `run_success_verified: false`, and completion time.
 
 All of the above establishes only `structurally_complete_runtime_unverified`. The offline validator deliberately returns `ok: false` and `runtime_not_verified` because package-local JSON cannot independently attest host execution. It never proves candidate success, plugin installation, provider execution, Git publication, or formal Akashic absorption.
+
+### Quota fields
+
+The manifest may declare `target_publication_count` (integer at least 30; default 30).
+Inventory rows may declare `collection_role: target|supplementary` (default target);
+supplementary rows require a nonempty `collection_role_reason`. Both fields are covered by
+existing record/inventory hashes. Material audit must check target quota separately from the
+full reviewable corpus. Supplementary reviewable sources stay in frozen delivery and every
+expert coverage roster; `reviewable_source_count` continues to mean the entire corpus.

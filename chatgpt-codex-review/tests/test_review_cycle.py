@@ -13,6 +13,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 SPEC = importlib.util.spec_from_file_location("next_action", ROOT / "scripts/next_action.py")
 HELPER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(HELPER)
@@ -92,6 +93,14 @@ def observation(current, seconds=0, **fields):
 
 def apply(current, report):
     return {**current, **report["state_updates"]}
+
+
+def resolve_gate(current, seconds=5, ledger=None, **fields):
+    moment = (datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)).isoformat()
+    gate = HELPER.active_browser_gate(current, ledger)
+    return {"gate_id": gate["gate_id"], "source": "direct_user", "observed_at": moment,
+            "evidence_ref": "authority/original-human-message.json", "user_instruction_ref": "human/continue",
+            "author_is_human": True, "applies_to_gate": True, **fields}
 
 
 def submission(current):
@@ -217,7 +226,7 @@ class ReviewCycleTests(unittest.TestCase):
         for label, saved, view in (
             ("missing", None, None),
             ("paused", followup(current, status="PAUSED"),
-             followup(current, checked_seconds=0, evidence_ref="view-paused")),
+             followup(current, status="PAUSED", checked_seconds=0, evidence_ref="view-paused")),
             ("wrong-host", current["followup"],
              {**followup(current, checked_seconds=0, evidence_ref="view-wrong-host"),
               "owner_host": "different-host"}),
@@ -646,6 +655,7 @@ class ReviewCycleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             HELPER.decide(current, observation(current))
         report = HELPER.decide(current, event(current, "resume", resolution_ref="login restored readback",
+                                             browser_gate_resolution=resolve_gate(current, 0),
                                              observed_at=datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat(),
                                              followup_view=followup(current, checked_seconds=0,
                                                                     evidence_ref="view-resume")))

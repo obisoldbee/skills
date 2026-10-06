@@ -6,7 +6,7 @@ Use this branch only when the user provides or authorizes discovery of public `c
 
 Use the separately registered top-level `$web-bookmark-intelligence` Skill with `profile=shoulong`. It provides one serial, resumable case per URL; Shoulong is a profile, not a second scraper.
 
-The WorkBuddy implementation source must be supplied explicitly and receipted by path and SHA-256. The current WorkBuddy metadata is inconsistent: its `SKILL.md` reports 1.4.0 while its live script declares v1.5.1. Bind bytes, not the label.
+Follow that Skill's current batch profile and retrieval contract: the current Agent uses an authorized available runtime and records case-local evidence. No WorkBuddy wrapper or historical source hash is required. Only when the user explicitly selects the legacy WorkBuddy adapter should its own compatibility contract bind the historical implementation bytes; an unavailable legacy adapter does not block the current profile.
 
 ## Allowed evidence
 

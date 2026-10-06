@@ -29,6 +29,8 @@ Collaboration:
 - Ordinary reads and independent exact report files require no admission claim. Use no-clobber creation and task-specific records; one integrator updates shared logs/indexes.
 - Concurrent Git writers use distinct branches and linked worktrees of this repository. Authorized code work includes ordinary local setup: bind repository, base commit, unique branch and absent destination; then actually edit/test there. Preserve dirty inputs and keep canonical projections/consumer links unchanged.
 - A linked worktree is not a duplicate clone. Canonical distribution maintenance may use one editor in this checkout; it does not allow multiple writers to share the same physical files. Worktrees do not isolate services, databases, ports or common output paths.
+- Controller/integrator roles apply to the current task and named shared resources, not a permanent project-wide reservation. Independent authorized work needs no release from a historical chat or claim. Diagnose actual Git/file/runtime conflicts at the affected resource.
+- Reload current guidance after a rule or scope change. Reuse task authorization and current readings; response-only work creates no records. A missing compatibility helper does not block ordinary work.
 - Verify changed files and affected checks, then report integration state. Commit, push, publication and consumer changes follow their own task authorization.
 
 Lifecycle routing:

@@ -44,6 +44,9 @@ TERMINAL_NON_DOWNLOAD_STATUSES = {
     "failed",
 }
 IDENTITY_METHODS = {
+    "pdf_metadata_doi",
+    "pdf_metadata_pmid",
+    "pdf_metadata_pmcid",
     "pdf_bytes_doi",
     "pdf_bytes_pmid",
     "pdf_bytes_pmcid",
@@ -247,7 +250,52 @@ def identity_key(row: dict[str, Any]) -> str:
 
 
 def row_binding_projection(row: dict[str, Any]) -> dict[str, Any]:
-    return {field: row.get(field) for field in ROW_BINDING_FIELDS}
+    projection = {field: row.get(field) for field in ROW_BINDING_FIELDS}
+    # Preserve historical v2 bindings when the optional quota classification
+    # was absent. New classifications are frozen with the inventory rows.
+    for field in ("collection_role", "collection_role_reason"):
+        if field in row:
+            projection[field] = row[field]
+    return projection
+
+
+def collection_role(row: dict[str, Any]) -> str:
+    role = row.get("collection_role", "target")
+    if role not in {"target", "supplementary"}:
+        raise ValueError("collection_role must be target or supplementary")
+    if role == "supplementary" and not str(row.get("collection_role_reason") or "").strip():
+        raise ValueError("supplementary material requires collection_role_reason")
+    return role
+
+
+def quota_counts(rows: Iterable[dict[str, Any]], target_count: int | None = None) -> dict[str, Any]:
+    rows = list(rows)
+    targets = [row for row in rows if collection_role(row) == "target"
+               and row.get("disposition", "eligible") == "eligible"
+               and row.get("status") != "duplicate"]
+    if target_count is None:
+        target_count = len(targets)
+    if type(target_count) is not int or target_count < 0:
+        raise ValueError("target_count must be a non-negative integer")
+    completed: dict[str, set[str]] = {"target": set(), "supplementary": set()}
+    for row in rows:
+        if (row.get("status") == "downloaded"
+                and row.get("pdf", {}).get("validated") is True
+                and row.get("disposition", "eligible") == "eligible"):
+            key = identity_key(row)
+            if key:
+                completed[collection_role(row)].add(key)
+    # The same publication is never counted twice across the two lists.
+    supplementary = completed["supplementary"] - completed["target"]
+    count = len(completed["target"])
+    return {
+        "target_requested": target_count,
+        "target_downloaded": count,
+        "target_remaining": max(0, target_count - count),
+        "target_quota_met": count >= target_count,
+        "supplementary_rows": sum(collection_role(row) == "supplementary" for row in rows),
+        "supplementary_downloaded": len(supplementary),
+    }
 
 
 def rows_binding_sha256(rows: Iterable[dict[str, Any]]) -> str:
@@ -325,15 +373,22 @@ def _identity_matches(
     row: dict[str, Any],
     data: bytes,
 ) -> tuple[bool, str | None, str | None, str]:
-    for kind in ("pmcid", "pmid", "doi"):
-        value = normalized_identifier(kind, row.get(kind))
-        if value and _strict_identifier_in_pdf(data, kind, value):
-            return True, f"pdf_bytes_{kind}", value, "identifier_found_in_pdf_bytes"
     expected_title = _normalize_title(row.get("title"))
     observed_title = _pdf_title(data)
+    if expected_title and observed_title and _normalize_title(observed_title) != expected_title:
+        return False, None, observed_title, "pdf_title_metadata_conflicts_with_requested_publication"
+    info = _pdf_info_object(data)
+    for kind in ("pmcid", "pmid", "doi"):
+        value = normalized_identifier(kind, row.get(kind))
+        field = re.search(rb"/" + kind.upper().encode() + rb"\s*\(([^()]*)\)", info, re.I)
+        observed = normalized_identifier(kind, _decode_pdf_literal(field.group(1))) if field else ""
+        if value and observed == value:
+            return True, f"pdf_metadata_{kind}", value, "identifier_found_in_document_info_field"
     if expected_title and _normalize_title(observed_title) == expected_title:
         return True, "pdf_title_metadata", observed_title, "pdf_title_metadata_exact"
-    return False, None, None, "identifier_or_exact_title_not_found_in_pdf_bytes"
+    # Raw bytes may contain citations, URI annotations or embedded documents.
+    # Keep them as candidate evidence; they cannot identify this publication.
+    return False, None, None, "primary_publication_identity_not_verified"
 
 
 def verify_pdf(
@@ -446,6 +501,7 @@ def validate_manifest(payload: Any, *, output_root: Path | None = None) -> dict[
         if paper_root.relative_to(root).as_posix() != paper_root_text:
             raise ValueError("manifest paper_root must be normalized relative POSIX path")
     for row in rows:
+        collection_role(row)
         status = row.get("status")
         if status not in ALLOWED_STATUSES:
             raise ValueError(f"invalid exact status {status!r} for {row.get('row_id')}")
@@ -525,6 +581,7 @@ def validate_manifest(payload: Any, *, output_root: Path | None = None) -> dict[
         recorded = Path(str(payload.get("declared_output_root") or "")).expanduser().resolve()
         if recorded != root:
             raise ValueError("manifest declared_output_root does not match the CLI output root")
+    quota_counts(rows, payload.get("target_count"))
     return payload
 
 

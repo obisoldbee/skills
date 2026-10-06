@@ -34,7 +34,7 @@ Valid per-axis bases are `explicit_user`, `explicit_skill_route`, `explicit_auto
 | `astra-high` | Astra | `high` | Default orchestration |
 | `sol-max` | Sol (baseline `gpt-6.1-sol`) | `max` | Default writing/development |
 | `sol-medium` | Sol | `medium` | Default desktop computer operation |
-| `luna-max` | Luna (baseline `gpt-6-luna`) | `max` | Simple browser operation, mechanical audits, file lookup |
+| `luna-max` | Luna (baseline `gpt-6-luna`) | `max` | Simple browser operation, mechanical audits, file lookup, specified status checks |
 | `astra-max` / `sol-ultra` | Current corresponding family | `max` / `ultra` | Explicit alternatives |
 | `gpt6-max` / `gpt6-ultra` | `gpt-6-astra` (pinned generation) | `max` / `ultra` | Explicit compatibility aliases |
 | `terra-max` | `gpt-5.6-terra` | `max` | Explicit human selection only |
@@ -79,7 +79,7 @@ Automatic model selection requires a verified `task_kind`. When reasoning is als
 | Task decomposition, coordination, integration planning (`orchestration`) | Astra high | Dependency graph, bounded assignments and integration gates |
 | Writing/development (`writing`), or executing Astra's accepted plan (`astra_planned_execution`) | Sol max | Artifacts, named checks and deviations |
 | Desktop computer operation (`computer_operation`) | Sol medium | Verified actions and observed state |
-| Simple browser operation (`browser_operation`) or mechanical audits, file lookup, existing scripts (`mechanical`) | Luna max | Exact evidence and bounded results |
+| Simple browser operation (`browser_operation`) or mechanical audits, file lookup, existing scripts, specified status observation (`mechanical`) | Luna max | Exact evidence and bounded results |
 | Other work, ambiguous difficulty, or missing plan evidence | Explicit human route | Resolve the missing scope or selection before dispatch |
 
 Do not infer top difficulty from total project size, the Controller's model, or the word “design” alone. Do not infer mechanical work from “read-only”, “audit”, or “review”: evidence interpretation, semantic judgments, risk prioritization, and final acceptance do not qualify. A complex audit may belong to Astra; a fully specified review step may belong to Sol; otherwise obtain an explicit route.
@@ -88,7 +88,17 @@ A Sol writing lane names the brief, outputs and checks; an Astra-planned executi
 
 Keep a deterministic local command local when it fully answers the request and no separate task was requested. An explicitly requested scheduled execution task can use Luna with its supplied script; use the host's scheduling tools only when scheduling is authorized.
 
+### Cost-aware monitoring
+
+Choose an appropriate executor before tuning polling frequency. The preferred division for a clearly specified observation task is Luna-max for mechanical checks and the selected Controller for substantive judgment/quality review. When that Controller is Astra, reserve its repeated context loads and reasoning for actionable evidence rather than unchanged status. Compare the whole workflow's model/effort, context, wake-ups, and potential rework; counting calls or tokens without their executor is not a sufficient value comparison.
+
+An explicit user selection of Luna-max monitoring, including a policy established earlier in the request, is the observer's route choice: retain `requested_route=luna-max` and the alias's two axes as `explicit_skill_route`. Reuse that choice without repeated confirmation. With authorized `auto`, classify a bounded status/checklist/script observation as `task_kind=mechanical`; semantic research or product acceptance is a different role. Preserve explicit alternative routes and unselected axes outside this observer scope.
+
+The scheduled task must actually run under the selected model/effort. Verify the observer thread and automation owner/target using the live host contract; heartbeat prompt text does not change an inherited model. Do not replace a selected Luna observer with an Astra heartbeat or downgrade `max` merely to schedule it. See [result collection](result-collection.md) for the bounded observation goal, quiet checks, escalation, and receipt gate. This is a workload-routing policy, not a measured price or savings claim.
+
 ## Mixed work and continuity
+
+Before resolving a shortened request, simplifying a Skill, merging roles or recovering a run, retain applicable choices from the original request and accepted decisions for each responsibility. A later message that says only “continue” or “simplify” does not reset an already selected model, effort or visible review surface. Keep helpers separate from that formal responsibility. An actual user route change controls its named axes; an unrelated earlier choice does not spread to other scopes.
 
 For a top-difficulty design followed by implementation:
 
@@ -131,6 +141,8 @@ Proceed only on `valid: true`. Retain `attempt_sha256`; pass exactly its `create
 Normalize the actual creation result with the exact `actual_tool`, `actual_create_thread_arguments`, `dispatch_attempt_sha256`, IDs, and prompt-delivery evidence. Require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to pass before registration. Then verify initial progress and, when requested, completed output. A model's self-description is not model identity evidence.
 
 Record selection evidence, route bases, requested/effective axes, runtime pair verification, dependencies, authority boundary, guard results, failure class, and fallback (`none` unless explicitly authorized). `model_unavailable_supported` is false for parameter validation errors. See `references/thread-dispatch.md` for the GPT-6 max diagnostic procedure: preserve the exact pair, inspect the executing runtime/capabilities, and never mask a validation mismatch by switching to GPT-5.6, dropping thinking, or substituting CLI/subagents.
+
+Use `scripts/validate_execution_binding.py SELECTION --actual ACTUAL --previous ORIGINAL_SELECTION` when verifying a selected formal execution or preserving choices across a role merge. SELECTION records `scope_id`, `selection_ref`, the existing per-axis bases and selected values, and `surface` only when selected. ACTUAL records the same scope, real `execution_id`, `actual_tool`, `surface`, model/effort and `metadata_source=runtime_metadata|session_settings|execution_readback` with its original `evidence_ref`. Copy the observed pair, including a mismatch; do not normalize actual low effort to requested max. ORIGINAL_SELECTION is the independently retained pre-change selection for this same responsibility. A direct human change can supply `user_route_change={author_is_human:true,user_instruction_ref,axes}`; verify that source outside the helper. Prompt self-description, requested parameters and labels are insufficient. The helper checks declared bindings and cannot authenticate a human or query a runtime. It neither creates tasks nor selects unrequested axes; model-only Sol remains model-only, and an ordinary unselected internal helper can use platform defaults.
 
 ## Evaluation examples
 

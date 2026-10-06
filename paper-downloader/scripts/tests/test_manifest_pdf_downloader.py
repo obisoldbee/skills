@@ -19,7 +19,9 @@ SPEC.loader.exec_module(MODULE)
 
 
 def valid_pdf_bytes(identifier: str = "DOI: 10.1000/test") -> bytes:
-    return b"%PDF" + f"\n{identifier}\n".encode("ascii") + b"x" * MODULE.PDF_MIN_BYTES
+    kind, value = identifier.split(":", 1)
+    return (f"%PDF\n1 0 obj\n<< /{kind} ({value.strip()}) >>\nendobj\n"
+            "trailer\n<< /Info 1 0 R >>\n").encode("ascii") + b"x" * MODULE.PDF_MIN_BYTES
 
 
 class ManifestPdfDownloaderTest(unittest.TestCase):

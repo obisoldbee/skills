@@ -24,8 +24,10 @@
 scheduled/自动化每轮收尾后必须调用包内 `scripts/service_health.py`，包括正常轮和 unknown 轮；维护提醒不能凭模型记忆、旧聊天、日期或当轮变量去重。调用前读取本参考。手动/只读查询只关闭已确认维护页面，不调用此通知脚本、不改自动化状态。
 
 ```text
-python3 -B <本Skill目录>/scripts/service_health.py --phase <maintenance|available|unknown> --page <closed|preserved|unconfirmed|not_created> --space-id <本轮数字ID> --evidence <本轮简短脱敏证据> --detail <本轮实际业务结果> --chat-id <prompt中的lark_chat_id>
+python3 -B <本Skill目录>/scripts/service_health.py --phase <maintenance|available|unknown> --page <closed|preserved|unconfirmed|not_created> --space-id <本轮实际ID> --evidence <本轮简短脱敏证据> --detail <本轮实际业务结果> --chat-id <prompt中的lark_chat_id>
 ```
+
+`--space-id` 接受旧 Ego 非负整数或 [报告合同](result-report.md) 的真实命名空间字符串，例如 `tabbit:group:<真实组ID>`、`codex-browser:tab:<真实标签ID>`；不得把组 ID 转为整数或用名称替代。仅 `--page not_created` 时可以省略。该兼容输入不改变健康状态文件格式，也不证明浏览器执行成功。
 
 参数用数组或正确 shell 引号传递，实际执行现成脚本；不要复制实现或自行发送维护正文。脚本只处理状态/通知，**不会替你关闭空间**，必须先完成真实收尾再传 `--page`。维护不得传“签到成功”“待处理 0”，应传“维护中，本轮未执行”或真实已尝试状态。
 

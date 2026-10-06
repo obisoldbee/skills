@@ -15,6 +15,17 @@ from capture_pipeline import decide_gate  # noqa: E402
 
 
 class BatchQualityGateTests(unittest.TestCase):
+    def test_login_phrase_in_substantive_article_is_not_a_wall(self):
+        paragraphs = ["研究方法讨论采样过程与证据的适用范围。" * 18,
+                      "数据分析需要比较多个来源并保留不确定性。" * 18 + "登录后可添加书签。"]
+        html = "<article>" + "".join(f"<p>{p}</p>" for p in paragraphs) + "</article>"
+        self.assertEqual("pass", decide_gate(html, rendered=True)["status"])
+
+    def test_short_and_repeated_loading_walls_are_not_articles(self):
+        for paragraphs in (["登录后继续", "请登录"], ["加载中" * 180, "加载中" * 180]):
+            html = "<article>" + "".join(f"<p>{p}</p>" for p in paragraphs) + "</article>"
+            self.assertNotEqual("pass", decide_gate(html, rendered=True)["status"])
+
     def run_plan(self, root: Path, out_dir: Path, *urls: str):
         environment = os.environ.copy()
         environment["PYTHONDONTWRITEBYTECODE"] = "1"

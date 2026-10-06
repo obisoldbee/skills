@@ -96,8 +96,8 @@ Each row should include these fields when available:
 `bytes` is the only size unit. A `downloaded` row is invalid unless the file is
 inside the declared output root, is reread from disk, is strictly larger than
 5120 bytes, starts with `%PDF`, has matching exact bytes and SHA-256, and has an
-actual strict-boundary DOI/PMID/PMCID match in its PDF bytes or an exact PDF
-Title metadata match. Filename, route URL, HTTP/client headers, and caller text
+actual primary DOI/PMID/PMCID match in PDF Info metadata or an exact PDF
+Title metadata match, with no contradictory title. Filename, route URL, HTTP/client headers, and caller text
 are audit claims only. If disk-derived identity cannot be proved, retain the
 structurally valid PDF candidate as `needs_manual_review`.
 

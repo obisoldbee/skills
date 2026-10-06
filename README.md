@@ -35,7 +35,9 @@
 
 项目并发默认采用 worktree-first：代码任务分别在独立分支和工作目录中修改，最后由一个执行者合并；只读任务和独立报告不申请持久化 claim。已有项目需按 `project-conventions` 的迁移说明切换本地规则，旧数据库保留为历史。当前提供执行指引和策略迁移工具，尚不自动分配 worktree 或强制重定向 Agent 的编辑位置，实际隔离依赖 Agent 创建并使用正确的工作目录。
 
-`chatgpt-codex-review` 需要可用的 ego-browser、已登录的 ChatGPT 网页和 Codex 协作工具。执行时可说：“用 chatgpt-codex-review 审查这个项目，有 GitHub 仓库就审查固定提交，没有则用已配置的 MCP 内容快照，持续修复并复审到约定验收通过。”当前默认 GPT-6 Luna max 负责网页消息、上传、定时观察、回复保存与附件下载校验；新结果或实质阻碍才唤醒 GPT-6 Astra high 核实编排，GPT-6.1 Sol max 开发测试。角色和强度可显式覆盖，未固定版本的系列名遵循 `project-handoff` 的目标能力解析规则。已有 GitHub 的访问或推送故障须在原路径解决，不自动切换 MCP。它是 Agent 工作流，不会自行部署 MCP 或常驻监控；真实跨回合观察必须绑定已验证的 Luna 任务与宿主调度，不能以高成本 Controller 的轮询冒充 Luna 定时执行。
+`chatgpt-codex-review` 在当前可调用且满足任务能力的浏览器中，优先按用户常用工具、已有订阅和已验证登录态选路，包括 Mcode 内置 Browser，以及通过产品入口导入 Chrome 数据后的 Codex 内置浏览器。无适用偏好时 macOS 默认 Ego、Windows 默认 Tabbit；跨 harness 调用需有真实桥接，数据导入不等于持续共享 Chrome profile。还需要已登录的 ChatGPT 网页和 Codex 协作工具。执行时可说：“用 chatgpt-codex-review 审查这个项目，有 GitHub 仓库就审查固定提交，没有可读固定提交时用已配置的 MCP 内容快照，或完整打包授权的本地原件上传，按原范围审查或返修复审。”当前默认 GPT-6 Luna max 负责网页消息、上传、定时观察、回复保存与附件下载校验；新结果或实质阻碍才唤醒 GPT-6 Astra high 核实编排，GPT-6.1 Sol max 开发测试。角色和强度可显式覆盖，未固定版本的系列名遵循 `project-handoff` 的目标能力解析规则。已有 GitHub 的访问或推送故障须在原路径解决，不自动切换 MCP。它是 Agent 工作流，不会自行部署 MCP 或常驻监控；真实跨回合观察必须绑定已验证的 Luna 任务与宿主调度，不能以高成本 Controller 的轮询冒充 Luna 定时执行。
+
+2026-10-07 的执行记录审查、原因判断及本次修复见 [执行一致性说明](chatgpt-codex-review/references/execution-incidents-2026-10-07.md)。
 
 下方保留英文目录布局、初始化、更新和验证说明，便于跨工具、跨设备复用。
 

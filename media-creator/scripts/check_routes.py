@@ -38,6 +38,20 @@ def command_metadata(command: str) -> dict[str, Any]:
     }
 
 
+def tabbit_metadata(system: str, home: Path) -> dict[str, Any]:
+    """Inspect the documented stable launcher only; never invoke the runtime."""
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if system == "Windows":
+        candidate = (Path(local_app_data) / "Tabbit/LocalAgent/bin/tabbit-cli.exe"
+                     if local_app_data else None)
+    else:
+        candidate = home / ".local/bin/tabbit-cli"
+    present = candidate is not None and candidate.is_file()
+    return {"command": "tabbit", "present": present,
+            "resolved": str(candidate) if present else None, "invoked": False,
+            "connection": "not_tested", "capabilities": "runtime_probe_required"}
+
+
 def file_metadata(path: Path, display_path: str) -> dict[str, Any]:
     """Return non-content metadata for a credential file."""
     try:
@@ -90,6 +104,9 @@ def main() -> None:
         "executors": {
             "ego_browser": command_metadata("ego-browser"),
             "mmx": command_metadata("mmx"),
+            "tabbit": tabbit_metadata(system, args.home),
+            "chrome": {"connection": "runtime_probe_required"},
+            "codex_browser": {"connection": "runtime_probe_required", "state": "independent"},
         },
         "agnes_env": file_metadata(agnes_path, agnes_display),
     }

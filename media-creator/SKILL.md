@@ -1,9 +1,11 @@
 ---
 name: media-creator
-description: Route non-native media generation for video, speech, music, and provider-explicit ChatGPT Web, MiniMax Web Music, MiniMax MMX, or Agnes requests. In Codex, do not use this Skill for ordinary image generation or image editing while the built-in imagegen/image_gen path is available; let native imagegen handle those requests directly. Use it for generic image generation on non-Codex agents, preferring an authenticated ChatGPT Web browser route on eligible macOS/ego-browser environments and using MMX only for supported pre-submission fallback modes. Also use it for MiniMax Web Music, MMX or Agnes video generation, MMX speech or explicitly eligible legacy music/cover generation, or when the user explicitly names one of these providers.
+description: Route non-native media generation for video, speech, music, and provider-explicit ChatGPT Web, MiniMax Web Music, MiniMax MMX, or Agnes requests. In Codex, do not use this Skill for ordinary image generation or image editing while the built-in imagegen/image_gen path is available; let native imagegen handle those requests directly. Use it for generic image generation on non-Codex agents, preferring an authenticated ChatGPT Web browser route with a runtime-verified browser on the execution host and using MMX only for supported pre-submission fallback modes. Also use it for MiniMax Web Music, MMX or Agnes video generation, MMX speech or explicitly eligible legacy music/cover generation, or when the user explicitly names one of these providers.
 ---
 
 # Media Creator
+浏览器先按 [宿主偏好与平台选择](references/browser-platforms.md) 执行：先考虑当前可调用且满足能力的用户常用/已订阅 harness 浏览器（含 Mcode）及已导入数据的 Codex 浏览器；没有适用偏好时 macOS 默认 Ego、Windows 默认 Tabbit，其他已连接入口作备用。后文 Ego 示例只适用于 macOS；不存在的 Ego 不是 Windows 业务阻碍。
+
 
 统一管理非原生图片、视频、语音和音乐生成，同时保留每个宿主的原生能力边界。
 
@@ -29,9 +31,9 @@ ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行�
 
 必须把 `provider_execution_authority` 与 `visible_task_creation_authority` 分开判定：普通浏览器生成请求可授权一次有界 provider 提交，但不授权 `create_thread`。仅当用户明确要求“新任务”、“新线程/新对话”、“交接”或“Luna 可见任务”时，才具有 `visible_task_creation_authority`。用户只要 prompt/提示词、规划、preview/预览或 dry-run 时，规范化为对应非执行 mode，两种权限都为 `false`：不打开浏览器、不调用 provider、不创建任务。
 
-对已授权的生成请求，先检查当前任务的已验证浏览器能力：有能力且用户未明确要求新可见任务时，在当前任务按同一 envelope 执行，`ego-browser` 仍是首选。当前任务无可用浏览器且缺少可见任务授权时，返回 `needs_visible_task_authority`，不自行扩大请求。只有获得显式可见任务授权后，才按 `$project-handoff` 创建并校验精确的 `luna-max` visible thread：model=`gpt-5.6-luna`、reasoning=`max`、surface=`visible_thread`。交接 envelope 标记 `execution_role=browser_worker`、`handoff_depth=1`，worker 收到后直接执行，禁止递归 handoff 或再次 dispatch Luna。显式 Luna 请求失败时不得降级。
+对已授权的生成请求，先检查当前任务的已验证浏览器能力：有能力且用户未明确要求新可见任务时，在当前任务按同一 envelope 执行，按平台策略选择执行器。当前任务无可用浏览器且缺少可见任务授权时，返回 `needs_visible_task_authority`，不自行扩大请求。只有获得显式可见任务授权后，才按 `$project-handoff` 创建并校验精确的 `luna-max` visible thread：model=`gpt-6-luna`、reasoning=`max`、surface=`visible_thread`。交接 envelope 标记 `execution_role=browser_worker`、`handoff_depth=1`，worker 收到后直接执行，禁止递归 handoff 或再次 dispatch Luna。显式 Luna 请求失败时不得降级。
 
-登录、验证码、人工确认、当前费用非零或费用/授权不明确时，在提交前通过 ego-browser handoff 暂停。一次提交后保留任务状态，不切换 provider、不重复提交；下载失败只处理同一结果。任何浏览器操作或可见任务创建前，必须让 `scripts/validate_browser_envelope.py` 接受完整 JSON envelope；完整字段和停止条件见 [browser-handoff-envelope.md](references/browser-handoff-envelope.md)。
+登录、验证码、人工确认、费用未知、超出已授权剩余预算或需要新购买/订阅时，在提交前通过所选浏览器人工交接流程暂停。一次提交后保留任务状态，不切换 provider、不重复提交；下载失败只处理同一结果。任何浏览器操作或可见任务创建前，必须让 `scripts/validate_browser_envelope.py` 接受完整 JSON envelope；完整字段和停止条件见 [browser-handoff-envelope.md](references/browser-handoff-envelope.md)。
 
 ## 选择路线
 
@@ -46,7 +48,7 @@ ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行�
 
 ## 图片
 
-- 非 Codex 文生图：在 eligible macOS、ego-browser 可用且 ChatGPT 登录态可复用时优先 ChatGPT Web，并按上面的分轴授权/最终 payload 合同执行；只有在选定浏览器路线之前就确认所需 browser capability 根本不存在时，才可按未指定 provider 的预提交 fallback 使用 MMX；已选定浏览器路线但缺少可见任务授权时返回 `needs_visible_task_authority`。
+- 非 Codex 文生图：在按平台选定的浏览器可用且 ChatGPT 登录态已核实时优先 ChatGPT Web，并按上面的分轴授权/最终 payload 合同执行；只有在选定浏览器路线之前就确认所需 browser capability 根本不存在时，才可按未指定 provider 的预提交 fallback 使用 MMX；已选定浏览器路线但缺少可见任务授权时返回 `needs_visible_task_authority`。
 - 非 Codex 通用图生图、编辑或多图合成：ChatGPT Web 当前只观察到可用的多文件上传控件，端到端编辑尚未验证；先做运行时验证。不可用或验证失败时询问是否改用 Agnes。MMX 当前不是通用图生图 fallback。
 - Agnes 图片：使用 `agnes-image-2.5-flash`，仅在用户显式指定，或能力不匹配后用户确认切换时使用。按图片用途明确需要改变和保留的元素，多图逐一绑定角色；参数、尺寸和 Base64 用法见图片 reference。
 - MMX 图片：仅承诺文生图和单主体参考，不承诺 mask、通用编辑或多图合成。

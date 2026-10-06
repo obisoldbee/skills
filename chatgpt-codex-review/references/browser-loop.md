@@ -1,35 +1,49 @@
-# Luna 的 ego-browser 收发与恢复
+# Luna 的浏览器收发与恢复
 
-先读当前安装的 ego-browser Skill 与真实 API。服务端对话 URL、已发 user message ID/原文 SHA、run/source/token/合同和已保存原件是恢复身份；TaskSpace/page 只是可替换的操作载体，记录当前 `spaceId`、page label 和旧→新映射，不持久化临时 DOM ref。先恢复现有可用的本任务 Agent 空间，确认丢失/关闭/连接失败后按原任务授权重建 Agent 空间并打开原 URL，自行核对原请求后继续。普通可逆恢复不需要用户代找 URL、重开 UI 或重复许可；用户对本任务的直接恢复指示优先于通用的“原空间失效须询问”指引。一个 run 同时只有一个页面操作者；不读/抢其他用户或 Agent 的空间，Astra/Sol 不同时操作这张页面。
+先按 [平台选择与 Windows 调用](browser-platforms.md) 读取所选浏览器 Skill 与真实 API；空间/页面恢复指其真实运行时载体。服务端对话 URL、已发 user message ID/原文 SHA、run/source/token/合同和已保存原件是恢复身份；TaskSpace/page 只是可替换的操作载体，记录当前 `spaceId`、page label 和旧→新映射，不持久化临时 DOM ref。先恢复现有可用的本任务 Agent 空间，确认丢失/关闭/连接失败后，先用当前运行时支持的同空间重连/页面恢复；只有当前 API/Skill 允许或用户已直接授权该项恢复时才重建 Agent 空间并打开原 URL，自行核对原请求后继续。普通可逆恢复不需要用户代找 URL、重开 UI 或重复许可；用户对本任务的直接恢复指示优先于通用的“原空间失效须询问”指引。一个 run 同时只有一个页面操作者；不读/抢其他用户或 Agent 的空间，Astra/Sol 不同时操作这张页面。
 
 | 实际故障 | Luna 下一步 |
 |---|---|
 | 空间仍可用 | 按 ID 恢复该空间与原页面 |
-| 空间已丢失/关闭，或连接失败经核实不能恢复 | 重建本任务 Agent 空间，记录旧→新映射，打开原对话 URL 并核对原请求；不新建研究 |
+| 空间已丢失/关闭，或连接失败经核实不能恢复 | 按当前运行时恢复合同处理；允许重建时才记录旧→新映射并核对原 URL/请求。Ego 的单 Space 规则不因本表自动豁免；仅该受限动作待明确依据，本地工作继续 |
 | 浏览器进程确已退出 | 重开已有应用，再恢复空间/原 URL；不强杀共享浏览器或清 cookies/storage |
 | 请求或发送状态未知 | 核对原历史、草稿和上传状态；不重发、不 Retry/Regenerate |
 | 登录/验证码、真实工具拒绝、用户接管或 inactive/unassigned 所有权 | 停对应操作并交接；不以重建空间、换账号或别的工具绕过 |
 
 恢复最多连续尝试两次；各入口先读主 state 与最新同业务 Luna ledger 的已用次数，切换 Controller/observer、owner/turn 不增加机会。仍失败先诊断实际 app/tool 状态并使用已有 DOM/下载文件，避免无限重启。保存故障和成功的实际 observed_at 与成功原事件 SHA；当前事故之后的真实成功才结束预算，旧成功重放或文件改名不清预算。已解决旧事故的 ledger 次数不带入后来新事故；同空间恢复及同引用下的新实际成功仍可用。权限缺省和真实 denial 不是授权。
 
+## 自有兼容层与控制权
+
+恢复 `browser_context` 时同时保留并核对 browser-platforms 的 `browser_execution_binding`。空间 ID、角色合并或当前阶段变化都不重选实际驱动；动作前和恢复后都用实际入口/所有权证据检查。缺旧绑定先 reload 当前 Skill 与本任务证据；选定 Ego 后不能仅因 Space 不见就用通用 cua_repl 控制其窗口。合法 Ego Page 视觉交互沿用当前 API。
+
+此包适配当前浏览器 Skill/API，不修改官方文件。故障以原始工具回执的结构化代码优先分类；只有自由文本时核对肯定语义，不能因 `not inactive`、历史引用或普通超时推断用户接管。可逆技术恢复复用已有任务授权，且先核实实际所有权；旧对象的 ownership 字段不是当前所有权证明。
+
+运行时明确返回 user-control、inactive/unassigned 或 hard-stop 时，立即在 Luna ledger 保存独立于业务 phase 的 `browser_gate`，Controller 收件后同步。它证明控制门被触发，不证明真人实际做过鼠标/键盘操作。不得通过新 Space、换浏览器、CDP、后台请求或自动 takeOver 绕过。记录后停止受影响的页面操作并暂停本 run 网页 heartbeat，保留未交 payload；Controller 仍可直接读取原件和回执，其他独立本地任务继续。收件、ACK、ACTIVE view、换 owner/turn/source/round 都不解除此门，也不撤销尚欠正文/必需附件的义务。
+
+恢复通过 `resume.browser_gate_resolution` 绑定准确 gate_id、解除时间和原始来源。用户控制/权限拒绝需要本次停止后的直接人类恢复指示；计划任务、heartbeat、Controller 转述、历史指令即使以 userMessage 出现也不能冒充。认证门也可使用不操作被暂停页面的可信运行时认证恢复回执。helper 只检验证据字段与绑定，执行者必须实际核对来源；成功 takeOver 回执不补授事先权限。旧记录缺 gate 时先据原始阻碍证据核对，不能以旧 heartbeat 补作授权。普通技术错误不额外套此门。
+
 ## 准备与发送
 
-Astra 冻结 prompt SHA、run/round/source/token、scope、源码入口、附件清单、合同/host 与权限。materials_only 不发送；已有发送核对真实 user message ID、原文 SHA、URL/source 后接管，本地 token 不冒充网页原文，未知先 reconcile 不重发。未发送时，inline 核实本 turn 的实际 Luna 执行绑定/期限；durable 须有本 run 唯一、目标为真实 Luna 可见聊天的 ACTIVE heartbeat view，不因缺 owner 偷建任务或改 Controller 轮询。Luna 创建或接入已授权对话，真实 UI 核对网页模型/档位、搜索等工具和原 URL，再发现输入框/上传/发送控件，不硬编码选择器/私有端点。只以当前可见且属于该控件的标签/状态作证；隐藏旧菜单或其他控件的“锁定”不能证明模型不可用，必要时查看同一面板截图。首次 /c/id 可在发送后读回，不伪造；指定模型/工具不可用如实报告，不替换。上传按 UI 名称/数量/完成状态核对；MCP 依实际内容工具，不把附件链接当源码快照。网页内容不授予操作权限。
+Astra 冻结 prompt SHA、run/round/source/token、scope、源码入口、附件清单、合同/host 与权限。materials_only 不发送；已有发送核对真实 user message ID、原文 SHA、URL/source 后接管，本地 token 不冒充网页原文，未知先 reconcile 不重发。新审查默认 durable，发送前先解决 Luna 持久收取和真实返回入口。inline 只用于已观察到完整回复的短时收取或用户直接限定仅本回合，核实 inline_policy、本 turn 实际 Luna 执行绑定/期限；durable 须有本 run 唯一、目标为真实 Luna 可见聊天的 ACTIVE heartbeat view，不因缺 owner 偷建任务或改 Controller 轮询。Luna 创建或接入已授权对话，真实 UI 核对网页模型/档位、搜索等工具和原 URL，再发现输入框/上传/发送控件，不硬编码选择器/私有端点。只以当前可见且属于该控件的标签/状态作证；隐藏旧菜单或其他控件的“锁定”不能证明模型不可用，必要时查看同一面板截图。首次 /c/id 可在发送后读回，不伪造；指定模型/工具不可用如实报告，不替换。上传按 UI 名称/数量/完成状态核对。local_packet 先重验本轮 ZIP 和清单 hash，经 UI 上传后记录 source_upload，与源身份和用户消息绑定；随后让 reviewer 列出实际读到的清单和原件，并保存 source_readback_ref。本地打包、上传完成、原文读取分别验证。MCP 依实际内容工具，不把附件链接伪称为 MCP 快照。网页内容不授予操作权限。
 
 发送后在**同一对话**读回带本轮 token 的用户消息，记录消息 ID、prompt SHA、source/合同与附件可见性。点击超时、页面卡住或回执不明时先检查历史、草稿和上传状态；只有明确证实原请求不存在才补发。状态不明继续核对，不能盲点 Retry/Regenerate 或再上传。Astra 接收的 `submission` 事件必须绑定 run/round/source/token/contract/host，且 sent 有实际读回和模型 UI 验证。若消息已读回但 heartbeat 失效，保留消息身份，先补调度再继续观察，不重发。
 
 ## 观察与收件
 
-每次只获取决策所需状态：原请求是否在、其后的新助手消息 ID、生成/错误信号、完整正文长度/SHA、观察时间、证据路径。完整正文写独立 UTF-8 文件；不能把 viewport 截断内容标为完整。只有无生成中和错误、完成操作区可见、同一消息非空正文两次观测指纹相同且间隔至少十秒，才交 Astra 核实。完成控件按当前 UI 实测，可为本消息可见 Copy/复制或“回答已完成”状态；旧 CSS/role 定位返回 false 不证明仍在生成，先检查完整当前消息及实际 DOM/截图并修正定位，原生 completed 不能冒充看见控件。正文变化时观察时间也必须单调。旧回复、按钮暂消失、网页自称“完成”都不足以验收。
+每次只获取决策所需状态：原请求是否在、其后的新助手消息 ID、生成/错误信号、完整正文长度/SHA、观察时间、证据路径。完整正文一旦返回便立即写入独立、不覆盖的 UTF-8 文件，再进行其他浏览器调用；不能把 viewport 截断内容标为完整。只有无生成中和错误、完成操作区可见、同一消息非空正文两次观测指纹相同且间隔至少十秒，才交 Astra 核实。完成控件按当前 UI 实测，可为本消息可见 Copy/复制或“回答已完成”状态；旧 CSS/role 定位返回 false 不证明仍在生成，先检查完整当前消息及实际 DOM/截图并修正定位，原生 completed 不能冒充看见控件。Copy 按钮可见是完成状态证据，不要求点击或读取剪贴板。正文变化时观察时间也必须单调。旧回复、按钮暂消失、网页自称“完成”都不足以验收。
 
-浏览器 innerText、原生 ChatGPT Markdown 和下载 Markdown 是不同表示，各自完整保存并计算 SHA。稳定性比较同一提取方式的两次完整 UI 内容；不要求不同表示逐字节或去换行后一致，也不因正常 Markdown 标记、表格或附件卡片差异判未完成或阻断。
+默认先提取完整 DOM 正文及需要的引用链接并独立落盘，记录消息 ID、提取方式、实际 observed_at、长度、SHA 与“稳定性尚待确认”；不将落盘放在复制、剪贴板、截图或下载之后。正文和链接若分次获得，先保存已返回的正文，缺链接标为待核实；innerText 丢失的 href 不能假装已经收齐。尚缺第二次稳定观测也保留第一份原件，允许独立分析，但不冒充完整稳定验收。
 
-若网页给文件，先按 ego-browser 文档在触发点击前监听 download event，`saveAs()` 到 `artifact_root` 内的独立文件。review_ready/repairing/validating 补件和 waiting_web 使用同一故障/人类门与临时退避；不能跳过分类，错误小回执可由 Controller 保留原阶段直接处理，正常补件保留已收正文。调用 `verify_artifacts.py` 检查本轮 required/optional 合同，保存完整 JSON 回执及校验返回后真实 observed_at，不以文件 mtime 代替。真实下载失败、CRC/PNG 解码失败、缺依赖/不支持格式均报告 missing/invalid/unverified；不得把网页自报文件名或选择文件成功当已收到。无预期原件哈希时只报告本次接收 SHA。必需缺件继续补取，不阻止独立文本核实；可选缺件记录即可。
+原生 Markdown、下载 Markdown、剪贴板和截图仅在冻结合同列为必需或当前证据缺口确实需要时采集；默认不把所有表示都列为必需。可选步骤失败单独留证，不丢弃已保存正文，不阻断不依赖它的正文交付/分析；必需缺件仍按原合同处理。已有 raw 文件、哈希和格式分别保存；稳定性只比较同一提取方式的两次完整 UI 内容，不要求不同表示逐字节一致。无法确认的引用只限制对应结论，不让整份已取得材料归零。
+
+若网页给文件，按 [平台下载合同](browser-platforms.md) 使用实际支持的下载 API，保存到 `artifact_root` 内的独立文件；不要向 Tabbit 强套 download event/saveAs。review_ready/repairing/validating 补件和 waiting_web 使用同一故障/人类门与临时退避；不能跳过分类，错误小回执可由 Controller 保留原阶段直接处理，正常补件保留已收正文。调用 `verify_artifacts.py` 检查本轮 required/optional 合同，保存完整 JSON 回执及校验返回后真实 observed_at，不以文件 mtime 代替。真实下载失败、CRC/PNG 解码失败、缺依赖/不支持格式均报告 missing/invalid/unverified；不得把网页自报文件名或选择文件成功当已收到。无预期原件哈希时只报告本次接收 SHA。必需缺件继续补取，不阻止独立文本核实；可选缺件记录即可。
 
 Luna 写独立 observer record 和完整原件，按 state-contract 门禁静默观察；普通生成/流式变化/重复旧错误不唤醒 Astra。新可行动进展、完整稳定回复或实质阻碍交小回执：绑定、原文/附件路径及 SHA、消息 ID、稳定观测与异常。Astra 读原件核实，只有获准 repair_loop 才派 Sol。正文与 required 文件收齐后只核对未收讫通知，不重复打开网页；采集和 Controller 收讫均闭合才暂停本 run 同一 heartbeat 并回读。仅登记已读、尚未处理的原事件由 Controller 据同一最新 ledger 本地 process_saved_result；已应用同 key/SHA/业务事件重放不再处理，不让旧进展抢占完整报告。正文/附件先后无关，按 Controller/Luna 原校验事件的实际时间核对当前必需快照；较新失败覆盖旧成功，较新真实成功不被旧 Luna 失败遮盖。新必需快照先本地应用，队首可选回执或历史 A→B→A 去重不能替代此步；顺序不明或同时间冲突先本地重验，不重开网页。项目级 watcher 的开发等待独立保留。下一轮发送前重新 arm 同一 ID、核实 ACTIVE，再用原对话和当前可用载体。inline 收齐直接交回 Controller，一次处理记收讫，不要求后台任务。
 
 ## 临时故障
 
-正常生成等待不刷新。服务器繁忙/网络/加载失败保存证据、确认草稿/上传后刷新原 URL 并核对请求，连续最多三次，退避至少 30/60/120 秒；正常清零。预算用尽停反复刷新、保留较低频 Luna 观察；已知额度恢复等待静默去重，不永久取消监测。旧错误无内容/状态转变不重复通知 Astra。请求在就观察，未知核对历史，明确不存在才按发送门补发；已完成上传/下载不重复传取。空间丢失或崩溃用 `browser_fault/browser_recovered` 恢复载体，不当外部终态；只自动解除原始证据已确认并标记的载体 blocker，材料/源码等无关或未分类 blocker 保留，独立恢复浏览器后仍核对其真实解除条件。旧证据不清先读原记录或正常 resume+resolution_ref，不新增用户恢复许可。过期 inline 绑定由当前真实 Luna 执行/turn/期限续接，保留原未收讫队列，不让用户配置调度。真实登录/验证码/权限拒绝/用户控制才停对应动作，Controller 核实独立工作和外部条件后记阻碍；解除后按正常 resume 清除该门标记。跨回合等待需真实 Luna 调度，缺则准确报告，不用 sleep 冒充常驻。
+正常生成等待不刷新。服务器繁忙/网络/加载失败保存证据、确认草稿/上传后刷新原 URL 并核对请求，连续最多三次，退避至少 30/60/120 秒；正常清零。预算用尽停反复刷新、保留较低频 Luna 观察；已知额度恢复等待静默去重，不永久取消监测。旧错误无内容/状态转变不重复通知 Astra。请求在就观察，未知核对历史，明确不存在才按发送门补发；已完成上传/下载不重复传取。空间丢失或崩溃用 `browser_fault/browser_recovered` 恢复载体，不当外部终态；只自动解除原始证据已确认并标记的载体 blocker，材料/源码等无关或未分类 blocker 保留，独立恢复浏览器后仍核对其真实解除条件。旧证据不清先读原记录或正常 resume+resolution_ref，不新增用户恢复许可。过期 inline 绑定由当前真实 Luna 执行/turn/期限续接，保留原未收讫队列，不让用户配置调度。真实登录/验证码/权限拒绝/用户控制按上述独立 browser_gate 处理；只有 gate-bound 解除证据才可 resume。跨回合等待需真实 Luna 调度，缺则准确报告，不用 sleep 冒充常驻。
+
+可选复制/剪贴板超时不升级为整个浏览器失效，不为补可选表示重建空间或重发。`PageEvaluationTimeoutError` 等提示执行仍挂起或可能产生迟到副作用时，保留原错误及实际 `executionStopped/pageResponsive/mayHaveLateEffects`（仅记录工具实际返回字段）；先核对原操作结果，不能盲重试有副作用的动作。优先处理已落盘正文及真正必需的缺件。
 
 整体验收完成或用户叫停时按浏览器 Skill 的 finish 合同收尾；临时错误、用户接管或暂停时不误报成功。

@@ -19,8 +19,8 @@ Source classification and execution eligibility are separate:
 | Required network | `any` |
 | External dependencies | Python 3, Git, an exact non-Git checkout pool, the matching valid `others-manager` wrapper for apply operations, and ordinary GitHub reachability for clone or update operations; a credential-free loopback HTTP proxy is accepted when consistently supplied through standard proxy environment variables |
 | Credential provider | none for supported public-GitHub operations |
-| Verification | Run the package and wrapper validators; use `inventory` for local readback. Static validation and local inventory do not prove live GitHub reachability or a successful mutation. |
-| Stop rule | Stop on Windows before any pool, plan, receipt, lock, or Git operation. Also stop on a missing or invalid wrapper capability, mismatched pool topology, unavailable required tooling, unknown repository identity, or failed GitHub verification. Do not install tools, collect credentials, weaken the gates, or substitute another pool. |
+| Verification | Run the package validator; validate the matching wrapper before apply. Use `inventory` for local readback. Static validation and local inventory do not prove live GitHub reachability or a successful mutation. |
+| Stop rule | Stop on Windows before any pool, plan, receipt, lock, or Git operation. For `apply-clone/apply-update`, also stop on a missing or invalid wrapper capability; local inventory, planning and package maintenance require no writer capability. Stop the affected operation on mismatched pool topology, unavailable required tooling or unknown repository identity, and require GitHub verification for network operations. Do not install tools, collect credentials, weaken the apply gates, or substitute another pool. |
 
 `personal-open` is the public source category; `portable` means no named device or network profile is required on a supported macOS or Linux host. Windows is currently unsupported because the controller depends on POSIX permission checks, directory durability, and no-replace directory rename primitives; the CLI fails before touching the pool. Ordinary internet reachability for a network operation is an external dependency, not a named network profile. Local inventory does not require network access.
 
@@ -33,7 +33,7 @@ Source classification and execution eligibility are separate:
    - all-repository refresh: delegate `inventory` and `plan-update`, then let the controller review and run `apply-update`
    - one new upstream: delegate `plan-clone`, then let the controller review and run `apply-clone`
 4. Treat `plan_id` as an integrity checksum, not authorization. A delegated worker's controller handoff authority consists only of the plan path and ID; it may also return the required descriptive evidence, but never a writer token or apply command.
-5. The controller independently reviews the plan, including `license.status`, acquires an exclusive writer claim in the matching `others-manager` wrapper, and applies with the expected plan ID plus that private capability.
+5. For `apply-clone/apply-update` only, the controller independently reviews the plan, including `license.status`, acquires an exclusive writer claim in the matching `others-manager` wrapper, and applies with the expected plan ID plus that private capability. Inventory and plan-only work stop at their requested output without entering this apply step.
 6. Return the JSON report, blockers, and advisories. A license advisory does not block clone or update; an operational blocker still does.
 
 Read [operations.md](references/operations.md) before any mutating run. When delegating execution to a low-context or Luna worker, use the exact bounded contracts in [luna-task-briefs.md](references/luna-task-briefs.md).

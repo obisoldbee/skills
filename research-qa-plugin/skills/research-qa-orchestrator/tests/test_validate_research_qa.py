@@ -299,6 +299,7 @@ class RunFixture:
         components: dict[str, dict[str, Any]],
         *,
         reviewable_count: int = 30,
+        supplementary_count: int = 0,
         expert_reworks: dict[str, int] | None = None,
         exhausted_expert: str | None = None,
         synthesis_reworks: int = 0,
@@ -356,6 +357,7 @@ class RunFixture:
             self.paper_downloader_root,
         )
         self.reviewable_count = reviewable_count
+        self.supplementary_count = supplementary_count
         self.expert_reworks = expert_reworks or {}
         self.exhausted_expert = exhausted_expert
         self.synthesis_reworks = synthesis_reworks
@@ -735,6 +737,8 @@ class RunFixture:
         rows = [source_row(index) for index in range(1, self.reviewable_count + 1)]
         self.acquisition_operation_receipts_structurally_validated = 0
         for index, row in enumerate(rows, 1):
+            if index <= self.supplementary_count:
+                row.update(collection_role="supplementary", collection_role_reason="counterevidence")
             payload = self.package / row["local_payload_path"]
             payload.parent.mkdir(parents=True, exist_ok=True)
             pdf_bytes = minimal_valid_pdf_bytes(f"publication-{index}")
@@ -1309,6 +1313,14 @@ class RunFixture:
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_supplementary_corpus_does_not_consume_target_quota(self):
+        rows = [{"reviewable": True} for _ in range(49)]
+        rows.append({"reviewable": True, "collection_role": "supplementary", "collection_role_reason": "counterevidence"})
+        with self.assertRaises(validator.ValidationError):
+            validator.target_quota(rows, 50)
+        rows.append({"reviewable": True})
+        self.assertEqual({"target_requested": 50, "target_reviewable": 50, "supplementary_reviewable": 1}, validator.target_quota(rows, 50))
+
     def test_bundled_verifier_without_upstream_roots_is_not_compared(self) -> None:
         result = subprocess.run(
             [sys.executable, "-B", str(VERIFY_BUNDLED_PATH)],
@@ -1930,6 +1942,22 @@ class ValidatorTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assert_run_error(fixture, plugin, "akashic_manifest_boundary")
+
+    def test_full_run_keeps_supplementary_coverage_but_not_quota(self):
+        for total in (30, 31):
+            with self.subTest(total=total), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                plugin, components = build_plugin(root)
+                fixture = RunFixture(root, plugin, components, reviewable_count=total, supplementary_count=1)
+                if total == 30:
+                    self.assert_run_error(fixture, plugin, "collection_not_ready")
+                else:
+                    result = validator.validate_run(plugin, fixture.package,
+                        submissions_root_input=fixture.submissions_root,
+                        live_rule_input=fixture.rule, akashic_root_input=fixture.akashic_root)
+                    self.assertEqual(31, result["reviewable_source_count"])
+                    self.assertEqual(30, result["quota"]["target_reviewable"])
+                    self.assertEqual(1, result["quota"]["supplementary_reviewable"])
 
     def test_twenty_nine_sources_cannot_enter_success(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

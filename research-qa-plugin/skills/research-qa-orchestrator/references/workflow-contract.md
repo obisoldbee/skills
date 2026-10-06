@@ -32,7 +32,7 @@ Stage 1: user topic locked
   -> Stage 2: eight independent persona topic contributions
   -> research brief frozen
   -> Stage 3: Akashic-first lookup, search, lawful acquisition, independent material audit
-  -> at least 30 unique reviewable publications, then source set frozen
+  -> the requested target quota (at least 30 unique reviewable target publications), then source set frozen
   -> Stage 4: same full frozen corpus delivered to eight clean persona contexts
   -> every expert attempt independently audited; exact 8/8 pass
   -> Stage 5: synthesis from accepted inputs only
@@ -137,7 +137,7 @@ Stop without a success report on any of these conditions:
 - live-rule absence or drift;
 - incomplete Stage 2 roster or reused context;
 - Akashic match followed by a download attempt;
-- false `downloaded` claim, non-scholarly counted row, duplicate identity counted twice, or fewer than 30 reviewable sources;
+- false `downloaded` claim, non-scholarly counted row, duplicate identity counted twice, or an unmet requested target quota (minimum 30 reviewable target sources);
 - material audit reject;
 - incomplete full-corpus coverage, thin/defective expert output, context reuse, non-pass expert, or exhausted retry chain;
 - synthesis reject/exhaustion or incomplete event/receipt chain.
@@ -157,3 +157,12 @@ Stop without a success report on any of these conditions:
 | Paper Downloader consumer is a correct symlink/junction, but no runtime catalog receipt exists | `linked` only; stop `acquisition_executor_discovery_unverified`. |
 | Thirty synthetic PDFs satisfy size and magic but have no Paper Downloader operation receipts | Preserve them as fixture bytes; do not claim acquisition execution or successful run. |
 | Eight context strings exist but no visible-task/operation receipts exist | Self-report only; do not count expert execution. |
+
+### Visible-task authority preflight
+
+Before reservation, Codex runs require direct user authorization for the new visible contexts
+that cannot be reused. Record `visible_task_creation_authority` and its user-message provenance
+in the run handoff, separately from research/provider permission. Skill invocation alone does
+not authorize chat creation. Existing contexts require verified clean-context suitability and
+messaging authority. If missing, name that gap before package creation; hidden subagents are
+not a substitute. Reuse existing session authorization rather than asking twice.

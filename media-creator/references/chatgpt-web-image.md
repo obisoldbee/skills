@@ -23,47 +23,24 @@
 
 发起任务的主任务必须先冻结最终图片 payload：最终 prompt、已确认的输入文件和顺序（没有输入图时为空列表），以及调用方授权的绝对输出路径。本路线的浏览器执行器只把这个 payload 映射到页面、发送一次、等待、下载和验证；不得重写 prompt、补创意或丢弃输入。
 
-普通生成请求只授予 `provider_execution_authority`，不授予 `visible_task_creation_authority`。用户未明确说“新任务/新线程/交接/Luna 可见任务”时，当前任务有已验证浏览器能力就在当前任务执行；没有则返回 `needs_visible_task_authority`，不创建 thread。只有明确授权新可见任务时，主任务才创建并校验精确的 `luna-max` visible thread（`gpt-5.6-luna`、`max`），再把带有 `execution_role=browser_worker`、`handoff_depth=1`、`created_and_validated_by=originating_main_task` 的 envelope 交给 ego-browser worker。worker 直接执行，不得递归 handoff 或再次 dispatch Luna。显式 Luna 请求创建失败时不能降级。任何浏览器或 task 动作前先运行 `scripts/validate_browser_envelope.py`。
+普通生成请求只授予 `provider_execution_authority`，不授予 `visible_task_creation_authority`。用户未明确说“新任务/新线程/交接/Luna 可见任务”时，当前任务有已验证浏览器能力就在当前任务执行；没有则返回 `needs_visible_task_authority`，不创建 thread。只有明确授权新可见任务时，主任务才创建并校验精确的 `luna-max` visible thread（`gpt-6-luna`、`max`），再把带有 `execution_role=browser_worker`、`handoff_depth=1`、`created_and_validated_by=originating_main_task` 的 envelope 交给 浏览器 worker。worker 直接执行，不得递归 handoff 或再次 dispatch Luna。显式 Luna 请求创建失败时不能降级。任何浏览器或 task 动作前先运行 `scripts/validate_browser_envelope.py`。
 
 若用户只要求 prompt、规划、预览或 dry-run，只返回 payload：不打开浏览器、不调用 provider、不创建可见任务。
 
 ## Executor 选择
 
-当前首选 executor 是 macOS 上的 ego-browser，因为它提供隔离 task space，并继承用户登录态。但 executor 存在不等于可创建新任务：当前任务可直接使用已验证的 ego-browser；只有具有显式可见任务授权时才使用上述 `luna-max` visible thread，普通隐藏/未校验 thread 不能替代它。
+按 [浏览器平台](browser-platforms.md) 选择执行器：显式选择优先，再从真实可调用且满足能力的入口中按用户已有订阅、常用工具和已验证登录态选择；无适用偏好时才用 macOS Ego / Windows Tabbit 默认及其备用路线。浏览器存在不授予新可见任务权限。envelope 的 `executor` 写实际 `ego-browser`、`tabbit`、`chrome`、`codex-browser` 或 `mcode-browser`；静态校验不代替运行时能力检查。
 
-提交前确认：
+提交前在独立的本任务页面确认 ChatGPT URL、真实登录态、图片模式、composer、所需上传/下载能力和可写输出目录。`check_routes.py` 只做本地元数据检查，不检查登录或连接。只有自动选路尚未选定/提交 Web 路线、且无可用浏览器能力时，文生图才可按路由改走 MMX；Windows 或缺 Ego 本身不是 provider fallback 原因。图生图/多图不改走 MMX；Agnes 需原选择授权。登录或人工检查保留页面交用户处理。
 
-1. 当前系统是 macOS；
-2. `ego-browser` 可执行；
-3. 独立 Agent task space 能打开 `https://chatgpt.com/`；
-4. 页面有可用的 prompt composer，且不是登录页；
-5. 输出目录可写。
+## 浏览器工作流
 
-若用户已明确要求 ego-browser，按 ego-browser Skill 直接尝试，不额外运行安装探测。若只是自动选路，可用本包 `check_routes.py` 做本地环境检查；它不检查登录。
-
-非 macOS，或在交接前确认没有 ego-browser/已验证等价浏览器能力时：
-
-- 文生图在任务尚未提交前改走 MMX；
-- 通用图生图/多图不得改走 MMX，询问是否使用 Agnes；
-- 若当前 harness 有内置浏览器，只能在登录、上传、DOM 状态和浏览器上下文下载均验证后启用。
-
-浏览器可用但 ChatGPT 尚未登录时，按 ego-browser handoff 交给用户登录并暂停；不要把“需要登录”当作 MMX fallback 条件。
-
-## ego-browser 工作流
-
-严格遵守 ego-browser Skill：浏览器操作使用 heredoc，不先写 `.js` 文件。
-
-1. 主任务先完成 envelope 和分轴授权判定。当前任务有已验证 ego-browser 能力且用户未明确要求新可见任务时，使用与用户目标相关的短名称调用 `useOrCreateTaskSpace`；同一目标跨轮次复用返回的数值 ID。只有具有显式 `visible_task_creation_authority` 时才先校验/创建 visible `luna-max` thread，再由 worker 在该 thread 提供的 task space 中执行。
-2. `openOrReuseTab('https://chatgpt.com/', { wait: true })`。
-3. 用 `snapshotText()`、`pageInfo()` 和必要的 `js()` 观察当前界面，不假定按钮文案、模型、质量或 DOM 选择器仍与旧 Skill 相同。
-4. 确认登录。若需要人工登录，调用 `handOffTaskSpace(id)` 并停止；用户明确“继续”后才 `takeOverTaskSpace(id)`。
-5. 当前已验证入口是“添加文件等 → 创建图片”。操作后确认 `#prompt-textarea` 内出现 `data-id="picture_v2"` 的不可编辑胶囊。入口和标记都属于可漂移 UI，未来仍应现场观察。
-6. 保留 `picture_v2` 胶囊，把光标置于其后并使用真实键盘输入 `typeText`。不要对整个 composer 执行 `innerText=''` 或 `fillInput`，否则会删除当前图片模式。读回胶囊后的精确提示词再发送。
-7. 发送一次。任务可能已创建后，不因等待超时而再次发送，不切换到 MMX 或其他 provider。
-8. 轮询生成状态和错误状态；确认“停止”控件消失、图源稳定且图片实际尺寸已加载。页面可能为同一结果渲染多个 `<img>`，必须按 `currentSrc/src` 去重，不能把 DOM 节点数当生成次数。
-9. 在浏览器上下文下载，并保存到调用方指定的绝对路径。
-10. 验证文件类型、非零大小、尺寸和 SHA-256。
-11. 确认完成后，在单独的最终 heredoc 中调用 `completeTaskSpace(id, { keep: false })`。
+1. 完成 envelope 与授权判定；按当前运行时 Skill 创建/恢复本任务载体，记录真实 runtime/group/tab ID。有显式可见任务授权才创建 Luna worker；worker 不递归派发。
+2. 打开或恢复原 ChatGPT URL，读取当前 DOM/语义状态，不套旧 Ego API 到 Tabbit。
+3. 从当前 UI 选择图片模式，核对模型、输入附件与最终 prompt。不要清空 composer 中的模式胶囊；历史 `picture_v2` 标记只作线索，不是固定门槛。
+4. 发送一次并读回。超时或结果未知先核对原请求，不重新生成、不换 provider。
+5. 等待生成完成与最终图源加载；按图源去重，多个 DOM 节点不算多次生成。
+6. 按平台下载合同保存至授权路径，校验类型、非零大小、尺寸和 SHA-256。保存 URL/证据后关闭自建临时载体。
 
 避免坐标作为首选；优先使用语义树、稳定 locator、角色/文本关系和状态读回。页面发生变化时先停止并重新观察，不要盲点旧坐标或旧 selector。
 
@@ -71,13 +48,13 @@
 
 ChatGPT 结果 URL 可能依赖登录 cookie。不要假定 Node/server 侧直接请求可以访问。
 
-优先在当前浏览器页面上下文获取最终图像，转换为 Base64/Data URL 后传回 Node 侧保存。只选择已经加载、尺寸合理且属于本次生成结果的唯一 `estuary/content` 图源；不要抓取侧边栏头像、历史缩略图或占位图。
+按当前浏览器支持的原生下载或页面上下文文件下载获取最终图像；只有当前 API 支持时才用 Base64/Data URL 传回 Node 保存。只选择已经加载、尺寸合理且属于本次生成结果的唯一 `estuary/content` 图源；不要抓取侧边栏头像、历史缩略图或占位图。
 
 输出路径必须由当前任务提供。创建父目录，默认不覆盖既有文件；若目标已存在，除非用户明确要求覆盖，否则生成带版本后缀的文件名。
 
 ## 图片输入
 
-2026-08-13 的只读 UI 观察确认页面存在启用的 `input[data-testid="upload-photos-input"]`，`accept="image/*"` 且支持 multiple；ego-browser 提供：
+2026-08-13 的只读 UI 观察确认页面存在启用的 `input[data-testid="upload-photos-input"]`，`accept="image/*"` 且支持 multiple；当时的 Ego helper 示例是（历史 API，执行时读当前 Skill；Tabbit 使用观察到的 input 的 `setInputFiles`）：
 
 ```javascript
 await uploadFile('input[type="file"]', '/absolute/path/to/input.png')
@@ -95,7 +72,7 @@ await uploadFile('input[type="file"]', '/absolute/path/to/input.png')
 
 ## 失败与清理
 
-- 未登录：对已有的当前任务 task space 使用 ego-browser 人工接管；若需要新可见任务交接，必须先有用户明确授权。暂停时不读取凭据或绕过验证，也不把登录/创建失败当作 MMX fallback。
+- 未登录：对已有的当前任务 task space 使用所选浏览器的人工接管流程；若需要新可见任务交接，必须先有用户明确授权。暂停时不读取凭据或绕过验证，也不把登录/创建失败当作 MMX fallback。
 - DOM/按钮未知：保存去敏截图和语义快照，停止并更新合同。
 - 发送状态不明：不得重发；先确认是否出现 assistant turn、停止按钮、任务状态或生成结果。
 - 下载 403：改用浏览器上下文 fetch，不重新生成。

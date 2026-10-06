@@ -4,6 +4,8 @@ Use this contract for requested handoff or visible-task orchestration with multi
 
 In a visible-task run, `worker` means a separate user-owned Codex task created through `create_thread`. It never means `spawn_agent`, a collaboration subagent, or an agent path.
 
+`Executor` describes the task role, not a developer job title: workers may implement, research, review, operate tools, or perform scheduled observation. Apply result collection and quality criteria to the actual work; a recurring observer also has an ongoing monitoring responsibility beyond any one observation.
+
 ## Contents
 
 1. Run boundary
@@ -25,6 +27,7 @@ In a visible-task run, `worker` means a separate user-owned Codex task created t
 - Create visible workers only through the live `create_thread` tool and validate the real creation receipt. Hidden-subagent capacity, activity, paths, and ids are outside this lifecycle.
 - Keep model choice separate from file-write, provider-call, deployment, publication, installation, and formal-adoption authority.
 - Use a single-task receipt instead of controller files when the run has only one short-lived lane and no later handoff.
+- Execution includes result collection and Controller quality review, even for a single lane. Use [result collection](result-collection.md) to choose short inline waits or verified event/scheduled follow-up. Only the user's explicit dispatch-only instruction transfers follow-up responsibility; a verified observer may take over waiting without closing the run.
 
 ## 2. Dependency graph and lane contract
 
@@ -43,6 +46,8 @@ For every lane, declare:
 | `expected_outputs` | Artifacts or receipts needed by the gate |
 | `validation` | Exact command or evidence rule |
 | `route` | Requested route, selected model, reasoning, surface, and the basis for each field |
+
+Also bind the result reader, return location, next observation entry, and Controller acceptance criteria in the handoff and current record. The lane's executor validation does not replace Controller review. Assign mechanical checks to the selected capable observation executor first, then tune cadence; prefer the user's Luna-max monitoring policy over repeated Astra status checks. Record the exact check objective, real observer model/effort and automation binding, escalation conditions, and result return path. Short inline waits remain useful; neither a timer nor a separate reviewer is universally mandatory.
 
 Route each lane after its scope and dependencies are known. Do not select one executor for an entire mixed run merely because the first lane fits it.
 
@@ -109,8 +114,8 @@ The integration owner is the only actor allowed to reconcile cross-lane changes,
 For a durable multi-task run, create these files under the user-approved output root, not under read-only source or input trees:
 
 - `controller/plan.json` — dependency graph, scopes, routes, expected outputs, and integration owner.
-- `controller/thread-registry.md` — lane, visible task id, title, status, dependencies, route, expected outputs, last sync cursor/time, and caller-specific write endpoint with its creation/delivery evidence. Record each direction separately; readable hosts are discovery hints, not replacement write endpoints.
-- `controller/status.md` — current wave, ready queue, running lanes, blockers, invalidated gates, next action, and integration state.
+- `controller/thread-registry.md` — lane, visible task id, title, status, dependencies, route, expected outputs, result reader/return location, last sync cursor/time, and caller-specific write endpoint with its creation/delivery evidence. Record each direction separately; readable hosts are discovery hints, not replacement write endpoints.
+- `controller/status.md` — current wave, ready queue, running lanes, received versions, pending quality reviews, acceptance evidence/decisions, blockers, invalidated gates, next action, and integration state.
 - `controller/router-log.jsonl` — append-only dispatch, message, retry, user intervention, gate, abort, archive, and integration events.
 
 Normalize the actual `create_thread` result and require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to pass before recording creation. Record the exact `actual_tool`, `actual_create_thread_arguments`, `dispatch_attempt_sha256`, `thread_id` plus `host_id`, or queued `client_thread_id`; never record `/root/<agent>`, `agentPath`, `agentThreadId`, or subagent activity. Never pass a queued client id to a tool that requires a ready task id.
@@ -128,18 +133,18 @@ Append events; do not rewrite history to make a retry or failure disappear. `sta
 Controller to worker:
 
 - Send one self-contained RUN envelope with exact inputs, outputs, authority, route, validation, and stop rules.
-- Name the result reader, next check time/entry and Controller receipt responsibility. In the current turn use bounded waits/reads; cross-turn observation needs a verified actual observer and schedule, never a Controller heartbeat or a prompt-only promise. Use a verified Luna owner when a Luna monitoring policy is already selected, such as chatgpt-codex-review or an explicit user choice. Respect explicit other model/effort choices; ordinary handoff does not select or modify unrequested axes. Reuse an existing suitable visible owner; new visible task creation still needs a direct user request.
+- Name the result reader, return location, next check entry, and quality gate. Follow [result collection](result-collection.md): give a selected Luna-max observer a concrete mechanical goal and bounded inputs; leave substantive decisions and quality acceptance to the Controller. Verify the actual model/effort, automation owner, and result return/resume route. Avoid repeated unchanged reads, preserve cursors, back off, and keep unchanged checks quiet without waking Astra. Short waits may stay inline; a verified observer can take over long waits while the Controller ends the current turn as pending. Preserve explicit routes and task-creation authority.
 - Send a correction only after reading the latest worker state. Do not duplicate an uncertain RUN or correction.
 - When the global goal changes, pause or abort affected lanes, invalidate stale downstream gates, update the graph, and then send scoped replacements.
 
 Worker to Controller:
 
 - Reconcile task state and the required artifacts or response evidence; an unsupported self-report is not completion evidence. A response-only audit is assessed against its requested findings and verifiable sources, without creating unrequested files.
-- Record changed files, validation, risks, and the lane's requested next state.
+- Record changed files or response evidence, the exact candidate version, validation, risks, and the lane's requested next state. Return `result_ready` for a completed candidate; Controller receipt and quality acceptance are later facts.
 - Save results before sending a hint. Distinguish collected, delivered and Controller received; message success is not receipt. Controller directly waits/reads the worker or saved result even when a reverse send fails. Follow [cross-device transport](cross-device-transport.md): unknown delivery remains unresolved until the original attempt is reconciled; a confirmed rejection requires the correct write endpoint before retry. `idle` does not release ownership. Exhausted immediate retries preserve the readable result and the next low-cost receipt check.
 - Carry forward only verified outputs. Mark replaced or superseded outputs stale until revalidated.
 
-Controller records actual receipt alongside result assessment in its existing state/log update; no separate approval or round trip is required. The selected observer owns observation/delivery records, while Controller remains the sole main-state writer. Web capture ending cannot stop a project watcher that still owns development/build waits. Dots may be the sole coordinator only when the user explicitly assigns it and its actual target and permissions are verified; local task access does not establish arbitrary cross-host chat access or bypass active-writer constraints. It is not a default dependency.
+Controller records actual receipt and its quality decision for that version in the existing state/log; no separate approval or round trip is required. Read the actual output and applicable validation evidence before accepting it. Return concrete defects or missing evidence for authorized rework and recheck the revised candidate. A forbidden or failed reverse notification increases the importance of Controller pull; it never transfers collection to the user. The selected observer owns observation/delivery records, while Controller remains the sole main-state writer. Web capture ending cannot stop a project watcher that still owns development/build waits. Dots may be the sole coordinator only when the user explicitly assigns it and its actual target and permissions are verified; local task access does not establish arbitrary cross-host chat access or bypass active-writer constraints. It is not a default dependency.
 
 User to either side:
 
@@ -151,11 +156,15 @@ User to either side:
 
 Use explicit states:
 
-`planned -> ready|standby -> queued|created_unconfirmed|running -> needs_input|needs_fix|blocked|failed|aborted|succeeded_pending_integration -> integrated -> archived`
+`planned -> ready|standby -> queued|created_unconfirmed|running -> result_ready -> received_pending_review -> needs_fix|succeeded_pending_integration -> integrated -> archived`
+
+`needs_input`, `blocked`, `failed`, and `aborted` remain available when their actual conditions occur; they are not successful acceptance.
 
 - `created_unconfirmed`: creation returned an id but prompt/task readback is not yet available.
+- `result_ready`: the worker returned a candidate; it has not yet been accepted by the Controller.
+- `received_pending_review`: the Controller read the returned version; quality review is still open.
 - `needs_fix`: the worker stopped, but an expected artifact or validation gate failed.
-- `succeeded_pending_integration`: the lane gate passed, but the integration owner has not closed the run gate.
+- `succeeded_pending_integration`: the Controller reviewed and accepted the actual candidate against the lane gate, but the integration owner has not closed the run gate. A worker self-report using this label is still pending review.
 - `integrated`: the integration owner reconciled the lane into the required product and reran the integration validation.
 
 Retry rules:
@@ -182,9 +191,9 @@ Archive rules:
 
 A lane reaches `succeeded_pending_integration` only when:
 
-1. the worker has stopped or returned a final lane result;
+1. the executor has returned the result required by this lane; a recurring monitor reaches its overall completion gate only when its declared monitoring obligation ends, not after one successful check;
 2. every required artifact/receipt exists and is non-empty when file output is required;
-3. lane validation passes;
+3. the Controller has received that exact version, inspected the actual output and applicable validation evidence, and recorded a passing quality decision against the original request;
 4. changed files and remaining risks are reported;
 5. the handoff state required by downstream lanes is explicit.
 
@@ -194,9 +203,11 @@ The run succeeds only when:
 2. the integration owner has reconciled all changes and write conflicts;
 3. all declared integration checks applicable to the final deliverable pass; unrelated suites and repeated passing runs require a concrete new concern;
 4. no required dependency, retry, user intervention, or stale output remains unresolved;
-5. the final deliverable and task receipts are reported.
+5. the final deliverable, task receipts, Controller quality decisions, and actual integration/delivery state are reported.
 
 Creating many tasks, receiving fluent worker responses, or saying “used multiple Agents” satisfies none of these gates by itself.
+
+Choose efficient observation rather than keeping the Controller in a repeated wait loop. Once actual scheduled/event follow-up and result return are verified, the current turn may end with pending work and a named next check/trigger; this is not run completion. “Executor started” or “will review later” alone is insufficient. An explicit dispatch-only request or user stop changes the obligation; a genuine unresolved external blocker leaves the run incomplete with a precise resume action.
 
 ## 9. Boundary examples
 

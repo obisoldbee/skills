@@ -23,8 +23,6 @@ class SkillRoutingContractTests(unittest.TestCase):
         generic = SKILL_TEXT.index("generic web or browser capability")
 
         self.assertLess(purpose_built, generic)
-        self.assertIn("when `ego-browser` is listed", SKILL_TEXT)
-        self.assertIn("use it first", SKILL_TEXT)
 
     def test_static_probe_does_not_exhaust_rendered_browser_route(self):
         self.assertIn(

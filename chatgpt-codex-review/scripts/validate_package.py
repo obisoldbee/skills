@@ -12,12 +12,14 @@ from urllib.parse import unquote, urlsplit
 
 REQUIRED = {
     "SKILL.md", "agents/openai.yaml", "references/source-packets.md",
-    "references/browser-loop.md", "references/orchestration.md", "references/state-contract.md",
+    "references/browser-platforms.md", "references/browser-loop.md", "references/orchestration.md", "references/state-contract.md",
     "assets/review-request.md", "assets/fix-task.md", "assets/watcher-task.md",
     "scripts/next_action.py", "scripts/route_source.py", "scripts/verify_artifacts.py",
-    "scripts/validate_package.py", "tests/test_review_cycle.py",
+    "scripts/validate_package.py", "scripts/local_packet.py", "tests/test_local_packet.py", "tests/test_review_cycle.py",
+    "scripts/validate_browser_binding.py", "tests/test_execution_contracts.py",
     "tests/test_source_and_artifacts.py",
     "tests/test_scheduler.py",
+    "references/execution-incidents-2026-10-07.md",
 }
 
 

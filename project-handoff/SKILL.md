@@ -13,9 +13,15 @@ description: >-
 
 Route work from verified project state. Preserve complete portable handoff as a first-class result while using one Controller for decomposition, dispatch, synchronization, and integration when execution is requested.
 
+Execution dispatch includes progress follow-up, result collection, and Controller quality review by default, even for one worker. The user need not separately say “wait for the result.” Only an explicit request to send/create and leave follow-up to the user selects `dispatch_only`; one lane, a successful send, or the absence of a timer does not.
+
+An executor (`worker`) performs any assigned task: development, research, review, computer operation, or scheduled observation. The role is not limited to a developer. A scheduled observer is also an executor; its observations, return evidence, and monitoring lifecycle require appropriate quality checks.
+
+Optimize cost per accepted result by assigning the work to an appropriate model before tuning check frequency. Prefer Luna-max for clearly specified mechanical observation, leaving Astra's attention for decisions, exception handling, and substantive quality review when it is the selected Controller. Reuse an explicit Luna-max monitoring policy; do not equate an Astra wake-up with a Luna check merely because both consume tokens. A bare Skill invocation still does not override unselected model axes.
+
 Background: Use this Skill as the single control surface for complete handoff, bounded dispatch, or dependency-aware orchestration. A handoff or task receipt is routing evidence, not authority to deploy, publish, install, or adopt.
 
-Scope: Ordinary continuation or internal subagent collaboration stays within the current task's rules. The visible-task guard prohibits substituting subagents for requested visible tasks; it does not prohibit internal help. For complete handoff, load the portable template; for execution, load only the references required by the selected route and outcome. Reuse current readings until the relevant contract or state changes.
+Scope: Ordinary continuation or internal subagent collaboration stays within the current task's rules. The visible-task guard prohibits substituting subagents for requested visible tasks; it does not prohibit internal help. Simplifying instructions or merging roles preserves applicable earlier model, effort and visible-surface choices for the same responsibility; calling that responsibility internal does not erase them. For complete handoff, load the portable template; for execution, load only the references required by the selected route and outcome. Reuse current readings until the relevant contract or state changes.
 
 Materials: Read the target project's current instructions, accepted decisions, active goal, file state, authorized read/write roots, required deliverables, validation commands, recipient capabilities, and any explicit model/reasoning/concurrency choices.
 
@@ -29,12 +35,13 @@ Success criteria: The recipient can continue from verified materials without hid
 
 ## Non-negotiable dispatch guard
 
-For this Skill's selected visible-task execution route, apply this gate before choosing or calling any task, follow-up, retry, or task tool. Complete handoff artifacts and ordinary internal collaboration do not run the dispatch guard. A live tool schema describes technical capability; capability is not route authority.
+For this Skill's selected visible-task execution route, apply this gate before visible-task creation, authorized follow-up dispatch, route changes, or an eligible dispatch retry. Ordinary `list_threads`, `read_thread`, and `wait_threads` observation does not run the dispatch guard. A modeled readback retry uses the validator-supported `read_thread` action; normal `wait_threads` observation is not a dispatch attempt. Complete handoff artifacts and ordinary internal collaboration do not run the dispatch guard. A live tool schema describes technical capability; capability is not route authority.
 
 1. Resolve `requested_route`, each axis's requested value, effective model/reasoning, surface, exact tool, per-axis basis (`explicit_user`, `explicit_skill_route`, `explicit_auto`, or `platform_default`), operation, action, failure class, and whether the user explicitly changed the route.
 2. Validate that attempt with `scripts/validate_dispatch_route.py` and retain its `attempt_sha256`. For a multi-lane run, also put `requested_route` and `surface` in every plan route and run `scripts/validate_orchestration_plan.py`.
 3. Proceed only on `valid: true`. For visible creation, copy only the validator's `create_thread_arguments`; never fill a field listed in `omitted_create_thread_fields`. After creation, record the actual arguments and attempt hash in the normalized receipt, then require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to return `valid: true` before recording task creation.
 4. Do not treat a worker prompt, a tool schema, a planned action, or prose review as proof of the tool actually called.
+5. Before accepting a selected formal execution, compare the retained selection with actual runtime/session/readback model, effort and surface through `scripts/validate_execution_binding.py`. Keep the original applicable selection as `--previous` across simplification or role merging. A creation receipt proves routing, and requested arguments alone do not prove the actual execution pair. Ordinary helpers remain allowed under their own scope; unselected axes stay omitted.
 
 Hard invariants:
 
@@ -52,7 +59,7 @@ Hard invariants:
 | Outcome | Use when | Result |
 |---|---|---|
 | Complete handoff | The recipient is external, lacks direct task/CLI access, needs a progress transfer, or the user asks for a prompt/file | Portable prompt or Markdown; no task or model call |
-| Single dispatch | One bounded lane should run elsewhere | One visible Codex task receipt |
+| Single dispatch | One bounded lane should run elsewhere | Visible task receipt, collected result, and Controller quality decision; receipt only for explicit dispatch_only |
 | Orchestrated run | Work has multiple independent lanes, dependencies, or stage gates | Dependency graph, controller records when durable, visible tasks, verified integration |
 
 Apply this precedence:
@@ -74,6 +81,8 @@ Boundary examples:
 - Example 2: “把三个互不写同一文件的机械检查并发派给 Luna-max” → one ready concurrency wave, then one Controller integration gate.
 - Example 3: “先让 Astra-max 出设计，确认后再让 Sol-max 开发” → two serial waves; create the development task only after the design artifact and acceptance gate pass.
 - Example 4: “project-handoff 是做什么的？” → explain the three outcomes; do not infer dispatch authority.
+- Example 5: “重新派一个 sol-max 做 coding Agent 进行修复” → dispatch, follow progress, collect the candidate, review its actual changes and validation, and request authorized corrections. Do not stop after confirming startup.
+- Example 6: “只创建并发过去，后续我自己跟” → explicit `dispatch_only`; verify delivery and required initial readback, report work pending, and name the user as the follow-up owner.
 
 ## Dispatch tool contract
 
@@ -85,13 +94,13 @@ Do not use when: The user asks only for a complete text/file handoff or explanat
 
 Parameters: Project/host target, lane id and goal, self-contained prompt, exact read/write paths, mutable resources, dependencies, expected outputs, validation, requested/effective model/reasoning axes with separate bases, the validator-produced `create_thread_arguments` and `attempt_sha256`, concurrency cap, integration owner, retry budget, and archive policy.
 
-For completion or coordination work, bind the result reader, next check time/entry, and Controller receipt responsibility before dispatch. Initial delivery is not result receipt. The current Controller can use bounded `wait_threads`/`read_thread`; cross-turn waiting requires an actual verified observer and resumable schedule. An already selected Luna monitoring policy (for example chatgpt-codex-review or an explicit user choice) uses a verified Luna owner; respect explicit other model/effort choices, and ordinary handoff does not select or modify an unrequested axis. Reuse a suitable visible owner; creating another visible task still requires a direct user request. Do not use a Controller heartbeat or claim background follow-up from a prompt. Web capture and development/build waiting remain separate obligations.
+Before execution dispatch, read [result collection and quality review](references/result-collection.md). Bind the result reader, readable return location, next check entry, and acceptance criteria. Select the observation executor first: a chosen Luna-max policy gives Luna a precise goal, read scope, mechanical checks, return format, escalation triggers, and stop condition. Verify the automation actually runs on that Luna/max owner; putting “Luna” in an Astra-thread prompt does not change the executor. For long/uncertain waits, use this observer or a real completion trigger, keep unchanged checks quiet, and wake the Controller only for actionable evidence. A short bounded inline wait remains useful when delegation overhead would exceed the check. Once actual follow-up and result delivery are verified, the current turn may end with work explicitly pending; collection and quality review remain open. Preserve selected model/effort and monitoring authority. Web capture and development/build waiting remain separate obligations.
 
 Returns: A confirmed `thread_id` plus `host_id`, a queued `client_thread_id`, exact `actual_tool`, prompt-delivery/readback state, receipt-guard result, current cursor/status, artifact/validation receipts, or an exact structured failure.
 
 Failure handling: Classify the exact failure with the dispatch guard. Metadata synchronization retries and message transport recovery are separate. For a writer conflict or connection failure, follow [cross-device transport](references/cross-device-transport.md): retain the original request, reconcile delivery, restore its verified write endpoint and continue result collection. A transport failure leaves that delivery pending; it does not stop the project. Never silently change route, scope, authority, executor, or create a second task by stripping a rejected parameter.
 
-Tool stop rule: End dispatch-only after verified delivery; end a lane or run at its declared gate, user stop or genuine unresolved external dependency. An exhausted communication retry budget ends immediate resends only: keep the pending receipt, next check and independent work. For requested completion/coordination, collect the actual results; a send failure or successful dispatch does not close that obligation.
+Tool stop rule: End explicit `dispatch_only` after verified delivery and host-required initial observation, reporting work pending. Otherwise continue through result receipt, quality review, authorized rework, and the declared integration gate. A wait timeout, missing reverse notification, or absent timer does not close that obligation. User stop or a genuine unresolved external dependency leaves an explicit incomplete state. An exhausted communication retry budget ends immediate resends only; keep collecting readable results and doing independent work.
 
 Task: Apply the verified materials, selected outcome, route basis, authority boundary, dependency/conflict analysis, tool contract, and stop rules above to produce the requested complete handoff or close the authorized dispatch through its artifact and integration gates.
 
@@ -131,7 +140,7 @@ For explicit model `auto`, use this policy:
 | Decomposition, scheduling and integration coordination (`orchestration`) | Astra / `high` |
 | Writing, development, or executing an accepted plan (`writing`, `astra_planned_execution`) | Sol / `max` |
 | Desktop computer operation (`computer_operation`) | Sol / `medium` |
-| Simple browser operation (`browser_operation`), mechanical audit/file lookup/script execution (`mechanical`) | Luna / `max` |
+| Simple browser operation (`browser_operation`), mechanical audit/file lookup/script execution or specified status observation (`mechanical`) | Luna / `max` |
 | Anything else or insufficient scope evidence | Obtain an explicit route; do not guess |
 
 Resolve the family to the destination's current model ID before validation. Role effort applies only when reasoning was selected as `auto`; preserve explicit effort and omit unselected axes. A reasoning-only auto request without a role retains `max` and never selects a model. Terra and older exact IDs remain human-selected alternatives. Bare family names select only the model. Tool selection does not lower a task's reasoning needs: a judgmental browser review must be classified by its substantive work.
@@ -154,7 +163,7 @@ Read `references/thread-dispatch.md` and use the live Codex task tools exclusive
 4. Create every currently ready independent lane without waiting for another lane in that wave, without adding omitted model/thinking fields.
 5. Normalize the returned receipt with the exact `actual_create_thread_arguments` and `dispatch_attempt_sha256`, pass it together with the exact attempt to `validate_visible_task_receipt.py`, and only then record its task id or queued client id; reject agent paths and subagent ids. On rejection, set the lane to `failed` with `invalid_visible_task_evidence`, never `created_unconfirmed`.
 6. Set a concise title when supported and confirm prompt delivery from the receipt or readback. Retry only an eligible readback/title synchronization delay against the same task; never retry task creation by changing route fields.
-7. If the request includes completing or coordinating the worker's result, monitor with bounded task waits/readback and the declared artifact/evidence checks. Before closing dispatch-only, verify creation and delivery and satisfy any initial progress wait/readback required by the live host; report the worker's work as pending. This does not require waiting for worker completion. Commentary alone is not completion.
+7. Follow progress and collect the final result by default, then perform the Controller quality review in [result collection](references/result-collection.md). An ordinary timeout keeps the work pending and may justify a less frequent or scheduled check; it does not require a tight same-turn loop. A verified background continuation may take over observation while the current turn ends with an interim status. Neither initial progress nor an executor completion claim is acceptance. Only explicit `dispatch_only` transfers follow-up responsibility after delivery and host-required initial readback.
 8. Reconcile direct user-to-worker messages before the next dispatch; preserve the task's route on follow-up unless the user explicitly changes it.
 9. Create dependent tasks just in time after their upstream artifact and validation gate passes.
 
@@ -166,7 +175,7 @@ For cross-device communication, also read [cross-device transport](references/cr
 
 For a durable multi-task run, maintain `controller/plan.json`, `controller/thread-registry.md`, `controller/status.md`, and append-only `controller/router-log.jsonl` under the approved output root. Keep the Controller as the routing source of truth while allowing lane-local user/worker conversation.
 
-Use explicit states for planned, ready, standby, queued/unconfirmed, running, needs input/fix, blocked, failed, aborted, succeeded pending integration, integrated, and archived. Log retries, replacements, user interventions, aborts, and archive receipts. Do not hide or overwrite failed history.
+Use explicit states for planned, ready, standby, queued/unconfirmed, running, result ready, received pending review, needs input/fix, blocked, failed, aborted, succeeded pending integration, integrated, and archived. Keep worker return, Controller receipt, quality decision, and integration distinct. Log retries, replacements, user interventions, aborts, and archive receipts. Do not hide or overwrite failed history.
 
 Archive visible tasks only when the user requests cleanup or an explicit run policy permits it after integration or acknowledged abandonment.
 
@@ -186,7 +195,7 @@ Use `scripts/make_handoff.py` for a Markdown scaffold and `references/legacy-han
 
 ## Close on product evidence
 
-A lane is only ready for integration when its required output/receipt exists, lane validation passes, changed files and risks are reported, and its handoff state is explicit. For a response-only lane, the requested final response and its verifiable source evidence are the output; do not require an unrequested disk artifact. The run succeeds only when the integration owner reconciles all required lanes and conflicts, all applicable declared integration checks pass, stale/retried work is resolved, and the final deliverable is reported. Do not add unrelated suites or repeat passing checks without a new change, failure, or unresolved concern.
+A lane is only ready for integration when the Controller has actually collected its output, reviewed it against the original request, verified the applicable evidence, and recorded an acceptance decision for that exact version. Report changed files, remaining risks, and handoff state. Worker self-tests support review but do not replace it. A failed review returns `needs_fix` with concrete corrections and continues within the existing authority. For a response-only lane, review the final response and its verifiable sources without requiring an unrequested disk artifact. The run succeeds only when the integration owner reconciles all required lanes and conflicts, all applicable declared integration checks pass, stale/retried work is resolved, and the final deliverable is reported. Do not add unrelated suites or repeat passing checks without a new change, failure, or unresolved concern.
 
 Using multiple Agents, creating tasks, or receiving plausible worker prose is never a success condition.
 
@@ -199,6 +208,7 @@ Using multiple Agents, creating tasks, or receiving plausible worker prose is ne
 - Do not create a hidden subagent when a visible task was requested.
 - Do not write `created_confirmed`, `created_unconfirmed`, or `queued` without a valid create-thread receipt containing the required real task identifier.
 - Do not claim a task received work until readback or a creation receipt supports it.
+- Do not infer dispatch_only from a single-task request or stop at startup because no timer or reverse message exists. Result collection and quality review remain the Controller's responsibility unless the user explicitly transfers it.
 - Do not call a model when complete handoff was requested.
 - Do not parallelize lanes with undeclared or unresolved shared mutable state.
 - Do not start downstream work before its upstream artifact gate passes.

@@ -25,11 +25,13 @@ python3 -B "<skill_dir>/scripts/render_report.py"
 
 | JSON 字段 | 当前证据与取值 |
 |---|---|
-| `page` | 对象，`status` 为 closed / preserved / failed / unconfirmed / not_created；可附实际数字 `space_id`。closed 必须有真实关闭核验，不能因为调用 finish 就填 closed。 |
+| `page` | 对象，`status` 为 closed / preserved / failed / unconfirmed / not_created；可附实际 `space_id`：Ego 保留非负整数，其他运行时使用 `runtime:kind:id` 字符串（例如 `tabbit:group:<真实组ID>`）。closed 必须有真实关闭核验，不能因为调用 finish 就填 closed。 |
 | `notifications` | 本轮真实通知尝试数组，无触发用 `[]`。每项含 `kind`（auth / failure / low_traffic / maintenance_entered / maintenance_recovered）、`status`（sent / failed / unknown / needs_configuration）；sent 还必须传实际 `message_id`。 |
 | `maintenance_unchanged` | 仅状态脚本明确返回 maintenance 且无变化/未触发时可填 true；脚本失败不能填 true。 |
 | `reason` | 可选。仅阻塞/异常时一行简短中文原因，不填正常执行解释，不复制日志。 |
 | `action` | 可选。确需用户操作时只写一项必要动作；正常和维护自动等待均省略，不写“结束/无/建议优化”。 |
+
+`space_id` 是兼容字段名，不把组或标签伪装成 Ego 数字空间。`runtime` 为 ego-browser / tabbit / chrome / codex-browser / mcode-browser，`kind` 为实际观察到的 space / group / tab；ID 保留原值，非空、无空白/控制字符，整个字符串不超过 256 字符。不使用任务名称或把十六进制组 ID 转为整数；保留实际工具回执。所有带 ID 的状态都校验格式，但 closed/not_created 不在短报告中展示 ID。格式通过不证明连接或所有权。
 
 维护脚本 `transition:entered/recovered` 分别映射 maintenance_entered/maintenance_recovered，status 使用其真实发送结果；无变化不产生通知项。未执行通知、配置缺失、发送失败、回执未知、已送达必须区分。通知情况独立于业务结果：发送失败不抹掉已完成动作，业务正常也不能掩盖收尾或发送异常。
 

@@ -128,8 +128,20 @@ def paragraphs(region: str) -> list[str]:
 
 def is_placeholder_or_noise(body_text: str, paragraph_count: int) -> bool:
     normalized = body_text.lower()
+    meaningful = meaningful_char_count(body_text)
     if any(term in normalized for term in PLACEHOLDER_TERMS):
-        return True
+        # A substantive article can discuss logging in or JavaScript. Only
+        # short prompts or a body dominated by prompt text imply a wall.
+        prompt_lines = [line.strip() for line in normalized.splitlines()
+                        if meaningful_char_count(line) <= 120
+                        and any(term in line for term in PLACEHOLDER_TERMS)]
+        prompt_chars = sum(meaningful_char_count(line) for line in prompt_lines)
+        repeated_marker_chars = sum(
+            meaningful_char_count(term) * normalized.count(term)
+            for term in PLACEHOLDER_TERMS
+        )
+        if meaningful < 400 or max(prompt_chars, repeated_marker_chars) >= meaningful * 0.6:
+            return True
     compact = re.sub(r"[\W_]+", "", body_text, flags=re.UNICODE)
     if paragraph_count == 0 or not compact:
         return True

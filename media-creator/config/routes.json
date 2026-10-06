@@ -22,7 +22,7 @@
     },
     "luna_max": {
       "route": "luna-max",
-      "model": "gpt-5.6-luna",
+      "model": "gpt-6-luna",
       "reasoning": "max",
       "thread": "visible",
       "surface": "visible_thread",
@@ -60,7 +60,7 @@
       "additional_task_or_submission": "requires_new_authority"
     },
     "worker": {
-      "executor": "ego-browser",
+      "executor": "platform_selected_browser",
       "execution_role": "browser_worker",
       "handoff_depth": 1,
       "recursive_dispatch": false,
@@ -68,7 +68,7 @@
     },
     "current_task_browser": {
       "capability": "runtime_verified_browser_executor",
-      "executor_preference": "ego-browser",
+      "executor_preference": "platform_selected_browser",
       "execution_role": "browser_executor",
       "handoff_depth": 0,
       "recursive_dispatch": false,
@@ -84,13 +84,13 @@
         "project_handoff_visible_task_surface"
       ],
       "requirements_are_conjunctive": true,
-      "preferred_local_executor": "ego-browser",
+      "preferred_local_executor": "platform_selected_browser",
       "is_fallback_after_luna_creation_failure": false,
       "explicit_luna_request_may_downgrade": false
     },
     "submission": {
       "pre_submission_manual_or_login_check": "handoff_and_pause",
-      "nonzero_or_ambiguous_cost": "pause_before_submission",
+      "unknown_over_budget_or_new_purchase_cost": "pause_before_submission",
       "duplicate_submission": false,
       "post_submission_provider_switch": false,
       "download_retry": "same_submitted_result_only"
@@ -100,15 +100,12 @@
     "non_codex_text_to_image": {
       "primary": "chatgpt-web-image",
       "primary_preconditions": {
-        "platform": "Darwin",
-        "ego_browser": "present",
+        "browser_capability": "runtime_verified",
         "chatgpt_login": "required_at_runtime"
       },
       "pre_submission_fallback": "minimax-mmx-image",
       "fallback_phase": "before_submission_only",
       "fallback_when": [
-        "platform_is_not_Darwin",
-        "ego_browser_missing",
         "browser_capability_absent_before_browser_route_selection"
       ],
       "fallback_exclusions": [
@@ -172,31 +169,30 @@
         "kind": "authority_gated_browser_execution",
         "current_task": {
           "kind": "verified_browser_executor",
-          "preferred_command": "ego-browser",
+          "preferred_command": "platform_selected_browser",
           "requires_visible_task_creation_authority": false
         },
         "visible_task": {
           "kind": "project_handoff_visible_thread",
           "orchestrator": "project-handoff",
           "route": "luna-max",
-          "model": "gpt-5.6-luna",
+          "model": "gpt-6-luna",
           "reasoning": "max",
           "surface": "visible_thread",
           "requires_visible_task_creation_authority": true,
           "worker": {
-            "kind": "external_browser_cli",
-            "command": "ego-browser",
+            "kind": "runtime_verified_browser",
+            "command": "platform_selected_browser",
             "vendored": false
           }
         }
       },
       "runtime_preconditions": {
-        "platform": "Darwin",
-        "ego_browser": true,
         "chatgpt_login": true,
         "login_check": "runtime_only",
         "current_task_browser_capability": "runtime_verified",
-        "visible_task_dispatch": "explicit_authority_only"
+        "visible_task_dispatch": "explicit_authority_only",
+        "browser_capability": "runtime_verified"
       },
       "alternative_executor": {
         "kind": "harness_builtin_browser",
@@ -213,11 +209,11 @@
         "required_when": "visible_task_creation_authority_explicit",
         "orchestrator": "project-handoff",
         "luna_route": "luna-max",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "reasoning": "max",
         "thread": "visible",
         "surface": "visible_thread",
-        "worker_executor": "ego-browser",
+        "worker_executor": "platform_selected_browser",
         "execution_role": "browser_worker",
         "handoff_depth": 1,
         "recursive_dispatch": false,
@@ -389,20 +385,20 @@
         "kind": "authority_gated_browser_execution",
         "current_task": {
           "kind": "verified_browser_executor",
-          "preferred_command": "ego-browser",
+          "preferred_command": "platform_selected_browser",
           "requires_visible_task_creation_authority": false
         },
         "visible_task": {
           "kind": "project_handoff_visible_thread",
           "orchestrator": "project-handoff",
           "route": "luna-max",
-          "model": "gpt-5.6-luna",
+          "model": "gpt-6-luna",
           "reasoning": "max",
           "surface": "visible_thread",
           "requires_visible_task_creation_authority": true,
           "worker": {
-            "kind": "external_browser_cli",
-            "command": "ego-browser",
+            "kind": "runtime_verified_browser",
+            "command": "platform_selected_browser",
             "vendored": false
           }
         }
@@ -420,22 +416,21 @@
         ]
       },
       "runtime_preconditions": {
-        "platform": "Darwin",
-        "ego_browser": true,
         "minimax_web_login": true,
         "output_path": "caller_authorized_absolute_path",
         "current_task_browser_capability": "runtime_verified",
-        "visible_task_dispatch": "explicit_authority_only"
+        "visible_task_dispatch": "explicit_authority_only",
+        "browser_capability": "runtime_verified"
       },
       "browser_handoff": {
         "required_when": "visible_task_creation_authority_explicit",
         "orchestrator": "project-handoff",
         "luna_route": "luna-max",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "reasoning": "max",
         "thread": "visible",
         "surface": "visible_thread",
-        "worker_executor": "ego-browser",
+        "worker_executor": "platform_selected_browser",
         "execution_role": "browser_worker",
         "handoff_depth": 1,
         "recursive_dispatch": false,
@@ -501,5 +496,24 @@
         }
       }
     }
-  ]
+  ],
+  "browser_platforms": {
+    "preference_source": "caller_subscription_familiarity_verified_session",
+    "native_executors": ["mcode-browser"],
+    "native_access": "current_harness_or_verified_bridge",
+    "chrome_import": "product_ui_then_verify_site_session",
+    "explicit_user_choice": "first",
+    "defaults": {
+      "Darwin": "ego-browser",
+      "Windows": "tabbit"
+    },
+    "fallbacks": [
+      "chrome",
+      "codex-browser"
+    ],
+    "selection": "runtime_verified_task_capabilities",
+    "chrome_session": "connected_chrome_only",
+    "codex_browser_state": "independent",
+    "after_submission": "reconcile_same_request_before_any_retry"
+  }
 }
