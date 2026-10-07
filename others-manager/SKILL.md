@@ -60,6 +60,8 @@ Run `python3 -B scripts/manage_others.py --help` from this Skill directory. Plan
 
 Use `scripts/validate_package.py` after modifying this Skill. Use `scripts/validate_wrapper.py` from the collection controller when validating a local wrapper/projection.
 
+Static wrapper validation accepts the exact relative member symlink on macOS/Linux and a directory junction to the exact package on Windows, including Python 3.11 reparse-tag detection. It preserves the supplied wrapper/package/pool entry types before resolving the projection; linked boundaries, ordinary source copies, wrong targets and dangling projections fail. This static check does not enable Windows management operations.
+
 ## Stop conditions
 
 Stop the affected repository and report its exact blocker when state is dirty, detached, ahead, diverged, archived, duplicated, misrouted, operation-in-progress, stale relative to the plan, or otherwise outside the declared write set. Report an unverified license as an advisory, not a repository-management blocker. Continue only with independently safe repositories in an approved all-update plan.

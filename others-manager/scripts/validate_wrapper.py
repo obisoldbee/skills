@@ -7,11 +7,28 @@ import argparse
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 
 
 EXPECTED_LINK = "../../GitHub/others-manager"
+
+
+def is_junction(path: Path) -> bool:
+    native = getattr(os.path, "isjunction", None)
+    if native is not None:
+        return bool(native(path))
+    # Python 3.11 has no isjunction; lstat still exposes the reparse tag.
+    return getattr(os.lstat(path), "st_reparse_tag", None) == getattr(
+        stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
+
+
+def is_projection_link(path: Path) -> bool:
+    try:
+        return is_junction(path) if os.name == "nt" else path.is_symlink()
+    except OSError:
+        return False
 
 
 def git_root(path: Path) -> Path | None:
@@ -38,7 +55,7 @@ def validate(wrapper: Path, package: Path, pool: Path) -> list[str]:
         "memory/MEMORY.md",
         "docs/specs/2026-08-24-others-manager-spec.md",
     )
-    if wrapper.is_symlink() or not wrapper.is_dir():
+    if wrapper.is_symlink() or is_projection_link(wrapper) or not wrapper.is_dir():
         return ["wrapper must be a real directory"]
     if (wrapper / ".git").exists() or (wrapper / ".git").is_symlink():
         errors.append("wrapper must not be a Git repository")
@@ -47,7 +64,7 @@ def validate(wrapper: Path, package: Path, pool: Path) -> list[str]:
         if path.is_symlink() or not path.is_file():
             errors.append(f"missing wrapper file: {relative}")
 
-    if package.is_symlink() or not package.is_dir() or not (package / "SKILL.md").is_file():
+    if package.is_symlink() or is_projection_link(package) or not package.is_dir() or not (package / "SKILL.md").is_file():
         errors.append("public package source is invalid")
     else:
         root = git_root(package)
@@ -55,11 +72,12 @@ def validate(wrapper: Path, package: Path, pool: Path) -> list[str]:
             errors.append("package must be a direct child of its exact public Git root")
 
     projection = wrapper / "src/others-manager"
-    if not projection.is_symlink():
-        errors.append("src/others-manager must be a symbolic link")
+    if not is_projection_link(projection):
+        errors.append("src/others-manager must be a directory junction" if os.name == "nt"
+                      else "src/others-manager must be a symbolic link")
     else:
         raw = os.readlink(projection)
-        if raw != EXPECTED_LINK:
+        if os.name != "nt" and raw != EXPECTED_LINK:
             errors.append(f"projection must use exact relative target {EXPECTED_LINK}")
         try:
             resolved = projection.resolve(strict=True)
@@ -69,7 +87,7 @@ def validate(wrapper: Path, package: Path, pool: Path) -> list[str]:
             if resolved != package.resolve(strict=True):
                 errors.append("projection does not resolve to exact public package source")
 
-    if pool.is_symlink() or not pool.is_dir():
+    if pool.is_symlink() or is_projection_link(pool) or not pool.is_dir():
         errors.append("managed pool must be a real directory")
     elif (pool / ".git").exists() or (pool / ".git").is_symlink():
         errors.append("managed pool root must not contain .git")
@@ -95,9 +113,10 @@ def main() -> int:
     parser.add_argument("--package", required=True)
     parser.add_argument("--pool", required=True)
     args = parser.parse_args()
-    wrapper = Path(args.wrapper).resolve(strict=True)
-    package = Path(args.package).resolve(strict=True)
-    pool = Path(args.pool).resolve(strict=True)
+    # Keep the supplied entry's link identity for validate's boundary checks.
+    wrapper = Path(args.wrapper).expanduser().absolute()
+    package = Path(args.package).expanduser().absolute()
+    pool = Path(args.pool).expanduser().absolute()
     errors = validate(wrapper, package, pool)
     report = {
         "status": "pass" if not errors else "fail",

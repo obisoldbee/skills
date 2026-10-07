@@ -9,7 +9,8 @@ import sys
 import tempfile
 import unittest
 
-from test_review_cycle import HELPER, ROOT, apply, event, followup, observation, state, submission
+from test_review_cycle import (HELPER, ROOT, apply, event, followup, observation, preparation,
+                               receipt, state, submission, with_required)
 from test_scheduler import authorized, collected, delivery, notification_check, scheduled, recovery
 
 SPEC = importlib.util.spec_from_file_location("browser_binding", ROOT / "scripts/validate_browser_binding.py")
@@ -135,6 +136,64 @@ class ReadinessAndExistingOwnerTests(unittest.TestCase):
             self.assertFalse(rejected["submission_ready"])
         self.assertIsNone(HELPER.current_followup(current, {"observed_at": "2026-01-01T00:00:20+00:00",
             "followup_view": {**view, "evidence_ref": "paused-view"}}))
+
+    def prepared_checkpoint(self):
+        current = authorized(state("ready_to_submit"))
+        current["followup"] = followup(current, status="PAUSED", checked_seconds=0, evidence_ref="paused-view")
+        view = followup(current, checked_seconds=20, evidence_ref="actual-before-submit-view")
+        checked = HELPER.decide(current, self.checkpoint(current, followup_view=view))
+        self.assertFalse(checked["submission_ready"])
+        return apply(current, checked), view
+
+    def test_before_submit_can_reuse_the_exact_fresh_checkpoint_view_once(self):
+        current, view = self.prepared_checkpoint()
+        original = copy.deepcopy(view)
+        incoming = {**submission(current), "status": "not_sent", "definitive_absence": True,
+                    "observed_at": "2026-01-01T00:00:21+00:00", "followup_view": copy.deepcopy(view)}
+        report = HELPER.decide(current, incoming)
+        self.assertEqual(report["action"], "submit_once")
+        self.assertTrue(report["submission_ready"])
+        current = apply(current, report)
+        self.assertIsNone(current["pre_submission_followup"])
+        repeat = HELPER.decide(current, incoming)
+        self.assertFalse(repeat["submission_ready"])
+        self.assertEqual(repeat["action"], "ensure_followup")
+        sent = HELPER.decide(current, {**submission(current), "observed_at": "2026-01-01T00:00:22+00:00",
+                                     "followup_view": view})
+        self.assertEqual(sent["action"], "watch")
+        self.assertEqual(view, original)
+
+    def test_checkpoint_reuse_preserves_freshness_owner_run_and_prompt_binding(self):
+        current, view = self.prepared_checkpoint()
+        incoming = {**submission(current), "status": "not_sent", "definitive_absence": True,
+                    "observed_at": "2026-01-01T00:00:21+00:00", "followup_view": view}
+        expired = HELPER.decide(current, {**incoming, "observed_at": "2026-01-01T00:10:21+00:00"})
+        self.assertFalse(expired["submission_ready"])
+        for change in ({"status": "PAUSED", "next_check_at": None, "active_automation_ids": []},
+                       {"owner_thread_id": "other-owner"}, {"run_id": "other-run"}):
+            with self.subTest(change=change):
+                rejected = HELPER.decide(current, {**incoming, "followup_view": {**view, **change}})
+                self.assertFalse(rejected["submission_ready"])
+        for changes in ({"round": 2}, {"source_id": "git:" + "d" * 40}, {"request_token": "another-round"}):
+            self.assertFalse(HELPER.reusable_submission_followup({**current, **changes}, incoming))
+        altered = copy.deepcopy(current)
+        altered["prepared_request"]["sha256"] = "d" * 64
+        self.assertFalse(HELPER.decide(altered, incoming)["submission_ready"])
+        for change in ({"evidence_ref": "renamed-old-view"}, {"checked_at": "2026-01-01T00:00:21+00:00"}):
+            self.assertFalse(HELPER.reusable_submission_followup(current, {**incoming, "followup_view": {**view, **change}}))
+        self.assertFalse(HELPER.reusable_submission_followup(state("ready_to_submit"), incoming))
+
+    def test_unknown_submission_discards_checkpoint_reuse_and_never_grants_a_send(self):
+        current, view = self.prepared_checkpoint()
+        unknown = HELPER.decide(current, {**submission(current), "status": "unknown",
+            "observed_at": "2026-01-01T00:00:21+00:00", "followup_view": view})
+        self.assertEqual(unknown["action"], "reconcile_submission")
+        self.assertFalse(unknown["submission_ready"])
+        current = apply(current, unknown)
+        self.assertIsNone(current["pre_submission_followup"])
+        unresolved = HELPER.decide(current, {**submission(current), "status": "not_sent", "definitive_absence": True,
+            "observed_at": "2026-01-01T00:00:22+00:00", "followup_view": view})
+        self.assertFalse(unresolved["submission_ready"])
 
     def test_verified_historical_existing_luna_is_reused_without_old_new_creation(self):
         current = state()
@@ -453,6 +512,206 @@ class WebReviewRegressionTests(unittest.TestCase):
                 evidence_ref="actual-rearmed-unknown-send.json")))
         self.assertEqual(ready["action"], "followup_ready")
         self.assertFalse(ready["submission_ready"])
+
+    def correction(self, current, ledger, seconds, complete_value, **fields):
+        item = ledger["notifications"][0]
+        return HELPER.decide(current, notification_check(current, seconds,
+            notification_key=item["key"], notification_receipt_sha256=item["receipt_sha256"],
+            requested_output_collection={**self.proof(current), "complete": complete_value,
+                "evidence_ref": f"coverage/check-{seconds}.json", **fields}), ledger)
+
+    def attachment(self, current, ledger, seconds):
+        return HELPER.decide(current, event(current, "scheduled_artifacts", receipt=receipt(current),
+            observed_at=scheduled(current, seconds)["observed_at"],
+            followup_view=followup(current, checked_seconds=seconds, evidence_ref=f"artifact-view-{seconds}")), ledger)
+
+    def test_negative_or_unknown_correction_blocks_until_a_new_positive_check(self):
+        for complete in (False, None):
+            with self.subTest(complete=complete):
+                current = with_required(self.current())
+                full = self.full(current)
+                original = copy.deepcopy(full["controller_event"])
+                negative = self.correction(current, full["observer_updates"], 20, complete)
+                self.assertIs(negative["observer_updates"]["output_collection_proofs"][-1]["proof"]["complete"], complete)
+                replay = self.correction(current, negative["observer_updates"], 21, True,
+                                         **self.proof(current))
+                attached = self.attachment(current, replay["observer_updates"], 30)
+                self.assertFalse(attached["activate_controller"])
+                self.assertEqual(attached["observer_updates"]["notifications"][0]["attempts"], 0)
+                restored = self.correction(current, attached["observer_updates"], 40, True)
+                self.assertEqual(restored["action"], "notify_controller")
+                self.assertEqual(restored["controller_event"], original)
+
+    def test_replayed_appended_positive_cannot_erase_a_later_negative(self):
+        current = with_required(self.current())
+        full = self.full(current, proof=False)
+        positive = self.correction(current, full["observer_updates"], 20, True)
+        negative = self.correction(current, positive["observer_updates"], 30, False)
+        replay = self.correction(current, negative["observer_updates"], 40, True,
+                                 evidence_ref="coverage/check-20.json")
+        self.assertEqual(len(replay["observer_updates"]["output_collection_proofs"]), 2)
+        attached = self.attachment(current, replay["observer_updates"], 50)
+        self.assertFalse(attached["activate_controller"])
+        self.assertEqual(self.correction(current, attached["observer_updates"], 60, True)["action"], "notify_controller")
+
+    def test_scheduled_old_positive_does_not_replace_the_saved_baseline_or_correction(self):
+        current = with_required(self.current())
+        full = self.full(current)
+        negative = self.correction(current, full["observer_updates"], 20, False)
+        replay = HELPER.decide(current, scheduled(current, 21,
+            requested_output_collection=self.proof(current)), negative["observer_updates"])
+        attached = self.attachment(current, replay["observer_updates"], 30)
+        self.assertFalse(attached["activate_controller"])
+        self.assertEqual(self.correction(current, attached["observer_updates"], 40, True)["action"], "notify_controller")
+
+    def test_evidence_time_conflict_and_older_positive_need_a_new_check(self):
+        current = with_required(self.current())
+        full = self.full(current)
+        negative = self.correction(current, full["observer_updates"], 20, False)
+        for second, proof_time in ((21, 15), (22, 20), (23, 20)):
+            positive = self.correction(current, negative["observer_updates"], second, True,
+                observed_at=scheduled(current, proof_time)["observed_at"])
+            negative = positive
+        attached = self.attachment(current, negative["observer_updates"], 30)
+        self.assertFalse(attached["activate_controller"])
+        self.assertEqual(self.correction(current, attached["observer_updates"], 40, True)["action"], "notify_controller")
+
+    def test_unbound_or_future_negative_does_not_poison_a_valid_complete_proof(self):
+        for fields in ({"body_sha256": "d" * 64}, {"requirements_ref": "other.md"},
+                       {"evidence_ref": ""}, {"observed_at": "2026-01-01T00:01:00+00:00"},
+                       {"complete": "unknown"}):
+            with self.subTest(fields=fields):
+                current = with_required(self.current())
+                full = self.full(current)
+                invalid = self.correction(current, full["observer_updates"], 20, False, **fields)
+                attached = self.attachment(current, invalid["observer_updates"], 30)
+                self.assertTrue(attached["activate_controller"])
+
+    def test_actual_delivery_survives_a_later_incomplete_correction(self):
+        current = self.current()
+        full = self.full(current)
+        correction = self.correction(current, full["observer_updates"], 20, False)
+        delivered = HELPER.decide(current, {**delivery(current, full["notification_key"], "delivered", 21),
+            "attempt_id": full["notification_attempt_id"]}, correction["observer_updates"])
+        denied = self.correction(current, delivered["observer_updates"], 22, None)
+        item = denied["observer_updates"]["notifications"][0]
+        self.assertTrue(item["delivery_accepted"])
+        self.assertEqual(item["delivery_status"], "delivered")
+        self.assertEqual(item["attempts"], 1)
+        self.assertFalse(denied["activate_controller"])
+
+    def archived_attempt(self, status="unknown"):
+        current = self.current()
+        current["execution_scope"] = "review_only"
+        full = self.full(current)
+        settled = HELPER.decide(current, {**delivery(current, full["notification_key"], status, 12),
+            "attempt_id": full["notification_attempt_id"]}, full["observer_updates"])
+        ledger = settled["observer_updates"]
+        current = apply(current, HELPER.decide(current, full["controller_event"], ledger))
+        current = apply(current, HELPER.decide(current, event(current, "assessment",
+            review_message_id=full["controller_event"]["assistant_message_id"], coverage_complete=False,
+            next_request_token="corrected-round-2"), ledger))
+        prepared = {**preparation(current), "requirements_ref": "source/original-review-request.md",
+                    "observed_at": scheduled(current, 100)["observed_at"]}
+        current = apply(current, HELPER.decide(current, prepared, ledger))
+        current = apply(current, HELPER.decide(current, {**submission(current),
+            "user_message_id": "user-message-r2", "observed_at": scheduled(current, 110)["observed_at"],
+            "followup_view": followup(current, checked_seconds=110, evidence_ref="round2-send-view")}, ledger))
+        first = HELPER.decide(current, scheduled(current, 120, assistant_message_id="message-2",
+            requested_output_collection=self.proof(current)), ledger)
+        second = HELPER.decide(current, scheduled(current, 130, assistant_message_id="message-2",
+            requested_output_collection=self.proof(current)), first["observer_updates"])
+        self.assertEqual(second["action"], "save_receipt_for_controller")
+        incoming = {**delivery(current, full["notification_key"], "not_delivered", 140),
+                    "attempt_id": full["notification_attempt_id"],
+                    "notification_receipt_sha256": full["controller_event"]["notification_receipt_sha256"]}
+        return current, second["observer_updates"], incoming, full["controller_event"]
+
+    def test_history_receipt_closes_only_the_original_attempt_and_unlocks_current_once(self):
+        current, ledger, incoming, original = self.archived_attempt()
+        before = copy.deepcopy(ledger["notifications"])
+        reconciled = HELPER.decide(current, incoming, ledger)
+        saved = reconciled["observer_updates"]
+        self.assertEqual(reconciled["state_updates"], {})
+        self.assertEqual(saved["notifications"], before)
+        self.assertEqual(saved["notification_history"][0]["controller_event"], original)
+        self.assertEqual(saved["notification_history"][0]["delivery_status"], "not_delivered")
+        duplicate = HELPER.decide(current, incoming, saved)
+        self.assertEqual(duplicate["observer_updates"]["notification_history"], saved["notification_history"])
+        first = HELPER.decide(current, notification_check(current, 150), saved)
+        self.assertEqual(first["action"], "notify_controller")
+        self.assertEqual(first["controller_event"], before[0]["controller_event"])
+        second = HELPER.decide(current, notification_check(current, 151), first["observer_updates"])
+        self.assertFalse(second["activate_controller"])
+
+    def test_history_reconciliation_rejects_bad_identity_and_never_applies_old_business(self):
+        current, ledger, incoming, original = self.archived_attempt()
+        for fields in ({"notification_receipt_sha256": "d" * 64}, {"destination_host": "other-host"},
+                       {"destination_thread_id": "other-thread"}, {"run_id": "other-run"},
+                       {"round": 1}, {"attempt_id": None}):
+            with self.subTest(fields=fields):
+                with self.assertRaises(ValueError):
+                    HELPER.decide(current, {**incoming, **fields}, copy.deepcopy(ledger))
+        with self.assertRaisesRegex(ValueError, "stale or mismatched round"):
+            HELPER.decide(current, original, ledger)
+        bad_attempt = HELPER.decide(current, {**incoming, "attempt_id": "unrelated"}, ledger)
+        self.assertEqual(bad_attempt["action"], "reconcile_notification_attempt")
+        self.assertEqual(bad_attempt["observer_updates"]["notification_history"], ledger["notification_history"])
+        for change in ("payload", "binding", "duplicate-key"):
+            candidate = copy.deepcopy(ledger)
+            old = candidate["notification_history"][0]
+            if change == "payload":
+                old["controller_event"]["source_id"] = "git:" + "d" * 40
+            elif change == "binding":
+                old["notification_binding"]["request_token"] = "unrecognized-token"
+            else:
+                candidate["notification_history"].append(copy.deepcopy(old))
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                HELPER.decide(current, incoming, candidate)
+
+    def test_archived_unknown_absence_and_reused_evidence_do_not_release_allowance(self):
+        current, ledger, incoming, _ = self.archived_attempt()
+        absent = HELPER.decide(current, notification_check(current, 140,
+            destination_thread_id=current["controller_thread_id"], destination_host=current["controller_host"],
+            delivery_readback="absent", readback_observed_at=scheduled(current, 140)["observed_at"],
+            readback_evidence_ref="io/no-history-yet.json"), ledger)
+        self.assertFalse(HELPER.notification_authorized(current, absent["observer_updates"]))
+        old_ref = ledger["notification_history"][0]["delivery_receipts"][0]["evidence_ref"]
+        reused = HELPER.decide(current, {**incoming, "delivery_evidence_ref": old_ref}, ledger)
+        self.assertEqual(reused["action"], "reconcile_notification_attempt")
+        self.assertEqual(reused["observer_updates"]["notification_history"], ledger["notification_history"])
+
+    def test_archived_delivered_fact_cannot_be_revoked_by_a_later_cancellation(self):
+        current, ledger, incoming, original = self.archived_attempt("delivered")
+        reconciled = HELPER.decide(current, incoming, ledger)
+        old = reconciled["observer_updates"]["notification_history"][0]
+        self.assertTrue(old["delivery_accepted"])
+        self.assertEqual(old["delivery_status"], "delivered")
+        self.assertEqual(old["controller_event"], original)
+        self.assertFalse(HELPER.notification_authorized(current, reconciled["observer_updates"]))
+
+    def test_already_archived_legacy_reply_uses_its_verified_original_key_and_sha(self):
+        current, ledger, incoming, original = self.archived_attempt()
+        ledger["notification_history"][0].pop("notification_binding")
+        reconciled = HELPER.decide(current, incoming, ledger)
+        old = reconciled["observer_updates"]["notification_history"][0]
+        self.assertEqual(old["controller_event"], original)
+        self.assertEqual(old["delivery_status"], "not_delivered")
+        wrong = copy.deepcopy(ledger)
+        wrong["notification_history"][0]["controller_event"]["request_user_message_id"] = "other-request"
+        with self.assertRaises(ValueError):
+            HELPER.decide(current, incoming, wrong)
+
+    def test_late_archived_delivery_is_recorded_without_current_round_completion_permission(self):
+        current, ledger, incoming, original = self.archived_attempt()
+        current["controller_notification_authorization"] = None
+        actual = {**incoming, "delivery_status": "delivered", "delivery_evidence_ref": "io/accepted-round1.json"}
+        reconciled = HELPER.decide(current, actual, ledger)
+        old = reconciled["observer_updates"]["notification_history"][0]
+        self.assertTrue(old["delivery_accepted"])
+        self.assertEqual(old["delivery_status"], "delivered")
+        self.assertEqual(old["controller_event"], original)
+        self.assertFalse(reconciled["activate_controller"])
 
 
 if __name__ == "__main__":

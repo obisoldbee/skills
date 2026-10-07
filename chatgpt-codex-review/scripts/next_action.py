@@ -352,6 +352,16 @@ def submission_observer(state, event, *, fresh_view=False):
     return current_followup(state, event, fresh_view=fresh_view)
 
 
+def reusable_submission_followup(state, event):
+    checkpoint = state.get("pre_submission_followup") or {}
+    view = event.get("followup_view")
+    return (state["phase"] == "ready_to_submit" and state.get("followup_mode", "durable") == "durable"
+            and checkpoint.get("binding") == observer_binding(state)
+            and checkpoint.get("observer_identity") == observer_identity(state)
+            and checkpoint.get("prepared_request_sha256") == (state.get("prepared_request") or {}).get("sha256")
+            and isinstance(view, dict) and view == checkpoint.get("view") == state.get("followup"))
+
+
 def observer_readback_updates(view):
     return {"inline_execution_ref": view["evidence_ref"]} if view.get("mode") == "inline" else {"followup": view}
 
@@ -427,6 +437,10 @@ def followup_checkpoint(state, event, ledger=None):
         answer = result(state, "ensure_result_return", "Bind an authorized Luna notification with remaining trigger/delivery authority or an actually verified Controller wakeup before leaving; a shared file and a promise to read later are not a return route.", followup=view)
     else:
         answer = result(state, "followup_ready", "Fresh ACTIVE Luna follow-up covers the outstanding collection; Controller resumes for actionable evidence.", followup=view)
+        if checkpoint == "before_submit" and state["phase"] == "ready_to_submit" and prepared_request(state):
+            answer["state_updates"]["pre_submission_followup"] = {
+                "binding": observer_binding(state), "observer_identity": observer_identity(state),
+                "prepared_request_sha256": state["prepared_request"]["sha256"], "view": view}
     answer["schedule_action"] = "keep_active"
     return answer
 
@@ -958,10 +972,21 @@ def requested_output_collected(state, ledger, payload):
         reply_key = notification_key(ledger["binding"], {"kind": "reply",
             "message": reply.get("assistant_message_id"), "sha256": reply.get("body_sha256")})
         original = next((item for item in ledger.get("notifications", []) if item.get("key") == reply_key), {})
+        baseline = original.get("controller_event") or reply
+        proof = baseline.get("requested_output_collection") or {}
         additions = [item for item in ledger.get("output_collection_proofs", [])
                      if item.get("key") == reply_key and item.get("receipt_sha256") == original.get("receipt_sha256")]
         if additions:
-            proof = additions[-1]["proof"]
+            # Observation order is not evidence order: a repeated old positive
+            # must not erase a newer negative or an unresolved same-time conflict.
+            candidates = [{"proof": proof, "observed_at": proof.get("observed_at", baseline.get("observed_at"))},
+                          *additions] if isinstance(proof, dict) else additions
+            candidates = [item for item in candidates if output_collection_proof_matches(state, reply, item.get("proof"))]
+            if candidates:
+                latest = max(timestamp(item["observed_at"]) for item in candidates)
+                current = [item["proof"] for item in candidates if timestamp(item["observed_at"]) == latest]
+                proof = current[-1] if (all(item.get("complete") is current[0].get("complete") for item in current)
+                                       and not any(item.get("interrupted") is True for item in current)) else {}
     prior = reply.get("prior_observation") or (payload.get("prior_observation") if payload.get("type") == "observation" else None) or {}
     if not prior and ledger:
         completed = next((item.get("controller_event") for item in reversed(ledger.get("notifications", []))
@@ -1046,9 +1071,17 @@ def begin_notification_attempt(item, when):
     return item
 
 
+def output_collection_proof_matches(state, payload, proof):
+    return (isinstance(proof, dict) and "complete" in proof
+            and (type(proof["complete"]) is bool or proof["complete"] is None)
+            and proof.get("body_sha256") == payload.get("body_sha256")
+            and proof.get("requirements_ref") == (state.get("prepared_request") or {}).get("requirements_ref")
+            and nonempty(proof.get("evidence_ref")))
+
+
 def append_output_collection_proof(state, ledger, event):
     proof = event.get("requested_output_collection")
-    if not isinstance(proof, dict) or proof.get("complete") is not True:
+    if not isinstance(proof, dict):
         return
     key = event.get("notification_key")
     if event["type"] in {"scheduled_observation", "inline_observation"}:
@@ -1058,20 +1091,23 @@ def append_output_collection_proof(state, ledger, event):
     if original is None:
         return
     payload = original.get("controller_event") or {}
-    if (payload.get("type") != "observation" or notification_digest(payload) != original.get("receipt_sha256")
-            or proof.get("body_sha256") != payload.get("body_sha256")
-            or proof.get("requirements_ref") != (state.get("prepared_request") or {}).get("requirements_ref")
-            or not nonempty(proof.get("evidence_ref"))
+    if (payload.get("type") != "observation" or not bound(payload, state, token=True)
+            or notification_digest(payload) != original.get("receipt_sha256")
+            or not output_collection_proof_matches(state, payload, proof)
             or event["type"] == "notification_check" and event.get("notification_receipt_sha256") != original["receipt_sha256"]
             or event["type"] != "notification_check" and (
                 event.get("request_user_message_id") != payload.get("request_user_message_id")
                 or event.get("assistant_message_id") != payload.get("assistant_message_id"))):
         return
+    observed_at = proof.get("observed_at", event["observed_at"])
+    if timestamp(observed_at) > timestamp(event["observed_at"]):
+        return
     addition = {"key": key, "receipt_sha256": original["receipt_sha256"], "proof": dict(proof),
-                "observed_at": event["observed_at"]}
+                "observed_at": observed_at}
     history = ledger.get("output_collection_proofs", [])
-    if not any(item.get("key") == key and item.get("receipt_sha256") == original["receipt_sha256"]
-               and item.get("proof") == proof for item in history):
+    if (proof != payload.get("requested_output_collection")
+            and not any(item.get("key") == key and item.get("receipt_sha256") == original["receipt_sha256"]
+               and item.get("proof") == proof for item in history)):
         ledger["output_collection_proofs"] = [*history, addition]
 
 
@@ -1162,7 +1198,9 @@ def scheduled_observation(state, event, saved):
     ledger = dict(saved or {})
     if observer_binding(ledger.get("binding") or {}) != binding:
         ledger = {"validator": "luna-observer/v1", "binding": binding, "notifications": [],
-                  "notification_history": [*ledger.get("notification_history", []), *ledger.get("notifications", [])],
+                  "notification_history": [*ledger.get("notification_history", []),
+                      *[{**item, "notification_binding": item.get("notification_binding", ledger.get("binding"))}
+                        for item in ledger.get("notifications", [])]],
                   "error_transition": 0}
     if gate:
         ledger["browser_gate"] = gate
@@ -1218,26 +1256,69 @@ def scheduled_observation(state, event, saved):
                                for item in ledger["notifications"]]
     if kind == "observer_delivery":
         key = event.get("notification_key")
-        pending = next((item for item in ledger["notifications"] if item.get("key") == key), None)
+        collection = "notifications"
+        matches = [item for item in ledger[collection] if item.get("key") == key]
+        if not matches:
+            collection = "notification_history"
+            matches = [item for item in ledger.get(collection, []) if item.get("key") == key]
+        require(len(matches) <= 1, "delivery notification identity is ambiguous")
+        pending = matches[0] if matches else None
         require(pending is not None, "delivery has no pending observer notification")
+        historical = collection == "notification_history"
         require(event.get("delivery_status") in {"delivered", "not_delivered", "unknown", "active_writer"}
                 and nonempty(event.get("delivery_evidence_ref")), "notification delivery needs actual evidence")
-        require(event.get("destination_thread_id") == state.get("controller_thread_id")
-                and event.get("destination_host") == state.get("controller_host"), "delivery destination mismatch")
+        destination = pending if historical else {
+            "destination_thread_id": state.get("controller_thread_id"), "destination_host": state.get("controller_host")}
+        require(nonempty(destination.get("destination_thread_id")) and nonempty(destination.get("destination_host"))
+                and event.get("destination_thread_id") == destination["destination_thread_id"]
+                and event.get("destination_host") == destination["destination_host"], "delivery destination mismatch")
         if event["delivery_status"] == "delivered":
-            require(notification_authorized(state, ledger, trigger=notification_trigger(pending), key=key,
-                                           payload=pending.get("controller_event")),
-                    "delivered notification lacks direct user communication authority or destination binding")
+            require(pending.get("attempts", 0) > 0,
+                    "delivered notification lacks an emitted attempt with direct user communication authority")
+        if historical:
+            payload, original_binding = pending.get("controller_event") or {}, pending.get("notification_binding") or {}
+            if not original_binding and notification_trigger(pending) == "stable_reply":
+                # Older already-archived reply records have no binding snapshot.
+                # Recover it only when the immutable original key verifies it.
+                recovered = observer_binding({**payload,
+                    "submitted_user_message_id": payload.get("request_user_message_id")})
+                if notification_key(recovered, {"kind": "reply", "message": payload.get("assistant_message_id"),
+                                               "sha256": payload.get("body_sha256")}) == key:
+                    original_binding = recovered
+            require(original_binding.get("run_id") == state["run_id"]
+                    and original_binding.get("request_token") in state["used_request_tokens"]
+                    and type(original_binding.get("round")) is int and 0 < original_binding["round"] <= state["round"]
+                    and all(name in original_binding for name in ("source_id", "source_binding_digest", "contract_digest",
+                        "acceptance_digest", "consumer_host", "request_token"))
+                    and bound(payload, original_binding, token=True)
+                    and payload.get("artifact_root") == original_binding.get("artifact_root")
+                    and payload.get("conversation_url") == original_binding.get("conversation_url")
+                    and event_followup_mode(payload) == original_binding.get("followup_mode", "durable")
+                    and payload.get("notification_key") == key
+                    and SHA256.fullmatch(str(pending.get("receipt_sha256", "")))
+                    and notification_digest(payload) == pending["receipt_sha256"]
+                    and payload.get("notification_receipt_sha256") == pending["receipt_sha256"]
+                    and event.get("notification_receipt_sha256", pending["receipt_sha256"]) == pending["receipt_sha256"],
+                    "historical delivery needs the immutable original run binding and payload SHA")
+            require(nonempty(event.get("attempt_id")), "historical delivery needs the original attempt ID")
         history = [dict(item) for item in pending.get("attempt_history", [])]
         if not history and pending.get("attempts") == 1:
             history = [{"attempt_id": notification_attempt_id(pending), "attempted_at": pending.get("attempted_at"),
                         "status": pending.get("delivery_status", "unknown")}]
         attempt = event.get("attempt_id")
-        if not attempt and len(history) == 1 and pending.get("attempts") == 1:
+        if not attempt and not historical and len(history) == 1 and pending.get("attempts") == 1:
             attempt = history[0]["attempt_id"]  # Unambiguous legacy single attempt only.
         target = next((item for item in history if item["attempt_id"] == attempt), None)
         if target is None or event.get("attempted_at", target["attempted_at"]) != target["attempted_at"]:
             return answer("reconcile_notification_attempt", "Receipt cannot be attributed to a known send attempt; preserve delivery facts and continue local collection.", key=key)
+        # The send was authorized when this attempt was emitted. A subsequent
+        # coverage correction or permission change cannot deny its actual receipt.
+        require(pending.get("attempts", 0) > 0, "delivery needs an already emitted notification attempt")
+        require(when >= timestamp(target["attempted_at"]), "delivery evidence predates its original attempt")
+        receipts = pending.get("delivery_receipts", [])
+        if historical and any(item.get("evidence_ref") == event["delivery_evidence_ref"]
+                              and item.get("status") != event["delivery_status"] for item in receipts):
+            return answer("reconcile_notification_attempt", "Changed historical delivery facts need new evidence for the original attempt.", key=key)
         outcome = event["delivery_status"]
         if target.get("status") == "delivered" or outcome == "unknown" and target.get("status") in {"not_delivered", "active_writer"}:
             outcome = target["status"]
@@ -1246,9 +1327,12 @@ def scheduled_observation(state, event, saved):
         accepted = pending.get("delivery_accepted") is True or pending.get("delivery_status") == "delivered" or any(
             item["status"] == "delivered" for item in history)
         status = "delivered" if accepted else "unknown" if any(item["status"] == "unknown" for item in history) else history[-1]["status"]
-        receipts = pending.get("delivery_receipts", [])
         actual = {"attempt_id": attempt, "status": event["delivery_status"], "observed_at": stamp(when),
                   "evidence_ref": event["delivery_evidence_ref"]}
+        if historical:
+            actual.update(notification_key=key, receipt_sha256=pending["receipt_sha256"],
+                          notification_binding=original_binding,
+                          destination_thread_id=event["destination_thread_id"], destination_host=event["destination_host"])
         current_receipt = ({"evidence_ref": event["delivery_evidence_ref"], "delivery_observed_at": stamp(when),
                             "next_check_at": stamp(when + timedelta(seconds=60))}
                            if attempt == history[-1]["attempt_id"] else {})
@@ -1257,7 +1341,7 @@ def scheduled_observation(state, event, saved):
                    "delivery_status": status, "delivery_receipts": receipts if actual in receipts else [*receipts, actual],
                    "destination_thread_id": event["destination_thread_id"], "destination_host": event["destination_host"],
                    **current_receipt}
-        ledger["notifications"] = [pending if item.get("key") == key else item for item in ledger["notifications"]]
+        ledger[collection] = [pending if item.get("key") == key else item for item in ledger[collection]]
         return answer("record_notification_delivery", "Delivery and Controller receipt are distinct; retain receipt checks without reopening the webpage.")
 
     append_output_collection_proof(state, ledger, event)
@@ -1449,7 +1533,8 @@ def scheduled_observation(state, event, saved):
     permitted, permission_reason = notification_permission(state, ledger, trigger=trigger, key=key, payload=controller_event)
     pending = {"key": key, "status": "pending",
                 "receipt_sha256": digest, "controller_event": controller_event,
-                "trigger": trigger,
+                "trigger": trigger, "notification_binding": binding,
+                "destination_thread_id": state.get("controller_thread_id"), "destination_host": state.get("controller_host"),
                 "attempts": 0, "attempted_at": stamp(when),
                 "next_check_at": stamp(when + timedelta(seconds=60)), "evidence": event["evidence"]}
     if not inline and permitted:
@@ -1726,17 +1811,17 @@ def _decide(state, event, observer_record=None):
         if status == "not_sent":
             require(event.get("definitive_absence") is True, "resend needs definitive absence evidence")
             require(prepared_request(state), "prepare Astra's review request before sending")
-            view = submission_observer(state, event, fresh_view=True)
+            view = submission_observer(state, event, fresh_view=not reusable_submission_followup(state, event))
             if view is None:
                 return ensure_followup(state, "A fresh ACTIVE heartbeat view is required before submission.",
                                        phase="ready_to_submit", last_completion=None)
             return result(state, "submit_once", "Controller may submit after proving the original request absent.",
                           phase="ready_to_submit", last_completion=None, **observer_readback_updates(view),
-                          awaiting_send=True,
+                          awaiting_send=True, pre_submission_followup=None,
                           send_authorized_view_ref=view["evidence_ref"])
         require(status == "unknown", "unknown submission status")
         return result(state, "reconcile_submission", "Inspect history, draft and attachments before any resend.",
-                      phase="submitting", last_completion=None, awaiting_send=False)
+                      phase="submitting", last_completion=None, awaiting_send=False, pre_submission_followup=None)
     if kind == "adopt_submission":
         require(state.get("execution_scope") != "materials_only", "materials-only scope cannot adopt webpage work")
         require(state["phase"] in {"ready_to_submit", "submitting"},

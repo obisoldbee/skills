@@ -57,6 +57,79 @@ class ScopedAccessTests(unittest.TestCase):
                     access.connect(self.root / "test.sqlite3")
         self.assertEqual(opening.call_count, 1)
 
+    def test_current_schema_open_does_not_compete_for_an_initialization_write_lock(self):
+        database = self.root / "ready.sqlite3"
+        with closing(access.connect(database)) as writer:
+            writer.execute("BEGIN IMMEDIATE")
+            try:
+                # DELETE mode permits reading a committed schema while another
+                # connection holds RESERVED. A redundant BEGIN would be BUSY.
+                with closing(access._connect_once(database)) as reader:
+                    self.assertEqual(reader.execute("SELECT count(*) FROM claims").fetchone(), (0,))
+            finally:
+                writer.execute("ROLLBACK")
+
+    def claim_with_injected_lock(self, statement, *, exhaust=False, error_code=sqlite3.SQLITE_BUSY):
+        database = self.root / "boundary.sqlite3"
+        connection = access.connect(database)
+        calls, transactions = [], []
+        failure = sqlite3.OperationalError("injected transaction boundary lock")
+        failure.sqlite_errorcode = error_code
+
+        class BoundaryConnection:
+            injected = False
+
+            def __getattr__(self, name):
+                return getattr(connection, name)
+
+            def execute(self, sql, *arguments):
+                calls.append(sql)
+                if sql == statement:
+                    transactions.append(connection.in_transaction)
+                    if exhaust or not self.injected:
+                        self.injected = True
+                        raise failure
+                return connection.execute(sql, *arguments)
+
+        with mock.patch.object(access, "connect", return_value=BoundaryConnection()):
+            with mock.patch.object(access.time, "sleep"):
+                if exhaust:
+                    # BEGIN succeeds once, then COMMIT fails at its deadline.
+                    with mock.patch.object(access.time, "monotonic", side_effect=[0.0, 0.0, 6.0]):
+                        with self.assertRaises(sqlite3.OperationalError):
+                            access.enter(self.root, database, "project-local", "read-only", "reader", "test", [], None)
+                elif error_code != sqlite3.SQLITE_BUSY:
+                    with self.assertRaises(sqlite3.OperationalError):
+                        access.enter(self.root, database, "project-local", "read-only", "reader", "test", [], None)
+                else:
+                    access.enter(self.root, database, "project-local", "read-only", "reader", "test", [], None)
+        with closing(access.connect(database)) as readback:
+            count = readback.execute("SELECT count(*) FROM claims").fetchone()[0]
+        return calls, transactions, count
+
+    def test_claim_boundaries_retry_transient_locks_without_replaying_the_insert(self):
+        for statement in ("BEGIN IMMEDIATE", "COMMIT"):
+            with self.subTest(statement=statement):
+                calls, transactions, count = self.claim_with_injected_lock(statement)
+                self.assertEqual(calls.count(statement), 2)
+                self.assertEqual(sum(sql.startswith("INSERT INTO claims") for sql in calls), 1)
+                self.assertEqual(transactions, [statement == "COMMIT"] * 2)
+                self.assertEqual(count, 1)
+                (self.root / "boundary.sqlite3").unlink()
+
+    def test_commit_retry_deadline_rolls_back_the_uncommitted_claim(self):
+        calls, transactions, count = self.claim_with_injected_lock("COMMIT", exhaust=True)
+        self.assertEqual(calls.count("COMMIT"), 1)
+        self.assertEqual(transactions, [True])
+        self.assertIn("ROLLBACK", calls)
+        self.assertEqual(count, 0)
+
+    def test_commit_non_lock_error_is_not_retried_and_rolls_back(self):
+        calls, _, count = self.claim_with_injected_lock("COMMIT", error_code=sqlite3.SQLITE_IOERR)
+        self.assertEqual(calls.count("COMMIT"), 1)
+        self.assertIn("ROLLBACK", calls)
+        self.assertEqual(count, 0)
+
     def command(self, *args):
         return self.run_command([sys.executable, "-B", str(self.access(self.root)), *args])
 

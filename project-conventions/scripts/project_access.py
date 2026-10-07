@@ -410,6 +410,29 @@ def connect(database: Path) -> sqlite3.Connection:
             time.sleep(0.025)
 
 
+def transaction_boundary(connection: sqlite3.Connection, statement: str) -> None:
+    """Retry lock acquisition/commit only; never replay claim reads or writes."""
+    if statement not in {"BEGIN IMMEDIATE", "COMMIT"}:
+        raise ValueError("only transaction boundaries may be retried")
+    deadline = time.monotonic() + 5.0
+    connection.execute("PRAGMA busy_timeout = 250")
+    try:
+        while True:
+            try:
+                connection.execute(statement)
+                return
+            except sqlite3.OperationalError as error:
+                code = getattr(error, "sqlite_errorcode", 0) & 0xff
+                remaining = deadline - time.monotonic()
+                if code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) or remaining <= 0:
+                    raise
+                # COMMIT returning BUSY leaves the transaction active. Retrying
+                # that same COMMIT preserves the original atomic claim decision.
+                time.sleep(min(0.025, remaining))
+    finally:
+        connection.execute("PRAGMA busy_timeout = 5000")
+
+
 def _connect_once(database: Path) -> sqlite3.Connection:
     ensure_runtime_boundary(database, create=True)
     if not database.exists():
@@ -427,6 +450,15 @@ def _connect_once(database: Path) -> sqlite3.Connection:
         if journal_mode is None or str(journal_mode[0]).lower() != "delete":
             raise AccessError("runtime database must use DELETE journal mode")
         connection.execute("PRAGMA synchronous = FULL")
+
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if {"meta", "claims", "history", "recovery_plans"} <= tables and connection.execute(
+            "SELECT value FROM meta WHERE key = 'protocol_version'"
+        ).fetchone() == (str(PROTOCOL_VERSION),):
+            # The version marker and all tables committed together. Ordinary
+            # connections need no competing schema write transaction after that.
+            connection.execute("PRAGMA busy_timeout = 5000")
+            return connection
 
         # One transaction serializes first-use schema creation.  Reissuing
         # PRAGMA journal_mode=DELETE in every process takes a competing write
@@ -774,7 +806,7 @@ def enter(
     acquired_at = utc_now()
     connection = connect(database)
     try:
-        connection.execute("BEGIN IMMEDIATE")
+        transaction_boundary(connection, "BEGIN IMMEDIATE")
         existing = connection.execute(
             "SELECT mode, actor FROM claims WHERE session_id = ?", (session_id,)
         ).fetchone()
@@ -803,7 +835,7 @@ def enter(
                 json.dumps(evidence, ensure_ascii=False, sort_keys=True),
             ),
         )
-        connection.execute("COMMIT")
+        transaction_boundary(connection, "COMMIT")
     except Exception:
         if connection.in_transaction:
             connection.execute("ROLLBACK")
@@ -906,7 +938,7 @@ def finish(
         raise AccessError("runtime database does not exist")
     connection = connect(database)
     try:
-        connection.execute("BEGIN IMMEDIATE")
+        transaction_boundary(connection, "BEGIN IMMEDIATE")
         claim = require_claim(connection, session_id, token)
         mode = str(claim["mode"])
         actor = str(claim["actor"])
@@ -927,7 +959,7 @@ def finish(
         )
         connection.execute("DELETE FROM claims WHERE session_id = ?", (session_id,))
         connection.execute("DELETE FROM recovery_plans WHERE session_id = ?", (session_id,))
-        connection.execute("COMMIT")
+        transaction_boundary(connection, "COMMIT")
     except Exception:
         if connection.in_transaction:
             connection.execute("ROLLBACK")
@@ -959,7 +991,7 @@ def recover(
         raise AccessError("runtime database does not exist")
     connection = connect(database)
     try:
-        connection.execute("BEGIN IMMEDIATE")
+        transaction_boundary(connection, "BEGIN IMMEDIATE")
         row = connection.execute(
             "SELECT mode, actor, evidence_json, token_hash FROM claims WHERE session_id = ?",
             (session_id,),
@@ -978,7 +1010,7 @@ def recover(
                 "VALUES(?, ?, ?, ?, ?)",
                 (session_id, token_digest(recovery_token), row[3], reason, planned_at),
             )
-            connection.execute("COMMIT")
+            transaction_boundary(connection, "COMMIT")
             return {
                 "status": "would_recover",
                 "project_root": str(project_root),
@@ -1012,7 +1044,7 @@ def recover(
         )
         connection.execute("DELETE FROM claims WHERE session_id = ?", (session_id,))
         connection.execute("DELETE FROM recovery_plans WHERE session_id = ?", (session_id,))
-        connection.execute("COMMIT")
+        transaction_boundary(connection, "COMMIT")
     except Exception:
         if connection.in_transaction:
             connection.execute("ROLLBACK")
