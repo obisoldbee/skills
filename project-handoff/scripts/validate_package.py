@@ -24,8 +24,10 @@ REQUIRED_FILES = {
     "references/model-routing.md",
     "references/orchestration-control.md",
     "references/result-collection.md",
+    "references/runtime-alerts.md",
     "references/thread-dispatch.md",
     "scripts/make_handoff.py",
+    "scripts/runtime_alerts.py",
     "scripts/resolve_thread_transport.py",
     "scripts/validate_dispatch_route.py",
     "scripts/validate_execution_binding.py",
@@ -38,6 +40,7 @@ REQUIRED_FILES = {
     "tests/routing-cases.json",
     "tests/test_skill_contract.py",
     "tests/test_execution_binding.py",
+    "tests/test_runtime_alerts.py",
     "tests/test_thread_transport.py",
     "tests/visible-task-receipt-cases.json",
 }

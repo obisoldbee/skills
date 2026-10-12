@@ -10,6 +10,14 @@ from validate_execution_binding import validate_binding
 
 
 class ExecutionBindingTests(unittest.TestCase):
+    def test_recurring_turn_rejects_old_runtime_and_current_settings(self):
+        actual = dict(self.actual(), turn_id="old")
+        self.assertFalse(validate_binding(self.selection(), actual, turn_id="new")["valid"])
+        actual.update(turn_id="new", metadata_source="session_settings")
+        self.assertFalse(validate_binding(self.selection(), actual, turn_id="new")["valid"])
+        actual["metadata_source"] = "runtime_metadata"
+        self.assertTrue(validate_binding(self.selection(), actual, turn_id="new")["valid"])
+
     def selection(self):
         return {"scope_id": "independent-review", "selection_ref": "authority/original-review-route.json",
                 "model": "gpt-6.1-sol", "model_basis": "explicit_skill_route",

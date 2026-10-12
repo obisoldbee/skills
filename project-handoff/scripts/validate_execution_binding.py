@@ -16,7 +16,7 @@ def nonempty(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-def validate_binding(selection, actual, previous=None):
+def validate_binding(selection, actual, previous=None, turn_id=None):
     errors = []
     if not isinstance(selection, dict) or not isinstance(actual, dict):
         return {"valid": False, "execution_verified": False,
@@ -60,6 +60,11 @@ def validate_binding(selection, actual, previous=None):
                         errors.append("selection_lost_or_changed: " + axis)
     if actual.get("scope_id") != selection.get("scope_id"):
         errors.append("actual metadata belongs to a different scope")
+    if turn_id is not None:
+        if not nonempty(turn_id) or actual.get("turn_id") != turn_id:
+            errors.append("actual_turn_mismatch_or_missing")
+        if actual.get("metadata_source") not in {"runtime_metadata", "execution_readback"}:
+            errors.append("current turn needs runtime evidence, not session settings")
     if (actual.get("metadata_source") not in METADATA_SOURCES
             or not nonempty(actual.get("evidence_ref"))
             or not nonempty(actual.get("execution_id"))):
@@ -89,11 +94,13 @@ def main():
     parser.add_argument("selection", type=Path)
     parser.add_argument("--actual", required=True, type=Path)
     parser.add_argument("--previous", type=Path, help="original applicable choices retained before simplification")
+    parser.add_argument("--turn-id", help="required current turn identity for recurring execution checks")
     args = parser.parse_args()
     try:
         report = validate_binding(json.loads(args.selection.read_text(encoding="utf-8")),
                                   json.loads(args.actual.read_text(encoding="utf-8")),
-                                  json.loads(args.previous.read_text(encoding="utf-8")) if args.previous else None)
+                                  json.loads(args.previous.read_text(encoding="utf-8")) if args.previous else None,
+                                  turn_id=args.turn_id)
     except (ValueError, OSError) as exc:
         report = {"valid": False, "execution_verified": False, "errors": [str(exc)],
                   "authority_verified": False, "runtime_verified_by_helper": False}
