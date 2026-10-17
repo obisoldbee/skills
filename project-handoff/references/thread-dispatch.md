@@ -31,12 +31,22 @@ Validate the route attempt with `scripts/validate_dispatch_route.py` before sele
 - Put the exact planned tool name in the route attempt before calling it and retain the route validator's `attempt_sha256`. After the call, put the exact actual tool name, actual route-sensitive arguments, and attempt hash in a normalized receipt, then run `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT`.
 - If either guard fails, set the lane to `failed` with classification `invalid_visible_task_evidence`, record the exact evidence, and stop that dispatch. Do not use `created_confirmed`, `created_unconfirmed`, or `queued`.
 
-Visible-task authority and field authority are separate. A user who only invokes `$project-handoff`, triggers it implicitly, or says “创建任务” authorizes no model/reasoning override. Validate `requested_route=platform-default`, then omit both `model` and `thinking`. A raw explicit value controls only its axis and is retained in `requested_model` or `requested_reasoning`; the documented model-only names Astra/GPT6 resolve to `gpt-6-astra` without selecting reasoning; an explicit alias binds both documented axes; explicit `auto` authorizes classification only on the named axis.
+Visible-task authority and field authority are separate. Resolve applicable earlier selections first. When neither axis has been selected for this responsibility, merely invoking `$project-handoff`, triggering it implicitly, or saying “创建任务” authorizes no model/reasoning override: validate `requested_route=platform-default`, then omit both `model` and `thinking`. A short continuation does not erase an existing selection. A raw explicit value controls only its axis and is retained in `requested_model` or `requested_reasoning`; the documented model-only names Astra/GPT6 resolve to `gpt-6-astra` without selecting reasoning; an explicit alias binds both documented axes; explicit `auto` authorizes classification only on the named axis.
+
+## Resolve authorization in context
+
+Before asking for permission, read the user's current and earlier direct instructions for this exact operation and scope. If the user already requested a new visible task, or directly confirmed an explicitly described creation action, retain that instruction as the authority reference and proceed under the live tool contract. No fixed phrase or repeated use of “新建” is required. A bare Skill name or a workflow written by an agent does not independently satisfy a host requirement for an explicit new-task request.
+
+For example, after an agent proposes “create a Luna webpage task for this review”, the user's “do that” can explicitly confirm that creation. A request to explain the Skill selects explanation only. A request to continue an existing worker keeps that worker and its verified route. Assess the actual surrounding exchange; these examples do not grant standing permission for other projects or unlimited tasks.
+
+For a relayed instruction, read the referenced original human instruction before relying on the sender's authorization claim. Preserve verified authority across context compaction and worker changes within its original scope. A missing owner record or route field calls for evidence recovery first, not a new approval question. Keep creation, messaging, model/effort selection and publication scopes distinct; forward dispatch does not automatically authorize a reverse message.
+
+When a prerequisite really is absent, first check suitable existing authorized tasks and complete independent preparation. Identify whether the gap is a direct user instruction, a usable owner, scheduling capability, or an actual tool rejection. Ask only about the unresolved blocking action and cite the applicable live tool requirement. Route validators check declared parameters and receipts; they neither infer human intent nor require the user to repeat an already verified instruction.
 
 ## `create_thread`
 
 - **Purpose**: Create a separate, user-owned Codex task.
-- **Use when**: The user explicitly asks for a new/visible task, names a dispatch pipeline, or invokes a documented `$project-handoff` dispatch mode.
+- **Use when**: The user's direct instruction, interpreted with the context above, requests a new/visible task under the live tool contract. A named pipeline or dispatch mode qualifies when the user explicitly requests its new-task action; merely mentioning its name does not.
 - **Do not use when**: The user asks only for an explanation, complete handoff artifact, or current-task answer.
 - **Parameters**:
   - `prompt`: generated internal handoff envelope;
@@ -79,7 +89,7 @@ Visible-task authority and field authority are separate. A user who only invokes
 ## `send_message_to_thread`
 
 - **Purpose**: Continue or correct an existing visible task.
-- **Use when**: The worker needs a scoped correction, user intervention must be synchronized, a downstream gate failed, or a running lane must pause/abort.
+- **Use when**: The user has authorized messaging that task and the worker needs a scoped correction, user intervention must be synchronized, a downstream gate failed, or a running lane must pause/abort. Reuse the verified authorization within its scope; a worker's own request to report back does not supply reverse-message authority.
 - **Do not use when**: Creating the initial task.
 - **Failure handling**: Save the exact request before sending and distinguish accepted, explicitly rejected and unknown delivery. Follow [cross-device transport](cross-device-transport.md) to restore the original write endpoint after a confirmed rejection. `idle` and a successful read do not prove write ownership. A timeout or absent history alone does not permit another send. Continue waiting/reading results independently of reverse notifications.
 - **Route rule**: Preserve the task's effective model/reasoning route. Do not pass a new model or `thinking` value unless the user explicitly requested that route change; in particular, keep `luna-max` at `max`.

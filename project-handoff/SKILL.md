@@ -23,6 +23,8 @@ Background: Use this Skill as the single control surface for complete handoff, b
 
 Scope: Ordinary continuation or internal subagent collaboration stays within the current task's rules. The visible-task guard prohibits substituting subagents for requested visible tasks; it does not prohibit internal help. Simplifying instructions or merging roles preserves applicable earlier model, effort and visible-surface choices for the same responsibility; calling that responsibility internal does not erase them. For complete handoff, load the portable template; for execution, load only the references required by the selected route and outcome. Reuse current readings until the relevant contract or state changes.
 
+Resolve dispatch authority from the user's current and earlier direct instructions under the live tool's requirements. A contextual confirmation of an explicitly described task-creation action needs no repeated keyword or approval. Preserve the applicable selected model/effort separately; check the [authorization continuity contract](references/thread-dispatch.md#resolve-authorization-in-context) before treating a missing local binding as missing user permission.
+
 Materials: Read the target project's current instructions, accepted decisions, active goal, file state, authorized read/write roots, required deliverables, validation commands, recipient capabilities, and any explicit model/reasoning/concurrency choices.
 
 Constraints: Preserve explicit user choices and scope; keep secrets and unrelated history out; do not dispatch when the user only asks for an explanation; do not parallelize conflicting lanes or infer deployment/provider/formal-layer authority.
