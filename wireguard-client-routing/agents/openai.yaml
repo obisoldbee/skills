@@ -1,0 +1,4 @@
+interface:
+  display_name: "WireGuard 多端分流"
+  short_description: "核查 WireGuard 服务器并生成四端国内直连、海外代理配置"
+  default_prompt: "使用 $wireguard-client-routing 核查现有服务器和设备清单，保留原密钥生成完整分流配置并验证。"
