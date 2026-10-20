@@ -5,6 +5,7 @@
 | 目标 | 输出 | Route |
 |---|---|---|
 | 时间戳 ASR | 尽量忠实的 JSON/SRT/VTT | `local-timed-transcription`，仅当 Skill 真正已发现 |
+| MiniMax ASR | 转写、时间戳、说话人、JSON/SRT/VTT | `minimax-mmx-asr` → `mmx speech transcribe`，`asr-1.0` |
 | 课程语义理解（默认） | 主题、逻辑、例子、警告、学习行动 | `minimax-m3-transcript-semantics`：先 ASR，再交给 M3 文本语义层 |
 | 课程语义理解（实验） | 非逐字语义笔记 | `minimax-m3-course-audio-via-video-experimental` |
 | 火山 ASR/字幕/说话人 | 文本、时间轴、speaker 标签 | `volcengine-arkcli-understand` → `asr|asr-align|asr-speakers` |
@@ -15,7 +16,7 @@ ASR 是可核对文字层，语义理解是派生解释层，不能互相冒充�
 
 ## MiniMax M3 边界
 
-MiniMax-M3 官方合同未记录独立音频输入。默认流程应先通过获授权的 ASR 生成 transcript，再用 M3 文本合同做语义整理。
+MiniMax 已有独立的 `asr-1.0` 语音识别接口；M3 与 M3.1-Flash 的 Messages 合同仍未列出原生 audio 内容块。默认流程先通过获授权的本地 ASR 或 `minimax-mmx-asr` 生成 transcript，再用选定的文本模型做语义整理。CLI 参数、500 秒/50 MB 限额与原始时间轴处理见 [MiniMax CLI](minimax-cli.md)。
 
 包内 `scripts/providers/minimax_m3_course_audio.py` 通过真实低清 MP4 载体发送音频语义任务；它不是原生纯音频接口，也不是逐字 ASR，因此只属于显式实验路线。旧同名独立 Skill 已退役，不再是运行依赖。
 

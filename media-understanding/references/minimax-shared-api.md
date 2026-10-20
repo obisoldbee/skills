@@ -1,48 +1,52 @@
 # MiniMax Provider Profile
 
-本文件只描述 `minimax` profile。火山、Agnes、MiMo、本地 OCR/ASR 各自使用独立配置。
+2026-10-20 核对。本文件描述 MiniMax；Agnes、火山、MiMo 与本地 OCR/ASR 使用各自配置。
 
-## 凭据
+## 协议与模型
 
-```text
-env: ~/.codex/secrets/minimax.env
-key: MINIMAX_API_KEY
-optional base: MINIMAX_BASE_URL
+本机私有槽位为 `~/.codex/secrets/minimax.env`，变量 `MINIMAX_API_KEY` 与可选 `MINIMAX_BASE_URL`。direct 默认使用当前官方国内端点 `https://api.minimax.cn/anthropic/v1/messages`，协议为 Anthropic-compatible Messages。显式 `--endpoint` 优先，其次为指定 base、环境/私有槽位的 base，再用默认端点；保留已绑定 profile，不改写凭据或全局配置。
+
+| 模型 | 本包选择 | Thinking | Effort |
+|---|---|---|---|
+| `MiniMax-M3` | 既有默认，继续保留 | adapter 显式 disabled | 不接受 Flash 专属 effort |
+| `MiniMax-M3.1-Flash` | 显式 `--model` | 强制 adaptive，disabled 会报 400 | `low/medium/high/xhigh/max`；省略为 max |
+
+两者当前均为 1M 上下文，支持图片和视频。`temperature/top_p` 是忽略字段，服务固定为 1/0.95；adapter 不再发送 temperature，旧 `--temperature` 仅为调用和历史指纹兼容保留。`max_tokens` 包含 thinking，预算不足可能只有思考而没有正文；需要更长回答时在首次请求前分配预算，不能将 accepted 空结果自动重投。
+
+OpenAI-compatible `https://api.minimax.cn/v1/chat/completions` 保留为项目已有 OpenAI SDK 绑定时的显式兼容选择。MiniMax CLI 文本默认的 `MiniMax-M3.1-Flash-Preview` 与以上 direct ID 分开处理，不能从 CLI 默认推断按量或特定账号可用。
+
+## 输入合同与执行器
+
+- 图片使用 URL 或 Base64，支持 JPEG/PNG/GIF/WebP，文件最大 10 MB。
+- 视频 URL/Base64 文件最大 50 MB，请求体最大 64 MB；Base64 source 使用 `type=base64`、`media_type`、`data`。大视频可经 Files API 的 `purpose=video_understanding` 上传，最大 512 MB、默认保留 7 天，使用 `mm_file://file_id`。当前课程脚本实现内联 Base64，不会自动上传 Files。
+- 两个课程脚本仍保留更保守的 50,000,000 Base64 字符客户端上限，约对应 37.5 MB 原始视频；这与官方文件上限分别记录。
+- Messages 的独立 audio、document/file 内容块未在当前 REST 合同明确列出。AI SDK 页另有 PDF 支持声明，与 REST schema 存在差异；在精确合同或授权验证前，文档继续本地解析/OCR后送文本，音频继续 ASR后送文本。
+
+| Route | 执行器与边界 |
+|---|---|
+| `minimax-mmx-image` | `mmx vision describe`，1.0.28 不暴露模型 ID，走 Coding Plan VLM |
+| `minimax-m3-image` | 图片 Messages adapter 尚需当前任务显式绑定 |
+| `minimax-m3-course-video` | 包内视频 adapter，支持上述两个明确模型；课程视觉 |
+| `minimax-mmx-asr` | `mmx speech transcribe`、`asr-1.0`，官方独立 ASR API |
+| `minimax-m3-transcript-semantics` | 已获授权的转写 → 选定文本模型；文本执行器需绑定 |
+| `minimax-m3-course-audio-via-video-experimental` | 包内音频装入 MP4 的兼容实验，仍需显式选择 |
+
+CLI 的 key/host/region 必须同时绑定，见 [CLI 合同](minimax-cli.md)。`vision describe` 没有模型参数；direct 脚本的示例为
+
+```sh
+python3 <skill-root>/scripts/providers/minimax_m3_course_video.py \
+  --input <video> --output-dir <authorized-output-dir> \
+  --model MiniMax-M3.1-Flash --effort high --max-tokens 4096 --analyze
 ```
 
-同一个 MiniMax profile 可以复用凭据读取和错误分类，但图片、视频视觉和音频语义仍是不同 adapter，不能猜测共用 payload。
+去掉 `--analyze` 仅预处理。保留当前素材和成本授权，模型支持的文档描述不证明账号权限或本次调用成功。图片/视频/ASR 分别使用自己的 payload；普通 MiniMax MCP 也需当前发现的精确工具，不能从文档存在推断通用理解能力。
 
-## 协议优先级
+## 恢复与失败
 
-图片/视频理解默认且推荐走 Anthropic-compatible：
+- `1026/input new_sensitive` 保存终态，不短切或循环重试。
+- 视频与实验音频保留 `not_sent/rejected/accepted/acceptance_unknown/completed`。只有证明未发送或明确未接受的操作才可能有限重试。POST 超时、中断、5xx 为 unknown，2xx 空结果为 accepted，均保留原件并停止自动重发。
+- 每次 POST 前落盘 marker，保留稳定 fingerprint、独立 attempt、request id、usage 和 retry disposition；不假定幂等键。
+- 旧 M3 fingerprint 保留历史 temperature 字段；改成官方 Base64 传输不会把已完成操作当新请求。模型、端点或 effort 与旧 operation 不同也只报告差异，保留原状态，不写新 attempt。恢复旧任务时明确原模型和 endpoint，不删除旧证据来解锁重发。
+- 无当前授权不跨 provider；MiMo 仍 disabled。
 
-```text
-base_url: https://api.minimaxi.com/anthropic
-endpoint: POST https://api.minimaxi.com/anthropic/v1/messages
-model: MiniMax-M3
-```
-
-该路径是官方文本生成指南标注的推荐/default 路径，支持 thinking 与 interleaved thinking。OpenAI-compatible `POST https://api.minimaxi.com/v1/chat/completions` 是官方支持但非推荐的兼容备选，只在项目已经绑定 OpenAI SDK、当前不便迁移时显式选择，不与 Anthropic 并列为默认路由。
-
-## 当前执行器
-
-| Route | 输入/执行器 | 边界 |
-|---|---|---|
-| `minimax-mmx-image` | `$mmx-cli` → `mmx vision describe --image ...` | 快速图片理解；CLI 1.0.19 不接受 `--model`，底层模型未知 |
-| `minimax-m3-course-video` | 包内 `scripts/providers/minimax_m3_course_video.py` | 课程屏幕/UI/幻灯片视觉 |
-| `minimax-m3-transcript-semantics` | 获授权的 ASR → transcript → M3 文本请求 | 音频语义默认路径；执行器需在当前任务绑定 |
-| `minimax-m3-course-audio-via-video-experimental` | 包内 `scripts/providers/minimax_m3_course_audio.py` | 实验兼容；不是原生音频/逐字稿；使用真实低清视频载体 |
-
-MiniMax-M3 官方支持图像与视频。图片/视频默认通过 Anthropic Messages 合同发送。视频可直接 URL/Base64（≤50MB）或先通过 Files 上传并用 `mm_file://file_id` 引用（≤512MB、文件默认保留 7 天）；文档/PDF 无原生合同，应先本地解析/OCR 再给文本。
-
-`mmx-cli` 的 `vision describe` 对快速单图最方便，也是无视觉宿主收到单张图片理解请求时的默认路线；用户附图并要求理解即授权本次图片，除非用户指定其他 provider 或禁止外发。该命令走 `/v1/coding_plan/vlm` 且不暴露底层 model id，不能把输出归因于 `MiniMax-VL-01`。M3 视频/结构化生产调用继续使用 Anthropic direct API；本包的课程视频/音频脚本就是该端点，旧同名独立 Skills 已退役。普通 MiniMax MCP 当前侧重生成、TTS、音乐等工具，不是本总路由的通用理解入口；MCP 文档存在不等于能力已安装或执行。
-
-## 错误处理
-
-- `1026` / `input new_sensitive`：不短切、不循环重试，记录终态。
-- 音频/视频统一使用 `not_sent|rejected|accepted|acceptance_unknown|completed`。只有 provider 明确拒绝且证明未接受（当前自动重试仅限明确 429），或本地证明请求未发送时，才允许同一 operation 的有限重试。
-- POST 后 timeout、连接中断、5xx 或无法证明接收状态的失败为 `acceptance_unknown`；2xx 空结果为 `accepted`。两者都禁止自动重发与 resume 再 POST。
-- 不假设 MiniMax 支持幂等键；不发送未经包内官方合同证明的 idempotency header。
-- 保存 operation fingerprint、每次独立原始响应、媒体段落、实际 model ID、provider request id/usage（如有）和 retry disposition，禁止覆盖旧响应。
-- 未经当前授权，不从 MiniMax 自动切换火山、Agnes、MiMo 或其他 provider。
-- MiMo 当前是 disabled；MiniMax 失败只返回 `provider_fallback_requires_user_opt_in`。
+来源入口见 [官方合同](official-sources.md)。

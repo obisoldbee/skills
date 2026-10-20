@@ -31,6 +31,12 @@ from minimax_request_state import (  # noqa: E402
     response_reference,
     resume_disposition,
 )
+from minimax_model_options import (  # noqa: E402
+    EFFORT_LEVELS,
+    SUPPORTED_MODELS,
+    fingerprint_model_options,
+    model_options,
+)
 
 
 class NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
@@ -44,7 +50,7 @@ def authenticated_urlopen(request, *, timeout):
     return urllib.request.build_opener(NoCredentialRedirect()).open(request, timeout=timeout)
 
 
-DEFAULT_ENDPOINT = "https://api.minimaxi.com/anthropic/v1/messages"
+DEFAULT_ENDPOINT = "https://api.minimax.cn/anthropic/v1/messages"
 DEFAULT_MODEL = "MiniMax-M3"
 DEFAULT_ENV_FILE = str(Path.home() / ".codex" / "secrets" / "minimax.env")
 MAX_BASE64_CHARACTERS = 50_000_000
@@ -106,6 +112,8 @@ def resolve_api_key(args: argparse.Namespace) -> str | None:
 
 
 def resolve_endpoint(args: argparse.Namespace) -> str:
+    if args.endpoint:
+        return args.endpoint
     env = read_env(Path(args.env_file).expanduser())
     base_url = args.base_url or os.environ.get("MINIMAX_BASE_URL") or env.get("MINIMAX_BASE_URL")
     if base_url:
@@ -114,8 +122,10 @@ def resolve_endpoint(args: argparse.Namespace) -> str:
             return normalized
         if normalized.endswith("/anthropic"):
             return normalized + "/v1/messages"
+        if normalized.endswith("/anthropic/v1"):
+            return normalized + "/messages"
         return normalized + "/anthropic/v1/messages"
-    return args.endpoint
+    return DEFAULT_ENDPOINT
 
 
 def ffprobe(path: Path) -> dict[str, Any]:
@@ -309,14 +319,20 @@ def build_payload(
     return {
         "model": model,
         "max_tokens": args.max_tokens,
-        "temperature": args.temperature,
-        "thinking": {"type": "disabled"},
+        **model_options(model, getattr(args, "effort", None)),
         "messages": [
             {
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "video", "source": {"type": "url", "url": data_url_bytes(media_bytes, segment_file)}},
+                    {
+                        "type": "video",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "video/mp4",
+                            "data": data_url_bytes(media_bytes, segment_file).split(",", 1)[1],
+                        },
+                    },
                 ],
             }
         ],
@@ -344,8 +360,7 @@ def operation_descriptor(
         "model": model,
         "prompt": prompt,
         "max_tokens": args.max_tokens,
-        "temperature": args.temperature,
-        "thinking": {"type": "disabled"},
+        **fingerprint_model_options(model, getattr(args, "effort", None), args.temperature),
         "source_file": str(segment_file),
         "source_bytes": source_size,
         "source_sha256": source_sha256,
@@ -454,7 +469,7 @@ def analyze_segments(segments: list[dict[str, Any]], output_dir: Path, api_key: 
             segment["operation_fingerprint"] = fingerprint
             segment["saved_operation_fingerprint"] = saved_operation.get("operation_fingerprint")
             segment["attempts"] = list(saved_operation.get("attempts") or [])
-            segment["request_state"] = "not_sent"
+            segment["request_state"] = saved_operation["state"]
             segment["retry_disposition"] = "operation_fingerprint_mismatch_no_resubmit"
             segment["text_chars"] = 0
             segment["thinking_chars"] = 0
@@ -628,8 +643,9 @@ def main() -> None:
     parser.add_argument("--api-key")
     parser.add_argument("--env-file", default=DEFAULT_ENV_FILE)
     parser.add_argument("--base-url")
-    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--endpoint", help=f"Exact endpoint override (default: {DEFAULT_ENDPOINT})")
+    parser.add_argument("--model", choices=SUPPORTED_MODELS, default=DEFAULT_MODEL)
+    parser.add_argument("--effort", choices=EFFORT_LEVELS, help="Flash thinking depth (default: max); only valid with MiniMax-M3.1-Flash")
     parser.add_argument("--segment-seconds", type=float, default=120.0)
     parser.add_argument("--overlap-seconds", type=float, default=2.0)
     parser.add_argument("--encode-fps", type=float, default=6.0)
@@ -641,11 +657,15 @@ def main() -> None:
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--prompt-file")
     parser.add_argument("--max-tokens", type=int, default=2200)
-    parser.add_argument("--temperature", type=float, default=0.1)
+    parser.add_argument("--temperature", type=float, default=0.1, help="Compatibility option; ignored by MiniMax and omitted from requests; retained in legacy M3 operation fingerprints")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--retry-sleep", type=float, default=2.0)
     args = parser.parse_args()
+    try:
+        model_options(args.model, args.effort)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
@@ -668,7 +688,7 @@ def main() -> None:
         "source_height": stream.get("height"),
         "model": args.model,
         "endpoint": resolve_endpoint(args),
-        "thinking": {"type": "disabled"},
+        **model_options(args.model, args.effort),
         "segment_seconds": args.segment_seconds,
         "overlap_seconds": args.overlap_seconds,
         "encode_fps": args.encode_fps,

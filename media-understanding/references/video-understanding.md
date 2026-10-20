@@ -29,6 +29,8 @@ Kimi Code 新分支见 [kimi-readmedia.md](kimi-readmedia.md)：`kimi-readmedia`
 
 不存在活动的历史中间层或同名 provider 独立 Skill。需要三轨融合时，总路由直接调用上述包内执行器和已绑定 ASR，并分别保存视觉、音频语义和 ASR 证据。
 
+direct adapter 保留 M3 默认，支持显式 `--model MiniMax-M3.1-Flash` 和 Flash 专用 `--effort`。官方 Base64 使用 `source.type=base64`、`media_type=video/mp4` 和 `data`，不再将 data URL 装入 URL source。模型/端点变动时保留旧 operation 状态和证据；旧任务如需同身份恢复，应显式传原模型与端点，避免把旧记录当新请求重投。详见 [MiniMax profile](minimax-shared-api.md)。
+
 ## 输出
 
 ```text

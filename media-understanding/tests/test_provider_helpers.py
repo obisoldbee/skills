@@ -74,7 +74,7 @@ class ProviderHelperTests(unittest.TestCase):
         return argparse.Namespace(
             base_url=base_url,
             env_file="/definitely/missing/minimax.env",
-            endpoint="https://api.minimaxi.com/anthropic/v1/messages",
+            endpoint=None,
         )
 
     def test_minimax_base_url_is_normalized_once(self) -> None:
@@ -480,7 +480,10 @@ class ProviderHelperTests(unittest.TestCase):
                         )
                 request = urlopen.call_args.args[0]
                 payload = json.loads(request.data.decode("utf-8"))
-                encoded = payload["messages"][0]["content"][1]["source"]["url"].split(",", 1)[1]
+                source = payload["messages"][0]["content"][1]["source"]
+                self.assertEqual(source["type"], "base64")
+                self.assertEqual(source["media_type"], "video/mp4")
+                encoded = source["data"]
                 self.assertEqual(original_bytes, base64.b64decode(encoded))
                 self.assertEqual(
                     module.operation_fingerprint(module.DEFAULT_ENDPOINT, descriptor),

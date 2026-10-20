@@ -14,16 +14,45 @@ CHECKER = ROOT / "scripts" / "check_routes.py"
 
 
 class RouteCheckTests(unittest.TestCase):
-    def run_checker(self, config: dict, home: Path) -> tuple[int, str, str]:
+    def run_checker(self, config: dict, home: Path, model: str | None = None) -> tuple[int, str, str]:
         config_path = home / "routes.json"
         config_path.write_text(json.dumps(config), encoding="utf-8")
         result = subprocess.run(
-            [sys.executable, str(CHECKER), "--config", str(config_path), "--home", str(home)],
+            [sys.executable, str(CHECKER), "--config", str(config_path), "--home", str(home)]
+            + (["--model", model] if model else []),
             text=True,
             capture_output=True,
             check=False,
         )
         return result.returncode, result.stdout, result.stderr
+
+    def test_explicit_direct_model_is_checked_and_reported(self):
+        route = {"id": "direct", "status": "active_if_configured", "provider": "minimax",
+                 "model": "MiniMax-M3", "known_models": ["MiniMax-M3", "MiniMax-M3.1-Flash"],
+                 "credentials": None, "executor": {"kind": "script", "path": "scripts/check_routes.py"}}
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            for model, readiness in (("MiniMax-M3.1-Flash", "configured_not_called"),
+                                     ("unknown-model", "configuration_mismatch")):
+                with self.subTest(model=model):
+                    code, stdout, stderr = self.run_checker({"routes": [route]}, home, model)
+                    self.assertEqual(code, 0, stderr)
+                    result = json.loads(stdout)
+                    self.assertFalse(result["provider_calls"])
+                    self.assertEqual(result["routes"][0]["readiness"], readiness)
+                    if readiness == "configured_not_called":
+                        self.assertEqual(result["routes"][0]["model"], model)
+
+    def test_opaque_cli_model_cannot_be_relabeled(self):
+        route = {"id": "vision", "status": "active_if_configured", "provider": "minimax",
+                 "model": None, "credentials": None,
+                 "executor": {"kind": "script", "path": "scripts/check_routes.py"}}
+        with tempfile.TemporaryDirectory() as temporary:
+            code, stdout, stderr = self.run_checker({"routes": [route]}, Path(temporary), "MiniMax-M3.1-Flash")
+            self.assertEqual(code, 0, stderr)
+            result = json.loads(stdout)["routes"][0]
+            self.assertIsNone(result["model"])
+            self.assertEqual(result["readiness"], "configuration_mismatch")
 
     def test_secret_values_are_never_printed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

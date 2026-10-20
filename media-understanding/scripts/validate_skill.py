@@ -19,6 +19,8 @@ REQUIRED = [
     "references/video-understanding.md",
     "references/ocr-and-document-understanding.md",
     "references/minimax-shared-api.md",
+    "references/minimax-cli.md",
+    "scripts/providers/minimax_model_options.py",
     "references/official-sources.md",
     "scripts/check_routes.py",
     "scripts/providers/agnes_vision.py",
@@ -223,9 +225,10 @@ def main() -> None:
         if (
             route.get("model") != "MiniMax-M3"
             or interface.get("default") != "anthropic_messages"
-            or interface.get("base_url") != "https://api.minimaxi.com/anthropic"
-            or interface.get("endpoint") != "https://api.minimaxi.com/anthropic/v1/messages"
-            or interface.get("openai_compatible_fallback") != "https://api.minimaxi.com/v1/chat/completions"
+            or route.get("known_models") != ["MiniMax-M3", "MiniMax-M3.1-Flash"]
+            or interface.get("base_url") != "https://api.minimax.cn/anthropic"
+            or interface.get("endpoint") != "https://api.minimax.cn/anthropic/v1/messages"
+            or interface.get("openai_compatible_fallback") != "https://api.minimax.cn/v1/chat/completions"
             or interface.get("openai_fallback_policy") != "only for a project already bound to the OpenAI SDK"
         ):
             errors.append(f"MiniMax-M3 route must default to the recommended Anthropic Messages endpoint: {route.get('id')}")

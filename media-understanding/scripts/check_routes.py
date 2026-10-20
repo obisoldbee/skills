@@ -8,6 +8,8 @@ import json
 import os
 import shutil
 import stat
+import subprocess
+import re
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--home", type=Path, default=Path.home())
     parser.add_argument("--route", action="append", default=[], help="Inspect only this route id; repeatable.")
-    parser.add_argument("--model", help="Exact model ID for Kimi routes; default MiniMax-M3")
+    parser.add_argument("--model", help="Exact model ID supported by the selected route; omitted preserves its default")
     parser.add_argument("--model-alias", help="Exact Kimi alias if multiple profiles serve the model")
     return parser.parse_args()
 
@@ -70,12 +72,31 @@ def inspect_executor(executor: dict[str, Any], home: Path) -> dict[str, Any]:
         if skill:
             skill_present = expand_home(str(skill), home).is_file()
         present = bool(resolved) and skill_present is not False
+        version = None
+        version_supported = None
+        minimum = executor.get("minimum_version")
+        if resolved and minimum:
+            try:
+                probe = subprocess.run([resolved, "--version"], text=True, capture_output=True,
+                                       timeout=5, check=False)
+                match = re.fullmatch(r"(?:\S+\s+)?v?(\d+\.\d+\.\d+)", probe.stdout.strip())
+                if probe.returncode == 0 and match:
+                    version = match.group(1)
+                    version_supported = tuple(map(int, version.split("."))) >= tuple(map(int, minimum.split(".")))
+                else:
+                    version_supported = False
+            except (OSError, subprocess.SubprocessError):
+                version_supported = False
+            present = present and version_supported is True
         return {
             "kind": kind,
             "present": present,
             "command": command,
             "resolved": resolved,
             "skill_present": skill_present,
+            "version": version,
+            "minimum_version": minimum,
+            "version_supported": version_supported,
         }
     if kind == "skill":
         skill_path = expand_home(str(executor["path"]), home)
@@ -185,6 +206,16 @@ def main() -> None:
         credentials = inspect_credentials(route.get("credentials"), args.home)
         kimi_binding = None
         route_readiness = readiness(route, executor, credentials)
+        selected_model = route.get("model")
+        model_error = None
+        if args.model and route.get("configuration_owner") != "kimi_code":
+            supported = route.get("known_models", [selected_model] if selected_model else [])
+            if args.model in supported:
+                selected_model = args.model
+            else:
+                model_error = "requested_model_not_supported_by_route"
+                if route["status"] != "disabled":
+                    route_readiness = "configuration_mismatch"
         if route.get("configuration_owner") == "kimi_code":
             from providers.kimi_readmedia import binding
             try:
@@ -202,7 +233,8 @@ def main() -> None:
             "id": route["id"],
             "declared_status": route["status"],
             "provider": route["provider"],
-            "model": (kimi_binding or {}).get("model", route.get("model")),
+            "model": (kimi_binding or {}).get("model", selected_model),
+            "model_error": model_error,
             "authorization": route.get("authorization"),
             "default_for": route.get("default_for"),
             "authorization_scope": route.get("authorization_scope"),

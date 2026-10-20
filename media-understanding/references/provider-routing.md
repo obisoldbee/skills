@@ -30,6 +30,7 @@
 | 无视觉宿主的默认单图理解 | `minimax-mmx-image` | `$mmx-cli` → `mmx vision describe`；底层模型未暴露 | `~/.codex/secrets/minimax.env` |
 | MiniMax-M3 direct 图片理解 | `minimax-m3-image` | Anthropic-compatible Messages adapter；当前需显式绑定 | `~/.codex/secrets/minimax.env` |
 | MiniMax 课程视频视觉 | `minimax-m3-course-video` | 包内 `scripts/providers/minimax_m3_course_video.py` | `~/.codex/secrets/minimax.env` |
+| MiniMax ASR/时间戳/字幕 | `minimax-mmx-asr` | `mmx speech transcribe`，需 1.0.26+ | 同一 MiniMax 槽位，实际 key/host/region 单独绑定 |
 | MiniMax 音频语义主路由 | `minimax-m3-transcript-semantics` | 获授权的 ASR → transcript → MiniMax-M3 文本请求；需显式绑定 | `~/.codex/secrets/minimax.env` |
 | MiniMax 音频语义实验 | `minimax-m3-course-audio-via-video-experimental` | 包内 `scripts/providers/minimax_m3_course_audio.py`，真实低清 MP4 载体 | `~/.codex/secrets/minimax.env` |
 | Agnes 图片理解 | `agnes-image` | 包内 `scripts/providers/agnes_vision.py` | `~/.codex/secrets/agnes.env` |
@@ -58,8 +59,11 @@
 | `disabled` | 路线保留但禁止执行 |
 
 不要把 `configured_not_called` 写成远端可用、余额充足、模型已接受或任务成功。
+`minimax-mmx-asr` 还核对 CLI 最低版本；版本过旧或无法确认时 `missing_executor`，保留 `minimum_version/version_supported`。MiniMax CLI 实际调用须同时固定 key、host、region，见 [CLI 合同](minimax-cli.md)。槽位存在不证明 CLI 没有沿用其他登录配置。
 Windows 不提供等价的 POSIX group/other mode 证据，因此 `private_permissions` 报告 `null`，而不是把 Windows ACL 推断为安全或不安全。
 Route checker 只检查 portable registry；它不探测或证明任何宿主的原生附件能力。
+
+MiniMax direct 的稳定 route id 保留 `minimax-m3-*`，默认仍为 M3，可用 `--model MiniMax-M3.1-Flash` 显式选新模型；检查器会报告该选择，实际 adapter 也须传同一 ID。`mmx vision describe` 的模型保持未知，不接受借用文本模型标签。Kimi 的 exact profile 仍独立绑定，本轮未扩充或改写本机 profile。
 
 ## 火山隔离
 

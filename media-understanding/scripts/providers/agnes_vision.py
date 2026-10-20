@@ -99,6 +99,8 @@ def response_text(payload: Dict[str, Any]) -> str:
     if not isinstance(choices, list) or not choices:
         return ""
     message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+    if not isinstance(message, dict):
+        return ""
     content = message.get("content", "")
     if isinstance(content, str):
         return content
@@ -117,7 +119,14 @@ def call_agnes(
     env_path: Path,
     timeout: int,
     model_override: Optional[str] = None,
+    max_tokens: int = 700,
+    thinking: Optional[bool] = None,
 ) -> Dict[str, Any]:
+    if type(max_tokens) is not int or not 1 <= max_tokens <= 65536:
+        return {
+            "status": "failure", "failure_type": "invalid_max_tokens",
+            "request_state": "not_sent", "error": "max_tokens must be between 1 and 65536",
+        }
     parsed_url = urllib.parse.urlparse(image_url)
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
         return {
@@ -144,13 +153,15 @@ def call_agnes(
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
+                    {"type": "image_url", "image_url": {"url": image_url}},
                 ],
             }
         ],
         "temperature": 0.1,
-        "max_tokens": 700,
+        "max_tokens": max_tokens,
     }
+    if thinking is not None:
+        body["chat_template_kwargs"] = {"enable_thinking": thinking}
     req = urllib.request.Request(
         f"{base_url}/chat/completions",
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -166,10 +177,14 @@ def call_agnes(
             raw = resp.read().decode("utf-8", errors="replace")
             status_code = resp.status
     except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:4000]
+        try:
+            body_text = exc.read(4000).decode("utf-8", errors="replace")
+        finally:
+            exc.close()
         return {
             "status": "failure",
-            "failure_type": "agnes_rejected",
+            "failure_type": "agnes_server_error" if exc.code >= 500 else "agnes_rejected",
+            "request_state": "rejected" if 400 <= exc.code < 500 and exc.code != 408 else "acceptance_unknown",
             "http_status": exc.code,
             "error": body_text,
             "latency_sec": round(time.time() - started, 3),
@@ -178,6 +193,7 @@ def call_agnes(
         return {
             "status": "failure",
             "failure_type": "agnes_timeout",
+            "request_state": "acceptance_unknown",
             "error": str(exc),
             "latency_sec": round(time.time() - started, 3),
         }
@@ -185,6 +201,7 @@ def call_agnes(
         return {
             "status": "failure",
             "failure_type": "agnes_request_error",
+            "request_state": "acceptance_unknown",
             "error": repr(exc),
             "latency_sec": round(time.time() - started, 3),
         }
@@ -195,15 +212,27 @@ def call_agnes(
         return {
             "status": "failure",
             "failure_type": "parse_failure",
+            "request_state": "accepted",
             "http_status": status_code,
             "raw_response": raw[:4000],
             "latency_sec": round(time.time() - started, 3),
         }
+    if not isinstance(payload, dict):
+        return {
+            "status": "failure", "failure_type": "parse_failure", "request_state": "accepted",
+            "http_status": status_code, "raw_response": payload,
+            "latency_sec": round(time.time() - started, 3),
+        }
     text = response_text(payload)
     parsed = extract_json_object(text)
+    choices = payload.get("choices") or []
+    finish_reason = choices[0].get("finish_reason") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+    truncated = finish_reason == "length"
     return {
-        "status": "success" if text else "failure",
-        "failure_type": None if text else "empty_response",
+        "status": "incomplete" if truncated else "success" if text else "failure",
+        "failure_type": "output_truncated" if truncated else None if text else "empty_response",
+        "request_state": "completed" if text and not truncated else "accepted",
+        "finish_reason": finish_reason,
         "http_status": status_code,
         "model": model,
         "content": text,
@@ -220,6 +249,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-url")
     parser.add_argument("--prompt", default="Return compact JSON describing the image.")
     parser.add_argument("--model")
+    parser.add_argument("--max-tokens", type=int, default=700)
+    parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=None,
+                        help="Explicitly enable/disable Chat Completions thinking; omitted keeps provider default")
     parser.add_argument("--timeout", type=int, default=90)
     return parser.parse_args()
 
@@ -232,7 +264,8 @@ def main() -> None:
         return
     if not args.image_url:
         raise SystemExit("--image-url is required unless --check-key is used")
-    result = call_agnes(args.image_url, args.prompt, env_path, args.timeout, args.model)
+    result = call_agnes(args.image_url, args.prompt, env_path, args.timeout, args.model,
+                        max_tokens=args.max_tokens, thinking=args.thinking)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") != "success":
         sys.exit(1)

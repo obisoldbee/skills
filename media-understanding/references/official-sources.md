@@ -1,10 +1,10 @@
 # Official Provider Contracts
 
-Last reviewed: 2026-08-11. These links describe public contracts, not local credentials, entitlement, balance, successful calls, or permanent model availability. Recheck before an external call when the contract is material.
+MiniMax and Agnes reviewed: 2026-10-20. Volcengine and MiMo retain their earlier review scope; they were not revalidated in this update. These links describe public contracts, not local credentials, entitlement, balance, successful calls, or permanent model availability. Recheck before an external call when the contract is material.
 
 ## Agnes
 
-Agnes section reviewed 2026-09-14. Model `agnes-3.0-flash`: 512K context,
+Agnes section reviewed 2026-10-20. Model `agnes-3.0-flash`: 512K context,
 65,536 maximum output; Chat Completions, Responses and Anthropic-compatible Messages.
 Official input modalities are text and image URL, not native video. Chat fields include
 `temperature`, `top_p`, `max_tokens`, `stream`, `tools`, `tool_choice`, and
@@ -16,15 +16,16 @@ Kimi local-image and sampled-frame compatibility is a separate runtime test; nev
 - [Agnes 3.0 Flash](https://agnes-ai.com/zh-Hans/docs/agnes-30-flash): model id `agnes-3.0-flash`.
 - [Quickstart](https://agnes-ai.com/zh-Hans/docs/quickstart) and [overview](https://agnes-ai.com/zh-Hans/docs/overview): OpenAI-compatible `POST https://apihub.agnes-ai.com/v1/chat/completions` with Bearer authentication.
 - The current image example proves a public `image_url`. It does not prove local upload, data URL, or Base64 support. Keep those transports disabled until separately documented or authorized and tested.
+- [Token Plan](https://agnes-ai.com/zh-Hans/docs/tokenplan) distinguishes free, enterprise and Token Plan Key pools. Use the selected key profile; a subscription alone does not identify the current generic key pool. No new key is selected by this package.
+- Official client integration pages exist; a standalone Agnes Code CLI media command could not be verified from a live install source in this review. The package keeps its owned Chat adapter rather than adding an unverified CLI.
 
 ## MiniMax
 
-- [Text generation guide](https://platform.minimaxi.com/docs/guides/text-generation) marks Anthropic compatibility as recommended and the default path. Use base URL `https://api.minimaxi.com/anthropic` and `POST https://api.minimaxi.com/anthropic/v1/messages` for `MiniMax-M3` image/video understanding; see the [Anthropic API contract](https://platform.minimaxi.com/docs/api-reference/text-anthropic-api).
-- [OpenAI-compatible M3](https://platform.minimaxi.com/docs/api-reference/text-openai-api) at `POST https://api.minimaxi.com/v1/chat/completions` remains officially supported, but it is only a compatibility fallback for a project already bound to the OpenAI SDK. It is not the default recommendation.
-- [Files upload](https://platform.minimaxi.com/docs/api-reference/file-management-upload): large video can use `purpose=video_understanding` and `mm_file://file_id`; direct URL/Base64 video is the smaller-file path.
-- [MiniMax API overview](https://platform.minimax.io/docs/api-reference/api-overview) and [MiniMax CLI](https://platform.minimax.io/docs/token-plan/minimax-cli) define different profiles. The locally installed `mmx vision describe` does not expose its underlying model id.
-- [MCP guide](https://platform.minimaxi.com/docs/guides/mcp-guide): ordinary MCP availability is not evidence of a general-purpose understanding tool. Do not prefer MCP unless the exact current tool is discovered and matches the requested media contract.
-- Standalone M3 audio and native PDF/document inputs were not documented in the reviewed contracts. Use ASR/transcript for audio semantics and local parse/OCR for documents.
+- [Anthropic API](https://platform.minimax.cn/docs/api-reference/text-anthropic-api) documents exact `MiniMax-M3.1-Flash` and `MiniMax-M3` IDs, their distinct thinking/effort behavior and ignored sampling fields. [Text guide](https://platform.minimax.cn/docs/guides/text-generation) recommends Anthropic compatibility. The current domestic base is `https://api.minimax.cn/anthropic`; the package preserves explicit old profile bindings without claiming this research tested old API hosts.
+- [Messages API](https://platform.minimax.cn/docs/api-reference/text-chat-anthropic) and its [OpenAPI schema](https://platform.minimax.cn/docs/api-reference/text/api/openapi-chat-anthropic.json) define URL/Base64 image and video blocks. Base64 uses `source.type=base64` with `media_type` and `data`; image <=10 MB, video <=50 MB, request <=64 MB. [Files](https://platform.minimax.cn/docs/api-reference/file-management-upload) supports larger videos <=512 MB with `purpose=video_understanding` and `mm_file://file_id`.
+- [ASR guide](https://platform.minimax.cn/docs/guides/speech-to-text) and [ASR API](https://platform.minimax.cn/docs/api-reference/speech-to-text) document `asr-1.0`, multipart `/v1/speech_to_text`, 500 seconds/50 MB, timestamps, speakers and subtitles. This is separate from M3 Messages; native M3 audio blocks remain unconfirmed.
+- [AI SDK](https://platform.minimax.cn/docs/api-reference/text-ai-sdk) claims PDF support, while Messages OpenAPI does not specify a document/file block. The exact direct-PDF contract remains unresolved; continue local parse/OCR rather than inventing a payload.
+- [CLI](https://platform.minimax.cn/docs/token-plan/minimax-cli) and [v1.0.28 source](https://github.com/MiniMax-AI/cli/tree/v1.0.28) were checked against local help. Image VLM does not expose a model; ASR was added in 1.0.26. Auth, endpoint and region selection need explicit binding. See [CLI contract](minimax-cli.md) for commands and source locations.
 
 ## Volcengine Ark
 

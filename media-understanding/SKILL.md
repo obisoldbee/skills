@@ -62,11 +62,13 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 5. 委派到精确执行器：
    - 密集逐帧三合一：选择 `kimi-trimodal-swarm`，见 [kimi-trimodal.md](references/kimi-trimodal.md)。每秒 2 帧原尺寸输出到视频同目录 `frames_<视频名>`，导出音频和带词级时间戳的本地 ASR；Kimi Code + MiniMax-M3 的 3 个独立观察者各自读取全量材料，再由主 Agent 汇总。M3 声学听音尚未验证，转写理解不能冒充听音。该分支已明确约定同目录输出，作为通用显式 output-dir 规则的特定例外；原件仍只读。
    - Kimi Code 内置媒体：普通 `kimi-readmedia`；增强 `kimi-readmedia-swarm` 默认 3 个独立观察者做同样工作，再由主 Agent 汇总。默认 `MiniMax-M3`，可选 `agnes-3.0-flash`。先读 [kimi-readmedia.md](references/kimi-readmedia.md)；视频需 Kimi profile 的 `video_in`，Agnes 原生视频按用户授权的兼容性实验及实测范围记录，配置标签不等于官方支持。同一步只能发出一个 AgentSwarm；多视频合并 items 或等待前一轮完整返回后顺序调用，详见该分支的多视频说明。Kimi profile 绑定与普通/Swarm 调用证据必须分开验证；
-   - MiniMax 快速图片：`$mmx-cli`，命令 `mmx vision describe`；CLI 不暴露底层模型，不得写成 `MiniMax-VL-01`；
+   - MiniMax 快速图片：`$mmx-cli`，命令 `mmx vision describe`；CLI 不暴露底层模型，不得写成 `MiniMax-VL-01`。先按 [MiniMax CLI 绑定](references/minimax-cli.md) 同时固定 key、API host 与 region；仅有环境变量不能证明 CLI 选中了该 profile；
    - MiniMax-M3 图片：选择 `minimax-m3-image`；默认走官方推荐的 Anthropic-compatible `/anthropic/v1/messages`，在 direct adapter 明确绑定前保持 `needs_explicit_binding`；
    - MiniMax 课程视频视觉：选择 `minimax-m3-course-video`，运行包内 `python3 <skill-root>/scripts/providers/minimax_m3_course_video.py --input <video> --output-dir <authorized-output-dir> [--analyze]`；M3 direct 默认走 Anthropic-compatible Messages；
+   - MiniMax direct 同时支持显式 `--model MiniMax-M3.1-Flash --effort <low|medium|high|xhigh|max>`；Flash 强制 adaptive thinking，省略 effort 为官方 `max`。既有 M3 默认保留，不将 CLI 文本命令的 `MiniMax-M3.1-Flash-Preview` 别名替入 direct 或 Kimi profile。`check_routes.py --route <direct-route> --model <exact-id>` 与实际 adapter 必须选择同一模型；
+   - MiniMax ASR：选择 `minimax-mmx-asr`，使用 `mmx speech transcribe --file <audio>`，模型 `asr-1.0`；先核 CLI 版本和 [参数、限额与输出说明](references/minimax-cli.md)，再按当前授权执行。视频先提取音轨，转写后再做文本语义整理；
    - MiniMax 音频语义默认先做获授权的 ASR，再通过 Anthropic-compatible Messages 把 transcript 交给 `MiniMax-M3`；实验兼容路线 `minimax-m3-course-audio-via-video-experimental` 运行包内 `python3 <skill-root>/scripts/providers/minimax_m3_course_audio.py --input <media> --output-dir <authorized-output-dir> [--analyze]`，把音频装入真实低清 MP4，只能显式选择；
-   - Agnes 图片：选择 `agnes-image`，运行包内 `python3 <skill-root>/scripts/providers/agnes_vision.py --image-url <url> --prompt <question>`，模型 `agnes-3.0-flash`；
+   - Agnes 图片：选择 `agnes-image`，运行包内 `python3 <skill-root>/scripts/providers/agnes_vision.py --image-url <url> --prompt <question> [--max-tokens N] [--thinking|--no-thinking]`，模型 `agnes-3.0-flash`；当前适配器用 Chat Completions，其他官方端点不自动切换；
    - 火山生产主路由：普通 Ark Platform 的 Responses API + Files API；需要先绑定普通 Platform adapter 和非 Plan 的 Base URL/key；
    - 火山交互式配方：`arkcli +understand <recipe>`，使用 Ark CLI 自己的登录/配置，调用前核对 recipe 实际解析模型；
    - 火山 Agent/Coding Plan：只经官方支持的 AI/编程工具；不得把自定义 Python Chat/Responses 请求当作普通 Plan API；
@@ -88,6 +90,8 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 同一文件中的普通 Platform、Agent Plan、Coding Plan 仍是三个独立 profile。不得互相借 key、URL、模型名单或额度。若 `VOLCENGINE_ARK_BASE_URL` 指向 `/api/plan/v3` 或 `/api/coding/v3`，普通 Platform route 必须报配置不匹配。
 
 ## 证据和结果
+
+结果使用用户指定的语言；未指定时沿用当前对话语言。
 
 - 原媒体与原始 provider 响应保持只读；派生结果标明 route id 或 `host_native` execution path、provider/model、实际执行器、时间范围和不确定项。
 - 音频与视频 direct adapter 共用一个计费安全状态机：`not_sent`、`rejected`、`accepted`、`acceptance_unknown`、`completed`。只有证据能证明请求未发送或 provider 明确拒绝、未接受时才允许自动重试；POST 后超时、连接中断、5xx、不完整响应进入 `acceptance_unknown`，2xx 空结果进入 `accepted`，两者都禁止自动重发，`--resume` 也不得再次 POST。
