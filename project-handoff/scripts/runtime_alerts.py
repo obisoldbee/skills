@@ -22,6 +22,12 @@ def encoded(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+def emit_json(value):
+    # Escape the wire output for redirected Windows consoles; retain encoded()
+    # for storage and fingerprints so existing notification keys stay stable.
+    print(json.dumps(value, ensure_ascii=True, sort_keys=True))
+
+
 def validate_contract(contract):
     if not isinstance(contract, dict) or not contract.get('selection_ref'):
         raise ValueError('contract needs original selection_ref')
@@ -152,17 +158,17 @@ def main():
     try:
         with connect(args.state_dir) as db:
             if args.command == 'hook':
-                raw = sys.stdin.read(MAX_BYTES + 1)
+                raw = sys.stdin.buffer.read(MAX_BYTES + 1)
                 if len(raw) > MAX_BYTES:
                     raise ValueError('hook input too large')
                 event = json.loads(raw)
-                registry = json.loads(args.registry.read_text())
+                registry = json.loads(args.registry.read_text(encoding='utf-8'))
                 alert = observe(event, registry, db)
                 # No decision:block, exit 2 or model continuation for notification.
-                print(encoded({'systemMessage': '执行异常已记录到本地待通知队列；尚未证明 dots 送达。'} if alert else {}))
+                emit_json({'systemMessage': '执行异常已记录到本地待通知队列；尚未证明 dots 送达。'} if alert else {})
             elif args.command == 'pending':
-                print(encoded([dict(json.loads(payload), alert_id=aid)
-                               for aid, payload in db.execute('SELECT id,payload FROM alerts WHERE receipt IS NULL ORDER BY id')]))
+                emit_json([dict(json.loads(payload), alert_id=aid)
+                           for aid, payload in db.execute('SELECT id,payload FROM alerts WHERE receipt IS NULL ORDER BY id')])
             else:
                 if not args.receipt.strip():
                     raise ValueError('delivery receipt must not be empty')
@@ -171,13 +177,13 @@ def main():
                                        (args.receipt, args.id)).rowcount
                 if count != 1:
                     raise ValueError('unknown or already acknowledged alert')
-                print(encoded({'acknowledged': args.id, 'receipt': args.receipt,
-                               'receipt_verified_by_helper': False}))
+                emit_json({'acknowledged': args.id, 'receipt': args.receipt,
+                           'receipt_verified_by_helper': False})
     except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
         if args.command == 'hook':
-            print(encoded({'systemMessage': '执行异常检测器未完成检查：' + type(exc).__name__}))
+            emit_json({'systemMessage': '执行异常检测器未完成检查：' + type(exc).__name__})
             return 0  # diagnostics must never force another model turn
-        print(encoded({'error': str(exc)}))
+        emit_json({'error': str(exc)})
         return 1
     return 0
 

@@ -1,4 +1,6 @@
 import json
+import hashlib
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -98,13 +100,58 @@ class RuntimeAlertsTests(unittest.TestCase):
         self.write_turn(effort='low')
         base = [sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'), '--state-dir', str(self.root/'state')]
         result = subprocess.run(base+['hook','--registry',str(registry)], input=json.dumps(self.event),
-                                text=True, capture_output=True, check=True)
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('decision', json.loads(result.stdout))
         pending = json.loads(subprocess.check_output(base+['pending'], text=True))
         self.assertEqual(len(pending), 1)
         subprocess.run(base+['ack','--id',str(pending[0]['alert_id']),'--receipt','test-message'],
                        check=True, capture_output=True)
         self.assertEqual(json.loads(subprocess.check_output(base+['pending'], text=True)), [])
+
+
+    def test_utf8_input_and_ascii_json_work_with_legacy_pipe_encodings(self):
+        self.contract['selection_ref'] = '测试原始路由'
+        self.write_turn(effort='low')
+        registry = self.root / 'registry.json'
+        registry.write_text(json.dumps(self.registry, ensure_ascii=False), encoding='utf-8')
+        for encoding in ('cp1252', 'ascii'):
+            with self.subTest(encoding=encoding):
+                state = self.root / ('state-' + encoding)
+                base = [sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'), '--state-dir', str(state)]
+
+                def run(args, data=None):
+                    result = subprocess.run(base + args, input=data, capture_output=True,
+                                            env=dict(os.environ, PYTHONIOENCODING=encoding))
+                    self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
+                    return json.loads(result.stdout.decode('ascii'))
+
+                event = json.dumps(self.event, ensure_ascii=False).encode('utf-8')
+                self.assertNotIn('decision', run(['hook', '--registry', str(registry)], event))
+                pending = run(['pending'])
+                self.assertEqual(pending[0]['actual']['reasoning'], 'low')
+                self.assertEqual(pending[0]['selection_ref'], self.contract['selection_ref'])
+                with alerts.connect(state) as db:
+                    expected = 'session:' + hashlib.sha256(alerts.encoded(self.contract).encode()).hexdigest() + ':route'
+                    self.assertEqual(db.execute('SELECT key FROM states').fetchone()[0], expected)
+                run(['hook', '--registry', str(registry)], event)
+                self.assertEqual(len(run(['pending'])), 1)
+                result = run(['ack', '--id', str(pending[0]['alert_id']), '--receipt', '测试回执'])
+                self.assertEqual(result['receipt'], '测试回执')
+                self.assertFalse(result['receipt_verified_by_helper'])
+                self.assertEqual(run(['pending']), [])
+
+    def test_hook_diagnostic_is_safe_with_non_utf8_stdout(self):
+        registry = self.root / 'registry.json'
+        registry.write_text(json.dumps(self.registry), encoding='utf-8')
+        result = subprocess.run([sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'),
+                                 '--state-dir', str(self.root/'state'), 'hook', '--registry', str(registry)],
+                                input=b'{', capture_output=True,
+                                env=dict(os.environ, PYTHONIOENCODING='cp1252'))
+        self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
+        output = json.loads(result.stdout.decode('ascii'))
+        self.assertIn('检测器未完成检查', output['systemMessage'])
+        self.assertNotIn('decision', output)
 
 
 if __name__ == '__main__':
