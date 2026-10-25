@@ -170,7 +170,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertIn("scripts/validate_orchestration_plan.py", text)
         self.assertIn("Using multiple Agents", text)
         self.assertIn("Spark execution has been removed", text)
-        self.assertIn("not proof the model is unavailable", text)
+        self.assertIn("classify the failed stage", text)
         self.assertIn("create_thread", text)
         self.assertIn("spawn_agent", text)
         self.assertIn("scripts/validate_visible_task_receipt.py", text)

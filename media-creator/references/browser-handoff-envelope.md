@@ -1,10 +1,12 @@
 # 浏览器执行交接 Envelope
-浏览器先按 [宿主偏好与平台选择](browser-platforms.md) 执行：先考虑当前可调用且满足能力的用户常用/已订阅 harness 浏览器（含 Mcode）及已导入数据的 Codex 浏览器；没有适用偏好时 macOS 默认 Ego、Windows 默认 Tabbit，其他已连接入口作备用。后文 Ego 示例只适用于 macOS；不存在的 Ego 不是 Windows 业务阻碍。
+浏览器选择与恢复统一见 [browser-platforms.md](browser-platforms.md)。
 
 
-注册表的 `platform_selected_browser` 是选路标记，不是可执行命令，也不是 envelope executor 值。按 `browser_platforms` 解析后填实际 `ego-browser` / `tabbit` / `chrome` / `codex-browser` / `mcode-browser`；离线校验不证明连接、登录或下载可用。
+注册表的 `platform_selected_browser` 是选路标记，不是可执行命令，也不是 envelope executor 值。按 `browser_platforms` 解析后填实际 `ego-browser`、`tabbit`、`chrome`、`edge`、`codex-browser` 或 `mcode-browser`。其他系统默认/常用浏览器用 `system-browser`，其他 harness 内置用 `harness-browser`。操作前检查连接、目标网站登录态和所需文件能力。
 
 这份合同供发起任务的主任务、当前任务的浏览器执行器、`project-handoff` visible-task surface 和 所选浏览器 worker 共享。它只规定执行与任务创建的分轴授权边界，不替代主任务对用户意图、输入文件、输出位置或 provider 选择的判断。
+
+`edge`、`system-browser` 和 `harness-browser` 同时填写一个 `browser_binding`，包含实际浏览器名称 `browser`、当前可调用工具 `control_tool` 和本次能力观察定位 `evidence_ref`。例如 `{"browser":"Microsoft Edge","control_tool":"current browser tool","evidence_ref":"current task page/upload/download observation"}`；执行时替换为实际读到的值。缺少控制入口或所需能力时继续浏览器选择的下一项。
 
 ## 主任务先完成规划
 
@@ -104,7 +106,7 @@ python3 -B scripts/validate_browser_envelope.py envelope.json
 
 用户已给本次生成的明确预算时，已知费用在剩余预算内可以执行，无须再次确认。
 预算必须绑定同一费用单位（如 CNY、USD 或页面积分），不能自行换算或推测订阅权益。
-首次打开页面前 envelope 可以没有 `cost`；此时 `cost_preflight_valid=false`，不代表允许提交。
+首次打开页面前 envelope 可以没有 `cost`；提交前补齐费用信息并要求 `cost_preflight_valid=true`。
 在提交前读回实时费用与余额，附上以下 `cost` 对象并再次验证，只有 `cost_preflight_valid=true`
 才继续。授权来源须能追溯到用户请求；validator 校验字段，执行器仍需核实页面和真实授权。
 新购买/订阅应交回独立的获授权流程，不由生成 worker 自动办理。

@@ -101,7 +101,7 @@ mmx music generate --prompt "<style>" --instrumental --out <bgm.mp3>
 mmx music cover --prompt "<target style>" --audio-file <reference.mp3> --out <cover.mp3>
 ```
 
-运行时帮助只证明本地 CLI 的接口表面，不证明账号 eligibility、余额、服务可用性或新用户资格。运行时模型、歌词优化、结构化风格字段和 cover 默认模型仍以当前 `mmx --help` 与账号响应为准；不要把本地帮助或历史文档当成可提交授权。
+分别检查当前 CLI 参数、账号 eligibility 和余额。运行时模型、歌词优化、结构化风格字段和 cover 默认模型仍以当前 `mmx --help` 与账号响应为准；不要把本地帮助或历史文档当成可提交授权。
 
 MMX 仍是外置、可升级依赖：本包不复制它的 Skill、CLI、配置或凭据。音乐 API 的资格错误、余额/配额错误或内容安全错误原样报告并停止；不要切换到 Web Music 或其他 provider 来掩盖失败。语音仍是独立的 MMX speech 路线，不受这条 music eligibility 说明替代。
 

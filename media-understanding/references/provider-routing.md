@@ -59,7 +59,7 @@
 | `disabled` | 路线保留但禁止执行 |
 
 不要把 `configured_not_called` 写成远端可用、余额充足、模型已接受或任务成功。
-`minimax-mmx-asr` 还核对 CLI 最低版本；版本过旧或无法确认时 `missing_executor`，保留 `minimum_version/version_supported`。MiniMax CLI 实际调用须同时固定 key、host、region，见 [CLI 合同](minimax-cli.md)。槽位存在不证明 CLI 没有沿用其他登录配置。
+`minimax-mmx-asr` 还核对 CLI 最低版本；版本过旧或无法确认时 `missing_executor`，保留 `minimum_version/version_supported`。MiniMax CLI 实际调用须同时固定 key、host、region，见 [CLI 合同](minimax-cli.md)。核对 CLI 实际选中的 profile。
 Windows 不提供等价的 POSIX group/other mode 证据，因此 `private_permissions` 报告 `null`，而不是把 Windows ACL 推断为安全或不安全。
 Route checker 只检查 portable registry；它不探测或证明任何宿主的原生附件能力。
 
@@ -67,7 +67,7 @@ MiniMax direct 的稳定 route id 保留 `minimax-m3-*`，默认仍为 M3，可�
 
 ## 火山隔离
 
-普通 Ark Platform、Agent Plan 与 Coding Plan 共用一个 env 文件只是存储选择，不代表共用 key 或额度。普通 Platform 生产路由使用 Responses + Files；两个 Plan 只经官方支持工具。Ark CLI 维护自己的认证状态，四者都不是彼此 fallback。
+普通 Ark Platform、Agent Plan 与 Coding Plan 在同一 env 文件中分别保存 key、URL 和额度配置。普通 Platform 生产路由使用 Responses + Files；两个 Plan 只经官方支持工具。Ark CLI 维护自己的认证状态，四者都不是彼此 fallback。
 
 当前本地普通 `VOLCENGINE_ARK_BASE_URL` 若指向 Coding Plan URL，`volcengine-platform-responses-files` 仍必须停在配置检查，不能因为存在 generic key 名称就宣称普通 Platform 已绑定。
 
@@ -83,12 +83,12 @@ MiMo 的图/音/视频 route、三份官方文档 URL 和逐媒体 re-enable gat
 
 本地凭据文件原名为 `~/.codex/secrets/mimo-routing.env`，现已原字节改名为标准槽位 `~/.codex/secrets/mimo.env`。它保留 Token Plan 与 API Billing 两套独立变量；当前 portable registry 的 generic `MIMO_API_KEY` alias 尚未绑定。不得自动复制、合并或改写 key。
 
-当前官方合同使用 `mimo-v2.5` 和按量 OpenAI 兼容 `POST /v1/chat/completions`；Token Plan 的 Base URL/key 不得与按量 profile 混用。页面可读不等于本地 key、账号权限或调用成功。
+当前官方合同使用 `mimo-v2.5` 和按量 OpenAI 兼容 `POST /v1/chat/completions`；Token Plan 的 Base URL/key 不得与按量 profile 混用。执行前按该 route 检查本地绑定与账号权限。
 
 ## 授权与失败
 
 - 对无视觉宿主的本次单张图片理解请求，用户附图并要求理解即授权 `minimax-mmx-image`；无需再问一次。该默认不扩展到批量、其他媒体或 fallback。
 - 用户点名 provider/model 时，只授权该 profile 与本次素材。
-- “选择最合适的外部模型”允许在同一任务族内选择一个已有当前证据的路线，不等于允许多 provider 试跑。
+- “选择最合适的外部模型”时，在同一任务族内选一条有当前证据的路线。需要多 provider 对照时使用评测任务的授权和成本范围。
 - 连接重试只按执行器自己的有限策略；模型拒绝、空输出或格式错误不授权跨 profile fallback。
 - key、token、cookie 不进入提示词、日志、Git、12 包或 provider 结果。

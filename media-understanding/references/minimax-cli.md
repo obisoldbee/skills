@@ -30,7 +30,7 @@ mmx speech transcribe --file <audio-path> --model asr-1.0 \
 
 输出文件必须位于当前授权目录且尚不存在。执行前按官方合同检查单次不超过 500 秒、50 MB；长音频先按任务授权切片并保存原始时间偏移。视频先提取音轨。可选 `json|verbose_json|srt|vtt`；时间戳粒度为 `sentence|word`，`--language` 为 BCP-47 提示。`--stream` 仅配 `json`，不与带时间轴的格式或 `--out` 混用。SRT/VTT 和 verbose JSON 的时间轴须映射回原媒体。
 
-CLI 当前没有媒体 POST 自动重试。超时、连接中断、5xx 或输出不完整时保留请求接受状态和可得证据，按 Skill 的不自动重投合同处理。这个 ASR 与 M3 Messages 的文本语义整理是两步；转写能力不证明 M3 原生听音。
+CLI 当前没有媒体 POST 自动重试。超时、连接中断、5xx 或输出不完整时保留请求接受状态和可得证据，按 Skill 的不自动重投合同处理。先保存 ASR 转写，再用 M3 Messages 整理文本语义；音色和环境声需可核对的听音结果。
 
 ## 模型与版本
 

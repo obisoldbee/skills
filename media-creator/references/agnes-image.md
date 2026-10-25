@@ -1,6 +1,6 @@
 # Agnes Image 2.5 Flash
 
-官方文档：<https://agnes-ai.com/zh-Hans/docs/agnes-image-25-flash>。参数复核日期：2026-09-07；文档兼容性不等于本机生成实测。
+官方文档：<https://agnes-ai.com/zh-Hans/docs/agnes-image-25-flash>。参数复核日期：2026-09-07；生成时按当前接口和实际文件验收。
 
 ## 能力
 

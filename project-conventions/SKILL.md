@@ -1,302 +1,126 @@
 ---
 name: project-conventions
-description: "Initialize and maintain project filesystems and the obisoldbee Skills collection. Use for Project Root adoption, safe cross-Harness access, exact clone/update/device-refresh lifecycles, repository and wrapper projections, private or third-party repository boundaries, and directory migration—not for unrelated implementation work."
+description: 初始化项目目录、接入已有项目治理、维护项目合集与仓库映射，以及安全更新或迁移 Skill。用于目录和来源管理，普通业务开发沿用项目现有规则。
 ---
 
 # Project Conventions
 
-## Reading and applicability
+按用户当前请求选择操作，读取目标的 `AGENTS.md`、来源映射和对应参考文件。读过且仍适用的规则直接复用。
 
-Select the lifecycle and governance layer from the current task. Mode-specific sections apply only to that selection; they are not a checklist to execute across all layers. Read applicable `AGENTS.md` files and the selected operation's required references before acting. Reuse a complete, current reading in the same task; reread when the rules, target, or relevant state change or a missing fact requires it. An ordinary package edit does not select initialization, migration, workspace scanning, or consumer installation.
+## 先选择操作
 
-## Route the lifecycle before touching the filesystem
+涉及克隆、初始化、同步或更新时，读 [lifecycle-workflows.md](references/lifecycle-workflows.md) 的决策表、共有检查和所选操作。
 
-For clone, initialization, sync, pull, or update work, choose exactly one lifecycle from this table. Read the decision table, shared guards, and selected lifecycle section in `references/lifecycle-workflows.md`; load another lifecycle only when the task or a named dependency requires it.
-
-| Intent | Lifecycle | Stop boundary |
+| 用户目标 | 操作 | 完成条件 |
 |---|---|---|
-| Build a new governed target and make it usable | **Full initialization** | Target, repository mapping, validation, then separately authorized consumer links |
-| Refresh an existing checkout or named Skill | **Update-only** | Fetch, validate the frozen candidate package, fast-forward that exact commit, report, stop |
-| Refresh this device's existing public Skill consumers | **Device refresh** | Plan first; when authorized, update the one checkout and add only missing allowlisted links in existing Agent roots |
-| Reorganize or audit existing paths | **Governance maintenance** | Only the exact authorized paths and selected governance layer |
-| Clone/download now for a later task | **Bootstrap-only** | Validate the clone and stop |
-
-The presence of `AGENTS.md`, `README.md`, another project, or an Agent Skill directory never broadens the request. Do not inspect or modify unnamed siblings.
+| 建立可用的新项目 | Full initialization | 目录、仓库映射和验证完成；需要安装时按已授权的目标执行 |
+| 更新已有仓库或某个 Skill | Update-only | 检查状态，获取上游，验证固定候选提交，安全快进并报告前后提交 |
+| 同步本机已有公共 Skill 入口 | Device refresh | 审核计划，更新唯一仓库，在已有 Agent 根目录补齐允许的缺失链接 |
+| 检查或调整已有目录、指引、映射 | Governance maintenance | 修改指定范围并验证实际路径、内容和映射 |
+| 先克隆保存，稍后使用 | Bootstrap-only | 来源和本地检出验证完成 |
 
 ### 旧项目治理接入
 
-脚本模式 `adopt-existing` 在本文中称为“旧项目治理接入”。它只能在用户针对某一个已有项目根目录单独明确授权时运行，且只补齐 `AGENTS.md` 路由、项目本地准入助手和最小管理记录。它必须原样保留所有已有资料，不移动、重命名、删除或重新归类源码，不新建或移动 `Git` 仓库，不执行 `fetch` 或 `push`，不上传或发布，不安装 `Skill`，也不建立 `Agent` 消费者链接。
+`adopt-existing` 为指定的已有项目补齐入口、协作说明和最小管理目录。先运行 dry-run，核对计划后 apply；冲突时保留现场，执行失败时回滚本轮写入并保留并发出现的用户内容。业务文件和现有仓库原样保留。详细步骤见 [project-root-initialization.md](references/project-root-initialization.md)。
 
-每个项目都必须先运行只展示计划的 `dry-run`，确认无冲突后才能运行执行写入的 `apply`；冲突即停，失败必须回滚本轮写入，并保留并发出现的用户内容。在无关修复中发现旧项目缺少本地准入助手，不得自动接入，也不得仅因此阻断原任务。完整可执行合同见 `references/project-root-initialization.md`。
+## 选择治理层级
 
-## Shared-repository Skills collection profile
+| 层级 | 管理内容 | 必读参考 |
+|---|---|---|
+| Projects Workspace | 本机项目路径和轻量目录 | [projects-workspace.md](references/projects-workspace.md) |
+| Project Collection | 相关项目的入口、成员和共享基础设施 | [project-collection.md](references/project-collection.md) |
+| Project Root | 单个项目的文档、记录、源码入口和仓库映射 | 初始化或布局调整读 [directory-layout.md](references/directory-layout.md)；初始化或接入再读 [project-root-initialization.md](references/project-root-initialization.md) |
+| Repository Root | Git 实际识别的工作树 | 用 Git 核对真实根目录、远程、分支和状态 |
 
-Read `references/shared-repository.md` completely when the target is a Skills collection backed by `obisoldbee/skills`, or when the user asks for the same directory shape on another device.
+维护已有文件且来源映射清楚时，直接处理该文件。入口模板见 [agents-md-template.md](references/agents-md-template.md)。迁移已有目录前读 [migration-guide.md](references/migration-guide.md)，贡献第三方仓库前读 [fork-workflow.md](references/fork-workflow.md)。
 
-The standard shape is:
+## obisoldbee 共享 Skill 合集
+
+目标采用 `obisoldbee/skills` 共享仓库布局时，完整读取 [shared-repository.md](references/shared-repository.md)。
 
 ```text
 <collection>/
-├── AGENTS.md
-├── README.md
-├── MEMBERS.md
-├── GitHub/                                  # the canonical distribution checkout
-│   └── project-conventions/                 # true package source
-├── project-conventions/                     # stable Project Root wrapper
-│   ├── .project-conventions/                # project-local cross-Harness access entry
-│   ├── docs/
-│   ├── conversation/
-│   ├── memory/
-│   └── src/project-conventions              # symlink/junction projection
-└── skills/                                  # collection-control Project Root
-    ├── .project-conventions/                 # independent control-project access entry
-    └── src/                                  # four public-root management projections
+├── AGENTS.md / README.md / MEMBERS.md
+├── GitHub/                         # obisoldbee/skills 唯一 canonical checkout
+│   └── <skill-name>/               # 真正的公共包源码
+├── <member>/                       # 项目 wrapper，保存 docs/conversation/memory
+│   └── src/<skill-name>            # 投影到 GitHub/<skill-name>
+└── skills/                         # 合集控制项目
+    └── src/
         ├── AGENTS.md -> ../../GitHub/AGENTS.md
         ├── README.md -> ../../GitHub/README.md
         ├── config -> ../../GitHub/config
         └── scripts -> ../../GitHub/scripts
 ```
 
-Six path roles are distinct:
+- 合集和 wrapper 保持非 Git；在实际 Repository Root 运行 Git。并发维护使用同一仓库的 linked worktree。
+- 成员索引分别记录 `source`、`repository_root`、`managed_scope`。公共包一包一个顶层目录；消费者直接链接真源。Unix 投影用相对 symlink，Windows 用指向精确目录的 junction。
+- `skills/src/` 恰好保留上面四个投影。包源码放在 `GitHub/<skill-name>`，成员记录放在 wrapper。
+- 私有发行仓库 `GitHub-private` 和第三方池 `GitHub-others` 按单独声明的映射管理。每个远程身份保留一个 canonical checkout，并发编辑使用其 linked worktree。私有包放在已验证的私有 Repository Root 顶层；第三方池每个子项保留各自 Git 根和上游。公共初始化器只处理公共仓库。
+- 凭据和原始敏感数据留在 Git 外。环境受限的 Skill 在包内写明设备、网络和实际核验方式，执行前核对所需条件。
 
-1. **Project Collection**: `<collection>`; it is not a Git repository.
-2. **Shared Repository Root**: `<collection>/GitHub`; it is the canonical checkout of `obisoldbee/skills` in this collection; linked task worktrees of that repository are allowed for authorized concurrent code work.
-3. **True Skill source**: `<collection>/GitHub/project-conventions`.
-4. **Member Project Root**: `<collection>/project-conventions`; it owns documents and continuity records.
-5. **Member projection**: `<collection>/project-conventions/src/project-conventions`; relative symlink on Unix, junction on Windows.
-6. **Agent consumer**: an existing Agent-specific Skill root; it links directly to the true source, never through the member projection.
+### 全新初始化
 
-The `skills/src/` management view is not another member projection. It is a real directory containing exactly four independent projections to public repository-root entries: `AGENTS.md`, `README.md`, `config`, and `scripts`. Never replace them with `skills/src/skills -> ../../GitHub`, never place Skill packages there, and never copy those four sources into the control project.
+固定用户指定的合集路径和写入范围。目标已存在时，先核对身份和冲突。
 
-`GitHub` is a collection-local infrastructure name. Never replace an exact user-selected collection with an application-data or user-global source directory.
-
-### Optional repository infrastructure
-
-The standard initializer above owns only the public `obisoldbee/skills` distribution at `<collection>/GitHub`. A collection may additionally declare, through governance maintenance:
-
-- an **owned private distribution Repository Root**, such as `GitHub-private`, with one Skill package per top-level directory; or
-- a **third-party checkout pool**, such as `GitHub-others`, whose container has no `.git/` and whose named children are independent upstream Repository Roots.
-
-Multiple owned distribution roots are valid only when every member mapping names one exact collection-relative `repository_root`, one normalized remote identity, and one `managed_scope`. Keep at most one canonical clone of each normalized remote identity in the collection; task worktrees share that clone and do not replace its source mappings or consumer links. Never infer a remote, ownership, privacy, or export authority from a directory name.
-
-An owned private repository is not a secret store. Keep credentials and raw sensitive data outside Git. Treat source publication class and runtime availability as independent: a private or local Skill may be portable, device-bound, network-bound, or device-and-network-bound. When device and network restrictions both exist, both must match; unknown evidence means do not execute the integration.
-
-The public initializer must not create, clone, index, or link optional private distributions or third-party pools. Provisioning either is a separately scoped governance-maintenance or bootstrap action.
-
-### Fresh initialization
-
-For a new or explicitly cleared target:
-
-1. Freeze the exact collection path and write set. Do not scan its parent or siblings.
-2. Create the collection directory only if authorized and missing.
-3. Clone `https://github.com/obisoldbee/skills.git` exactly as `<collection>/GitHub`. If `GitHub` exists, do not overwrite it; verify it is the intended clean checkout or stop on the exact conflict.
-4. Require a clean attached `main`, upstream `origin/main`, normalized remote `obisoldbee/skills`, and `HEAD == origin/main`.
-5. Run `GitHub/scripts/verify_release.py GitHub`; this verifies only repository-root publication files.
-6. Run `GitHub/project-conventions/scripts/validate_package.py GitHub/project-conventions`; this separately validates the named package.
-7. Run `initialize_skills_control_project.py` from that checked-out package first without `--apply`, inspect its exact plan, then with `--apply`:
+1. 将 `https://github.com/obisoldbee/skills.git` 克隆到 `<collection>/GitHub`。
+2. 核对 clean、attached `main`、`origin/main`、远程 `obisoldbee/skills` 和 `HEAD == origin/main`。
+3. 运行 `GitHub/scripts/verify_release.py GitHub`，再运行 `GitHub/project-conventions/scripts/validate_package.py GitHub/project-conventions`。
+4. 从已检出的包运行 `initialize_skills_control_project.py` dry-run；审核计划后 apply。
 
 ```text
-python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py \
-  <collection> --distribution-root <collection>/GitHub
-python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py \
-  <collection> --distribution-root <collection>/GitHub --apply
+python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py <collection> --distribution-root <collection>/GitHub
+python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py <collection> --distribution-root <collection>/GitHub --apply
 ```
 
-8. Read back the three collection files, complete `skills/` control project, all four control projections, member wrapper, member projection target, member index, and direct export source.
-9. Confirm the collection root and member wrapper contain no second `.git`.
-10. Stop before Agent installation unless the user separately authorized exact consumers.
-
-The initializer is deterministic, dry-run first, and fresh-layout only. It creates no Git root and no Agent link. Do not handwrite a reduced `skills/` project.
+读回合集入口、控制项目、四个投影、成员 wrapper、成员索引和真实源码。安装消费者时，再按已授权的具体 Agent 执行链接流程。
 
 ### Update-only
-
-An update request never runs initialization. From either the true package or member projection, use:
 
 ```text
 python -B <package>/scripts/update_shared_checkout.py <package>
 ```
 
-The helper resolves the shared Git worktree, requires clean/attached/tracked/ahead=0/fast-forwardable state, fetches, validates only the requested package from the frozen candidate commit in an isolated temporary tree, rechecks the safety gate, fast-forwards that exact validated commit if needed, reports before/after commits, and stops.
-
-If dirty, ahead, detached, diverged, locked, wrong-remote, or wrong-upstream, stop. Never auto-stash, merge a divergence, rebase, reset, preserve/rename branches, move files, rebuild wrappers, edit indexes, scan siblings, or relink during update-only.
-
-One repository commit may contain changes to more than one published package. That is a Git fact, not permission to govern, install, or edit sibling Project Roots. Validate and report the requested package only.
+该脚本解析共享仓库，检查 clean、attached、tracked、ahead=0 和可快进状态；获取上游，在隔离目录验证固定候选提交中的指定包，再快进到该 SHA。遇到 dirty、ahead、detached、diverged、锁或身份不符时，报告具体冲突并保留现场。完成后报告前后提交和包验证结果，停止本次更新。
 
 ### Device refresh
 
-The exact intents “本机全量同步 Skills”, “更新 GitHub 并让本机 Agent 使用”, and “同步共享 Skill 根” select **Device refresh**, not update-only or full initialization. Run the checked-out platform script in plan mode first. On supported Unix hosts, an authorized conflict-free plan may proceed to apply without asking the user to restate the same authorization. Windows combined `-SyncDevice -Apply` remains unavailable. For explicitly authorized sync and installation, update and validate the one checkout separately, then scan/apply to one named Agent with the NT handle-based installer.
+“本机全量同步 Skills”“更新 GitHub 并让本机 Agent 使用”“同步共享 Skill 根”使用此流程，先 plan 后 apply。
 
 ```text
 bash <collection>/GitHub/scripts/link-macos.sh --sync-device
 bash <collection>/GitHub/scripts/link-macos.sh --sync-device --apply
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
-  <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice
 ```
 
-Supported Unix apply may fast-forward only the one existing `GitHub` checkout and add only missing public allowlisted Skill links under already existing configured Agent roots. It never creates a checkout or Agent root, regenerates wrappers/indexes/records, changes export policy, or replaces a real path, wrong link, or dangling link. Do not replace a scoped safe-create failure with `New-Item` or `mklink`. A separately authorized checkout update is supported; it does not itself authorize links. Link readback proves linked state only, not runtime discovery or execution. Unlike update-only, Device refresh intentionally reconciles consumers; unlike full initialization, it never materializes the collection.
+Unix 在已有授权且计划无冲突时可继续 apply，补齐已有 Agent 根中的 allowlist 链接。Windows 组合刷新为 plan-only；需要更新和安装时，分开完成仓库更新与指定 Agent 的 NT handle 安装。遇到真实目录、错误链接或失效链接冲突时保留现场，按请求处理冲突。安全创建失败后保留错误，不换成 `ln`、`New-Item` 或 `mklink` 绕过。
 
-### Agent consumers
+### 消费者链接
 
-Initialization and installation are separate states. For links:
+读取控制 allowlist，扫描已有 Agent 目录，逐个处理授权目标。消费者直接指向真源；记录原链接和冲突，读回链接类型及精确解析目标。需要确认发现状态时使用可用运行时读回，并报告实际结果。
 
-1. Read the control allowlists.
-2. Scan existing configured Agent parents first.
-3. Never create an unknown or missing Agent parent.
-4. Show exact conflicts and preserve rollback evidence for any existing real path or wrong link.
-5. Apply only the explicitly authorized Agent targets, one at a time.
-6. Every consumer must resolve directly to `<collection>/GitHub/project-conventions`.
-7. Read back raw link/junction type and resolved target. Verify discovery from an available fresh runtime readback. Create a new user-visible Agent task only when the user explicitly requests it; otherwise report discovery as unverified if no suitable runtime evidence is available.
+## 单项目初始化
 
-Windows scoped apply uses the repository NT directory-handle helper; combined device-refresh apply remains unavailable. A healthy filesystem link proves only the linked state, not runtime discovery, loading, activation, or execution.
-
-## Name the governance layer
-
-For full initialization outside the shared profile, or governance maintenance, select exactly one layer:
-
-| Layer | Chinese | Owns |
-|---|---|---|
-| **Projects Workspace** | 项目工作区 / 项目总入口 | Current-device project paths and lightweight catalog |
-| **Project Collection** | 项目合集 | Routing, membership, and shared infrastructure for related independent Project Roots |
-| **Project Root** | 单项目根目录 | One project's documents, decisions, memory, source entry, and repository mapping |
-| **Repository Root** | Git 仓库根目录 | The worktree Git itself identifies |
-
-A Repository Root normally lives under its Project Root's `src/`. The shared-repository profile is an explicit exception: member wrappers may declare one collection-relative `repository_root` and a `managed_scope`, while `source` is a verified projection into that scope. Never infer this exception without an explicit mapping.
-
-## Projects Workspace mode
-
-Read `references/projects-workspace.md` completely.
-
-1. Keep the workspace as a local entry point, not a Git super-repository.
-2. Index a Project Collection once and expand its canonical member index.
-3. Run the read-only inspector before and after path, index, category, remote, or link-delegation changes.
-4. Report observed findings; do not classify or repair unrelated children automatically.
+Code 项目保留 `AGENTS.md`、`README.md`、`docs/`、`src/`、`conversation/`、`memory/`；Document 项目另有 `INDEX.md`，按需建立版本记录。Hybrid 沿用 Code 布局。
 
 ```text
-python3 scripts/inspect_projects_workspace.py <workspace-root> --format json
-```
-
-## Project Collection mode
-
-Read `references/project-collection.md` completely.
-
-1. The collection root is a routing overlay, not a Project Root.
-2. Designate exactly one collection-control Project Root.
-3. Keep each member's documents, conversation, and memory in its wrapper.
-4. Record `source` separately from `repository_root` and `managed_scope`.
-5. Each shared Repository Root is collection infrastructure and may serve multiple explicitly mapped packages; multiple roots are allowed only with explicit mappings and one checkout per remote identity.
-6. Export Skills from true package sources, not copies or link chains.
-7. Keep third-party checkout pools non-Git at the container root and preserve each child's upstream ownership and history.
-8. Record environment-bound execution constraints in the named Skill's runtime boundary; do not mistake a clone or link for runtime eligibility.
-
-## Project Root mode
-
-For initialization, layout changes, or an unresolved placement question, read `references/directory-layout.md` completely and select the primary deliverable. Maintaining existing files with a verified source mapping does not require repeating the layout specification. For initialization or adoption, also read `references/project-root-initialization.md`:
-
-| Type | Required paths |
-|---|---|
-| Code | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |
-| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`; add versioned records only for a real submission/version cycle |
-| Hybrid | Code paths plus relevant document paths; `conversation/` and `memory/` remain required |
-
-An Agent Skill development workspace remains a **Code** Project and adds the `agent-skill` profile. Its package is executable/configuration source even when the entry is Markdown: the exact entry is `src/<skill-name>/SKILL.md`, with the complete package under `src/<skill-name>/`. `src/SKILL.md` and `docs/<skill-name>/SKILL.md` are invalid. Agent-specific Skill directories are installation consumers, never editable source. The shared-repository profile is separate: its wrapper source is a verified projection to the true package in the shared checkout.
-
-Core rules:
-
-1. `AGENTS.md` is a lean routing and authority index; read `references/agents-md-template.md`.
-2. Formal documents live under `docs/`; research stays in `docs/research/`.
-3. For Code, Document, and Hybrid projects alike, decisions and collaboration history live in `conversation/`, while project-owned continuity lives in `memory/`. Harness-owned memory or hidden directories never replace either project record.
-4. Read `references/migration-guide.md` before restructuring an existing Project Root.
-5. Archive superseded project documents rather than silently deleting them.
-6. Verify Repository Roots with Git; do not infer them from folder names.
-7. Keep wrapper metadata and machine paths out of portable/public packages.
-8. Ordinary initialization selects **worktree-first** collaboration. Read `references/worktree-collaboration.md`. Code tasks use separate branches and linked worktrees; response-only reading and independent reports need no admission. The local helper remains for compatibility, not a mandatory claim gate.
-9. Resolve the actual repository, base commit, unique branch and absent task-worktree path. Authorized code work includes ordinary local worktree setup. Use the host's existing task worktree when suitable. A worktree begins from committed files; preserve and explicitly account for dirty/untracked inputs. Never reset or stash another task's work.
-10. One concurrent writer per physical worktree. Separate worktrees may edit the same logical filename; one integrator reconciles commits and runs affected checks. Worktrees do not isolate shared databases, ports, services or common build outputs. Use separate resources or one dedicated builder for a stable integrated revision.
-11. New reports use exact unique files with no-clobber creation; different files in one folder may coexist. For shared non-Git documents use one editor and separate proposals. Agents write task-specific records; the integrator updates canonical logs/indexes and allocates sequence numbers. Do not introduce persistent claims for these operations.
-12. Existing adopted projects retain their copied policy until migrated. Before switching, check whether a local command supervisor or authorization API depends on legacy helper execution/tokens; handle that narrowly scoped runtime dependency as described in `references/worktree-collaboration.md`. For an authorized switch on an exact compatible target, run `scripts/migrate_worktree_policy.py <project-root> --apply`; it plans, checks, backs up and replaces the four governance files without consulting the old claim registry. No separate claim-recovery permission round is needed. A call without `--apply` is an optional preview. Updating the Skill alone does not migrate project copies. Reload running Agents' rules; preserve actual active work.
-
-`worktree-first` is a coordination policy, separate from the retained legacy helper's protocol version 3. Old SQLite claims do not govern projects using this policy, and a copied database does not inherit control over an independent copy. Do not delete the database or infer process death from a stale row. Projects explicitly retaining `legacy-claims` use `references/project-access.md`; never mix those admission commands into the default workflow.
-
-Initialize an ordinary Project Root with a dry-run, explicit type/mode, apply, and target validation:
-
-```text
-python3 -B scripts/initialize_project_root.py <target> \
-  --type <code|document|hybrid> \
-  --mode <fresh-empty|adopt-existing>
-python3 -B scripts/initialize_project_root.py <target> \
-  --type <code|document|hybrid> \
-  --mode <fresh-empty|adopt-existing> --apply
+python3 -B scripts/initialize_project_root.py <target> --type <code|document|hybrid> --mode <fresh-empty|adopt-existing>
+python3 -B scripts/initialize_project_root.py <target> --type <code|document|hybrid> --mode <fresh-empty|adopt-existing> --apply
 python3 -B scripts/validate_project_root.py <target>
 ```
 
-For an Agent Skill Code Project, add `--profile agent-skill --skill-name <lowercase-hyphen-name>` to both initializer commands. Validation then requires that exact package entry and a matching frontmatter `name`.
+Skill 开发项目选择 Code，再加 `--profile agent-skill --skill-name <lowercase-hyphen-name>`。包入口为 `src/<skill-name>/SKILL.md`，`agents/`、`references/`、`scripts/` 等资源与它放在同一包内。Agent 安装目录用作消费者，编辑来源由 Source Mapping 指定。
 
-After initialization, any Harness follows the generated AGENTS.md and ACCESS.md worktree workflow; it does not need this Skill installed at runtime. Existing materials are preserved and never moved by initialization.
+## 协作和任务材料
 
-For a contribution fork, read `references/fork-workflow.md`. For records, use `references/conversation-format.md`, `references/review-naming.md`, and `references/versioned-records.md` as routed.
+普通协作采用 `worktree-first`，按 [worktree-collaboration.md](references/worktree-collaboration.md) 执行。直接读取；独立报告用精确文件名且不覆盖；并发 Git 写入各用分支和 linked worktree；共享非 Git 文件由一个整合者修改。先保留脏输入，再把本任务所需内容带入工作树。记录、服务、端口和构建输出按实际资源协调。
 
-## Mutation contract
+已有项目的 runtime 调用方仍依赖 legacy helper 时，保留该入口，并读 [project-access.md](references/project-access.md)。授权迁移使用 `scripts/migrate_worktree_policy.py <project-root> --apply`，同时更新四个治理文件并保留旧数据库；运行中的 Agent 随后重读规则。
 
-Before a write:
+项目资料沿用现有 docs 分类。讨论记录见 [conversation-format.md](references/conversation-format.md)，审查命名见 [review-naming.md](references/review-naming.md)，正式版本材料见 [versioned-records.md](references/versioned-records.md)。
 
-1. State the lifecycle, exact path roles, and selected governance layer when applicable.
-2. List exact creates, edits, moves, and links.
-3. Snapshot relevant Git state, hidden entries, and existing link text.
-4. Preserve unrelated dirty work and user files.
-5. Run the workspace inspector before an authorized workspace path/index/link-delegation change.
+## 修改和验证
 
-After a write:
+修改前核对当前请求、目标文件、真实路径和已有变化。目录迁移、成员索引或链接委托发生变化时，在操作前后运行 workspace inspector；普通文字修订检查相关内容和链接即可。
 
-1. Read back every changed path and mapping.
-2. Run the named validator and checks applicable to the changed contract or behavior. Preserve required acceptance gates; do not run unrelated suites or repeat passing checks without a new change, failure, or unresolved concern. Continue authorized local corrections and affected checks without asking for the same permission again.
-3. Rerun the workspace inspector when its governed facts changed.
-4. Distinguish source, checkout, projection, linked, discovered, and executed states.
-5. Report unresolved findings without expanding scope.
-
-## Success criteria
-
-Completion follows the selected lifecycle. Governance maintenance is complete when the authorized changes are read back, applicable checks pass, required in-scope records are updated, and unresolved findings are reported. Read-only work completes with its requested findings and evidence; it creates no maintenance records. Update-only and Device refresh stop at their own declared boundaries. Existing unrelated validation failures remain explicit debt, not proof of a passing gate or permission to repair other paths.
-
-A successful shared Skills initialization has:
-
-- one Git worktree at `<collection>/GitHub`;
-- no `.git` at the collection root or member wrapper;
-- a true package at `GitHub/project-conventions`;
-- a Unix relative symlink or Windows junction at `project-conventions/src/project-conventions` resolving to that package;
-- a complete `skills/` control project;
-- a real `skills/src/` containing exactly four independent projections to `GitHub/AGENTS.md`, `GitHub/README.md`, `GitHub/config`, and `GitHub/scripts`, with no `skills/src/skills` aggregate projection or copied repository bytes;
-- a canonical index separating `source`, `repository_root`, and `managed_scope`;
-- direct Agent exports from `GitHub/project-conventions`;
-- no Agent links created unless separately authorized;
-- root and package validation receipts;
-- an idempotent second initializer run returning `already_initialized`.
-
-## References
-
-| File | Load when |
-|---|---|
-| `references/lifecycle-workflows.md` | Initializing, cloning, syncing, pulling, or updating |
-| `references/shared-repository.md` | Using one collection-local Git source with member projections |
-| `references/projects-workspace.md` | Maintaining a Projects Workspace |
-| `references/project-collection.md` | Initializing or maintaining a collection |
-| `references/directory-layout.md` | Initializing or explaining one Project Root |
-| `references/project-root-initialization.md` | Deterministically creating or adopting an ordinary Project Root |
-| `references/worktree-collaboration.md` | Default code collaboration, independent reports, integration and policy migration |
-| `references/project-access.md` | Compatibility only: projects explicitly retaining legacy claims |
-| `references/agents-md-template.md` | Creating or revising AGENTS.md |
-| `references/migration-guide.md` | Moving existing paths or repository boundaries |
-| `references/fork-workflow.md` | Configuring a fork and upstream |
-| `references/conversation-format.md` | Recording a significant decision |
-| `references/review-naming.md` | Creating or migrating reviews |
-| `references/versioned-records.md` | Managing document submissions or versions |
-
-## Cross-model execution contract
-
-Materials: Use only the request, exact named paths, current disk/Git/link evidence, and routed references. Never invent a local path, repository state, Agent root, or remote fact.
-
-Task: Select one lifecycle. For a shared Skills initialization, create or verify the final `GitHub` checkout, run the deterministic initializer, validate the four control projections and member projection, and handle only separately authorized Agent consumers. For update-only, run the narrow updater and stop. For Device refresh, plan first; supported Unix hosts may then apply an already authorized conflict-free refresh of the one checkout and missing public allowlisted links in existing Agent roots. On Windows, use a separately authorized validated checkout update followed by scoped Agent installation; do not invoke combined `-SyncDevice -Apply`.
-
-Constraints: Stay within named paths; preserve conflicts and rollback evidence; never create a second source copy; never turn update-only into governance or link work.
-
-Output: In the user's language, report lifecycle, exact paths, observed state, executed changes, validations, stop boundary, and unresolved blockers. Distinguish proposed, created, Git-backed, projected, linked, discovered, and run states.
+完成后读回改动，运行对应 validator 和受影响行为的测试，解决本轮引入的问题。只报告真实完成的修改、路径、验证和剩余阻塞。沿用用户已有授权；范围、冲突处理或外部动作需要新的决定时，再问具体缺口。

@@ -14,7 +14,7 @@ AGENTS.md is an **index**, not a reference manual. It follows three principles:
 
 The managed access block below is for an explicitly initialized or adopted Project Root. Do not paste it into an unrelated legacy project merely because its helper is absent. Missing or failed access infrastructure blocks writes only when the project's current rules require it; actual concurrent-write conflicts remain independent blockers.
 
-Template maintenance affects future initialization. It does not authorize regenerating existing projects, replacing their managed blocks, or changing stored contract hashes. An existing adopted project keeps its current access contract until a separately scoped maintenance operation safely updates and validates it.
+Template edits apply to future initialization. Update existing managed blocks and their contract hashes together when the user requests that maintenance.
 
 ```markdown
 # AGENTS.md
@@ -115,108 +115,6 @@ For a device- or network-bound Skill, add a concise routing summary and keep the
 
 Device alternatives are OR, network-profile alternatives are OR, and constrained device plus network axes are AND. Do not put credentials, SSIDs, private keys, tokens, cookies, or secret endpoints in this table.
 
-## Worked Example (OB Dim Project)
-
-```markdown
-# AGENTS.md
-
-> Agent entry point for the OB Dim workspace. Read this first.
-
-## Project
-
-OB Dim — Windows 系统托盘小程序，在 Work/Away 模式间一键切换显示器息屏超时（C# WinForms .NET 8，单文件 EXE 192KB）。
-
-## Mandatory Rules
-
-When working in this workspace, follow its initialized project-local access entry:
-- Use the worktree-first workflow in ACCESS.md; ordinary work requires no claim
-- Centralize all documents under `docs/` (specs/plans/reviews/research)
-- Review files: `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md` under `docs/reviews/`
-- Conversation files: `NN-kebab-topic.md` under `conversation/`; let the integrator allocate the next number
-- Project memory: write separate task records; the integrator rereads and merges canonical updates
-
-## Directory Index
-
-| Path | Content | Details |
-|---|---|---|
-| `README.md` | Project overview, tech stack, quick start (for humans) | — |
-| `conversation/` | 6 discussion records (brainstorming, decisions, implementation, verification, branding) | skill: references/conversation-format.md |
-| `docs/specs/` | Design spec (11 sections) | `2026-07-19-screen-timeout-toggle-design.md` |
-| `docs/plans/` | Implementation plan (12 TDD tasks) | `2026-07-19-screen-timeout-toggle.md` |
-| `docs/reviews/` | 2 review documents (takeover reviews) | skill: references/review-naming.md |
-| `docs/research/` | Research documents (currently empty) | — |
-| `docs/migrations/2026-07-20-directory-migration.md` | Directory restructuring record | One-time migration doc |
-| `src/` | Source code (C# .NET 8, 15 .cs files, .git with tag v1.0.0) | — |
-| `release/` | Compiled EXE (192KB, framework-dependent) | `ScreenTimeoutToggle.exe` |
-| `memory/` | Agent-maintained daily logs + long-term memory | `MEMORY.md` + `YYYY-MM-DD.md` |
-| `.project-conventions/` | Local collaboration policy | `ACCESS.md` + `project_access.py` |
-
-## Quick Reminders
-
-- Read directly; use unique report files or actual isolated task worktrees for writes. Ordinary work needs no status/enter receipt
-- Explicit repository/Skill update? Fast-forward and validate only; do not turn it into a directory migration
-- Significant decision or direction change? Create a unique task record; the integrator assigns canonical sequence numbers
-- New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
-- Record significant decisions and substantive work in separate task files; update indexes only when their represented facts change. Response-only work needs no project record
-- Concurrent work? readers need no admission; independent files may share a folder; concurrent Git writers use distinct worktrees and reconcile logical overlap at integration
-- Harness-owned memory is reserved for the tool and never substitutes for project `conversation/` or `memory/`
-- Code goes in `src/`, artifacts in `release/`, never in `docs/`
-- Source namespace is `ScreenTimeoutToggle` (legacy, not renamed to `OBDim` — intentional)
-```
-
-## What to Avoid
-
-### Don't: Inline full rules
-
-```markdown
-## Review Naming Rule
-
-Review files must follow this pattern: YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md
-where reviewer is one of: architect, engineer, qa, pm, security, takeover, user
-and scope is one of: code, design, pr, release, spec, full
-and HHMMSS is 24-hour time with second precision...
-[50 more lines of detailed rules]
-```
-
-**Why bad**: This duplicates the skill's content. When the skill updates, this file becomes stale.
-
-### Do: Reference the rule
-
-```markdown
-## Quick Reminders
-
-- New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md` (see skill: references/review-naming.md for full vocabulary)
-```
-
-**Why good**: One line. Points to the authoritative source. Never goes stale.
-
-### Don't: Write project history in AGENTS.md
-
-```markdown
-## Project History
-
-This project started on 2026-07-19 when the user wanted a screen timeout toggle tool.
-The brainstorming process involved 8 decision points... [20 more lines]
-```
-
-**Why bad**: History belongs in `conversation/` and `memory/`. AGENTS.md should be current state, not past events.
-
-### Don't: Duplicate README.md content
-
-```markdown
-## Tech Stack
-
-| Item | Choice |
-|---|---|
-| Language | C# WinForms .NET 8 |
-| Testing | xUnit + Moq |
-... [full tech stack table]
-```
-
-**Why bad**: This is README.md's job. AGENTS.md links to README.md for human-oriented details.
-
 ## Maintenance
 
-- **When to update AGENTS.md**: directory structure changes, new top-level files/dirs added, key conventions change.
-- **When NOT to update**: individual file content changes (update the file itself, not the index), daily work logs (go to `memory/`), conversation records (go to `conversation/`).
-- **Review length for duplication, not as a quota.** Around 60 lines can prompt a review of inlined detail, but retain project facts, domain knowledge, quality standards, and necessary authority/safety boundaries. Route substantial conditional detail to its source; length alone does not justify deletion.
+Update this entry when source mappings, active rules or directory navigation change. Keep detailed procedures in their routed source, project history in `conversation/` and cross-task continuity in `memory/`. Retain the project-specific facts needed to act.

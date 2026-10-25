@@ -158,10 +158,10 @@ def render_access_block(project_profile: str, skill_name: str | None, coordinati
 - Read-only work needs no admission or runtime writes. Use a fixed revision or recheck changed inputs.
 - Code changes use one task-specific branch and linked Git worktree per concurrent writer. Bind the actual repository, base commit, unique branch, and absent destination first. Existing dirty work stays in place; a new worktree starts from committed content only.
 - Reports use distinct exact output files or task-owned directories, with no-clobber creation. Different files in one folder may coexist. For existing shared files, use separate worktrees or one agreed integrator; do not overwrite concurrent edits.
-- Merge validated commits through one integrator after checking the destination and preserving unrelated work. Shared build outputs, databases and ports require their own isolation. A different chat is not an isolated filesystem.
-- Do not run `enter/check/finish/recover` or request claim cleanup for ordinary work. Legacy SQLite claims are historical metadata, not admission authority under this policy. Do not delete the old database or infer that old processes have stopped.
+- Merge validated commits through one integrator after checking the destination and preserving unrelated work. Shared build outputs, databases and ports require their own isolation.
+- Do not run `enter/check/finish/recover` or request claim cleanup for ordinary work. Legacy SQLite claims are historical metadata, not admission authority under this policy. Preserve the old database; inspect actual processes when a runtime resource conflicts.
 - Record meaningful work in a unique task record; the integrator updates canonical logs and indexes. Do not hold a project-wide claim for records or number allocation.
-- A copied directory is not automatically a linked worktree. Verify its Git root/common directory before using Git; preserve existing content and copied runtime metadata.
+- Verify Git root/common-directory mappings before using a copied directory; preserve its existing content and runtime metadata.
 {skill_rules.rstrip()}
 {MANAGED_END}"""
     return f"""{MANAGED_START}
@@ -178,7 +178,7 @@ def render_access_block(project_profile: str, skill_name: str | None, coordinati
 - Finish required in-scope work and records before `finish --session <id> --token <token> --outcome <success|failed|aborted>`. Response-only tasks create no project records; admission metadata still follows this adopted protocol.
 - For a bounded foreground command, prefer `run --actor <label> --write-dir <output> -- <command>`; declare every write path and keep child processes in the foreground. It releases on normal completion, command failure and start failure. Do not hold an entire-project writer across a whole conversation.
 - Never auto-clear another claim. `recover` requires explicit user authorization, a reason, a dry-run, and then `--apply`.
-- This managed block adopts the helper for this Project Root: if it is missing or fails, remain read-only. Absence in another legacy project does not authorize installing governance or block unrelated work by itself. Separate Harness conversations are not separate filesystems.
+- This managed block adopts the helper for this Project Root: if it is missing or fails, remain read-only. Keep unrelated legacy projects on their current rules.
 {skill_rules.rstrip()}
 {MANAGED_END}"""
 

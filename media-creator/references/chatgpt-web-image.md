@@ -29,7 +29,7 @@
 
 ## Executor 选择
 
-按 [浏览器平台](browser-platforms.md) 选择执行器：显式选择优先，再从真实可调用且满足能力的入口中按用户已有订阅、常用工具和已验证登录态选择；无适用偏好时才用 macOS Ego / Windows Tabbit 默认及其备用路线。浏览器存在不授予新可见任务权限。envelope 的 `executor` 写实际 `ego-browser`、`tabbit`、`chrome`、`codex-browser` 或 `mcode-browser`；静态校验不代替运行时能力检查。
+按 [浏览器选择与操作](browser-platforms.md) 选入口，envelope 的 `executor` 写实际浏览器。新可见任务按上文的用户请求条件创建。
 
 提交前在独立的本任务页面确认 ChatGPT URL、真实登录态、图片模式、composer、所需上传/下载能力和可写输出目录。`check_routes.py` 只做本地元数据检查，不检查登录或连接。只有自动选路尚未选定/提交 Web 路线、且无可用浏览器能力时，文生图才可按路由改走 MMX；Windows 或缺 Ego 本身不是 provider fallback 原因。图生图/多图不改走 MMX；Agnes 需原选择授权。登录或人工检查保留页面交用户处理。
 
@@ -60,7 +60,7 @@ ChatGPT 结果 URL 可能依赖登录 cookie。不要假定 Node/server 侧直�
 await uploadFile('input[type="file"]', '/absolute/path/to/input.png')
 ```
 
-但“存在上传 helper”不等于 ChatGPT 当前图片编辑流程已验证。启用图生图或多图前，必须在当前 UI 中确认：
+启用图生图或多图前，在当前 UI 中确认：
 
 - 正确的附件/文件 input；
 - 上传完成状态；

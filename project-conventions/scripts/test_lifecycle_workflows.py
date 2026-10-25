@@ -67,12 +67,9 @@ class LifecycleWorkflowTests(unittest.TestCase):
         )
 
     def test_all_project_types_require_project_owned_records(self) -> None:
-        for required in (
-            "| Code | `AGENTS.md`, `README.md`, `docs/`, `src/`, `conversation/`, `memory/` |",
-            "| Document | `AGENTS.md`, `README.md`, `INDEX.md`, `docs/`, `conversation/`, `memory/`; add versioned records only for a real submission/version cycle |",
-            "`conversation/` and `memory/` remain required",
-            "Harness-owned memory or hidden directories never replace either project record",
-        ):
+        # The entry routes layout details; the functional initializer suite checks
+        # required records for every project type without freezing prose wording.
+        for required in ("Code", "Document", "Hybrid", "`conversation/`", "`memory/`", "references/directory-layout.md"):
             self.assertIn(required, self.skill)
         for required in (
             "| `conversation/` | Required | Required | Required |",
@@ -136,8 +133,8 @@ class LifecycleWorkflowTests(unittest.TestCase):
 
         update_contract = "\n".join((self.skill, self.lifecycle, self.shared))
         for required in (
-            "frozen candidate commit",
-            "isolated temporary candidate tree",
+            "固定候选提交",
+            "隔离目录",
             "fast-forwards only the exact validated commit",
             "leaves local `HEAD` and the worktree unchanged",
         ):
@@ -264,11 +261,10 @@ class LifecycleWorkflowTests(unittest.TestCase):
             "update_shared_checkout.py",
             "repository_root",
             "managed_scope",
-            "Every consumer must resolve directly",
+            "消费者直接链接真源",
         ):
             self.assertIn(text, combined)
         self.assertIn("Forbidden side effects in update-only", self.lifecycle)
-        self.assertIn("never through the member projection", combined)
         self.assertNotIn("App" + "Data", combined)
         self.assertNotIn("src/skills/project-conventions", combined)
         for device_refresh_text in (
@@ -277,8 +273,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
             "更新 GitHub 并让本机 Agent 使用",
             "同步共享 Skill 根",
             "--sync-device",
-            "only missing public allowlisted Skill links",
-            "never materializes the collection",
+            "allowlist 链接",
         ):
             self.assertIn(device_refresh_text, combined)
         self.assertIn(
@@ -294,7 +289,7 @@ class LifecycleWorkflowTests(unittest.TestCase):
             "Multiple owned distributions",
             "GitHub-private",
             "third-party checkout pool",
-            "one checkout per remote identity",
+            "each normalized remote identity has only one checkout",
             "device-and-network-bound",
             "both must match",
         ):

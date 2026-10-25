@@ -29,7 +29,7 @@ Controller 冻结 `<MATERIAL_ROOT>`、本轮 `<RUN_ROOT>`、完整文件清单�
 输出是 RUN_ROOT 下不存在的独立目录。多个来源可由调用方在既有授权下按来源目录保留原件，
 不得因打包方便遗漏原始要求、在范围内的未提交/未跟踪文件、规则、差异或必要测试证据。
 目录选择不自动涵盖其中秘密或无关文件。清单中的排除项逐项说明原因，缺失材料不得伪装已收录。
-Git 项目还需核对根、remote、HEAD、dirty、LFS 和 submodule；指针文件或 gitlink 不代表已包含对应原件。
+Git 项目还需核对根、remote、HEAD、dirty、LFS 和 submodule；列明 LFS 或 submodule 原件是否实际纳入。
 本地包读取当前实际文件，不能只用 git archive HEAD 而漏掉本轮未提交修改。
 
 将实际相对文件路径写到 selection.json，不递归盲打整个工作区。示例字段需绑定当前请求：
@@ -89,7 +89,7 @@ archive_name、upload_complete=true、evidence_ref；证据必须来自真实上
 ## GitHub 路线
 
 使用实际核实的 remote/用户给出的仓库身份和完整 commit。evidence.github 包含 repository、commit、
-remote_has_commit、web_can_read、evidence_ref；两项 true 才 ready。本地 remote 或 commit 不证明网页可读。
+remote_has_commit、web_can_read、evidence_ref；两项 true 才 ready。从网页端实际检查固定提交是否可读。
 用户给 URL 但本地无对应 remote 时，使用 declared_github_url，加 repository_verified=true 和真实证据。
 
 自动路线下当前修改可直接打包；显式 GitHub 路线须冻结新提交并按已有授权发布。

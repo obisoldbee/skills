@@ -2,21 +2,13 @@
 
 Load this file for PMC or DOI batches beyond a small manual spot check.
 
-## Why This Exists
-
-Other local tools can download papers because they use a browser-centered route,
-publisher-specific patterns, pacing, and manifest recovery. A QA run that uses
-raw HTTP, a temporary package-local script, or a naive direct PDF loop can record
-many access-blocked rows even when the formal downloader has a better route.
-
 ## Required Strategy
 
 All network activity in this playbook is serialized through
 `shared-egress-ip:paper-download`. Separate shards, processes, task spaces, or
 write directories do not permit concurrent requests from the same public IP.
 
-Select a callable, task-capable browser by explicit choice, then applicable caller preferences, then macOS Ego / Windows Tabbit defaults.
-Read [ego-browser-route.md](ego-browser-route.md) before browser work. The local
+Select the browser through [ego-browser-route.md](ego-browser-route.md). The local
 Playwright scripts remain bounded fallbacks only when the selected browser is unavailable and
 the user did not explicitly require it.
 
@@ -106,8 +98,7 @@ route with pacing:
 - manifest save after small batches;
 - disk-state reconciliation before reporting.
 
-PMC "Preparing to download" or browser-check pages are not proof that no PDF is
-available. They are route blockers. Use the browser route first, then record the
+When PMC shows "Preparing to download" or a browser-check page, use the browser route and record the
 exact blocker if it still fails.
 
 When `pmc.ncbi.nlm.nih.gov` shows browser-check or reCAPTCHA pages, try the

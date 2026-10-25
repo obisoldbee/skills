@@ -285,11 +285,10 @@ def validate_registry(registry: dict[str, Any], errors: list[str]) -> None:
         errors.append("browser submission contract must pause safely and prevent duplicates/switches")
 
     browser_policy = registry.get("browser_platforms", {})
-    if (browser_policy.get("defaults") != {"Darwin": "ego-browser", "Windows": "tabbit"}
+    if (browser_policy.get("preference_order") != ["ego-browser", "tabbit", "system_default_or_familiar_browser", "harness_browser"]
         or browser_policy.get("explicit_user_choice") != "first"
-        or browser_policy.get("fallbacks") != ["chrome", "codex-browser"]
-        or browser_policy.get("selection") != "runtime_verified_task_capabilities"
-        or browser_policy.get("preference_source") != "caller_subscription_familiarity_verified_session"
+        or browser_policy.get("selection") != "first_available_with_required_capabilities"
+        or browser_policy.get("preference_source") != "explicit_choice_or_active_session_then_preference_order"
         or browser_policy.get("native_executors") != ["mcode-browser"]
         or browser_policy.get("native_access") != "current_harness_or_verified_bridge"
         or browser_policy.get("chrome_import") != "product_ui_then_verify_site_session"

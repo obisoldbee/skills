@@ -18,7 +18,7 @@ description: 核查现有 WireGuard 服务器，保留服务器和各设备密�
 - 国内域名、IPv4 网段的完整快照路径、获取日期、来源、归一化后数量，以及现有 DIRECT 例外。缺完整规则时保留缺口，不能用几个示例域名交付“完整配置”。
 - 分设备记录 App、协议、主导入文件、壳/core 版本、core 哈希与构建标签、活动配置哈希、合并脚本、VPN/TUN、DNS 和 IPv6 状态。区分已采用版本、候选及替代关系；活动版本未读回时记 unknown。没有设备访问条件时保留 `pending_target_device`。
 
-输入 `client_configs`、`cn_domains`、`cn_networks`、`custom_direct_rules` 只读；生成器只写 manifest 绑定的 `output_dir`。服务器和当前客户端的应用操作按用户本次授权另行执行，生成步骤不隐含应用授权。
+输入 `client_configs`、`cn_domains`、`cn_networks`、`custom_direct_rules` 只读；生成器只写 manifest 绑定的 `output_dir`。应用到服务器或客户端时，核对用户本次已授权的目标与操作。
 
 ## 运行条件
 

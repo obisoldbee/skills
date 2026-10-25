@@ -11,7 +11,7 @@ OCR/文档是独立任务轨，不是图像理解的低配替代品。先确认�
 | 火山生产 PDF 理解 | `volcengine-platform-responses-files` | 普通 Platform adapter、key/model 和授权已显式绑定 |
 | 火山交互式 PDF 抽取 | `volcengine-arkcli-understand` → `doc-extract` | recipe 实际模型与认证已核对 |
 
-本公共包不嵌入局域网 IP、端口或 token。本地 endpoint 是设备配置，必须在当前任务中显式绑定；同一 IP 也不代表共用 payload、token、并发或显存。
+本公共包不嵌入局域网 IP、端口或 token。本地 endpoint 是设备配置，必须在当前任务中显式绑定；逐 endpoint 核对 payload、token、并发和显存要求。
 
 ## 输入处理
 
@@ -30,4 +30,4 @@ OCR/文档是独立任务轨，不是图像理解的低配替代品。先确认�
 3. `layout_evidence`：页码、区域、坐标、表格/分栏/标题关系。
 4. `semantic_interpretation`：只有任务要求整体理解时才生成，并引用具体页面证据。
 
-OCR 成功不等于完成画面语义；视觉摘要也不能冒充逐字 OCR。endpoint 不可用时保存失败并停止，除非当前请求明确授权一个具体 fallback。
+逐字 OCR 和画面语义分别输出，按任务检查缺失内容。endpoint 不可用时保存失败并停止，除非当前请求明确授权一个具体 fallback。

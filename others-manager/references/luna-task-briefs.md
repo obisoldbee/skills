@@ -52,7 +52,7 @@ Procedure:
 5. Return the exact plan path and plan ID. State that the controller must independently review it and use its private active-writer capability; do not compose, return, or run an apply command.
 
 Failure policy:
-- Exit code 2 means the plan contains blockers; it is not permission to apply, edit, or retry differently.
+- On exit code 2, return the plan and its blockers for controller review; stop before apply or edits.
 - Never repair or overwrite an unsafe repository.
 - If any exact-path or identity check fails, stop all writes.
 - Any attempted write outside PLAN_PATH is a global stop.

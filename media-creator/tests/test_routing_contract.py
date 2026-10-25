@@ -79,6 +79,18 @@ class RoutingContractTests(unittest.TestCase):
         route_validator.validate_registry(registry, errors)
         self.assertTrue(any("browser platform policy" in error for error in errors), errors)
 
+    def test_browser_preference_order_and_session_priority(self) -> None:
+        policy = self.registry["browser_platforms"]
+        self.assertEqual(policy["preference_order"], [
+            "ego-browser", "tabbit", "system_default_or_familiar_browser", "harness_browser"
+        ])
+        self.assertEqual(policy["preference_source"], "explicit_choice_or_active_session_then_preference_order")
+        registry = copy.deepcopy(self.registry)
+        registry["browser_platforms"]["preference_order"] = ["harness_browser", "ego-browser"]
+        errors = []
+        route_validator.validate_registry(registry, errors)
+        self.assertTrue(any("browser platform policy" in error for error in errors), errors)
+
     def test_codex_ordinary_image_generation_stays_native(self) -> None:
         policy = self.registry["scope"]["codex_ordinary_image_generation"]
         self.assertEqual(policy["action"], "exclude")

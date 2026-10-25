@@ -86,7 +86,7 @@ python3 -B scripts/agnes_media.py video --model agnes-video-2.5 --prompt "参照
 | 3:4 | 720×960 | 834×1112 | 1248×1664 | 1668×2224 |
 | 9:16 | 720×1280 | 720×1280 | 1080×1920 | 1440×2560 |
 
-这是官方页面的参考映射，尤其 Flash 16:9 的 1280×704 是官方记录的输出观察。最终以实际文件和 `metadata.size_mapping`（若返回）为准；下载保存成功也不等于画面、声音、时长或尺寸满足用户验收。
+这是官方页面的参考映射，尤其 Flash 16:9 的 1280×704 是官方记录的输出观察。最终以实际文件和 `metadata.size_mapping`（若返回）为准；下载后检查画面、声音、时长和尺寸。
 
 2026-09-07 文档显示 Flash 限时免费；标准版按分辨率和时长计费，参考视频时长和超额图片也会影响费用。执行时核对最新价格与用户既有预算，缺少必要费用授权时再具体询问，不将 Flash 免费政策套用到标准版。
 
@@ -106,4 +106,4 @@ python3 -B scripts/agnes_media.py video-status \
 
 状态为 `queued/in_progress/completed/failed`；只有 `completed` 的 `metadata.url` 可交付。缺少/未知状态、模型或查询 ID 不匹配都停止；失败任务不输出 provider 原文。`remixed_from_video_id` 不是下载字段。单次命令遇到网络错误或 429 会返回非零；主任务可在既有等待预算内退避后继续同一 ID 的查询，并按需要加大查询间隔。恢复查询沿用该任务剩余等待预算，耗尽时保留 ID、模型并报告等待未完成；不重新 POST、不切模型。
 
-`--output` 使用与图片相同的[输出保护与恢复合同](agnes-image.md#输出保护与恢复)。常规查询、下载或保存错误时，安全目录内回执保留原始 ID、模型、已知模式与已确认的完成 URL；查询结果省略 ID 时也不会丢掉初始 ID。使用回执中的同一 `video_id`/`model` 继续 `video-status`，或保存已完成的同一 URL，不重跑创建命令。父目录移动后不向替换位置写入；`recovery.status=unavailable` 或 `path_verified=false` 不代表旧路径仍安全可用。
+`--output` 使用与图片相同的[输出保护与恢复合同](agnes-image.md#输出保护与恢复)。常规查询、下载或保存错误时，安全目录内回执保留原始 ID、模型、已知模式与已确认的完成 URL；查询结果省略 ID 时也不会丢掉初始 ID。使用回执中的同一 `video_id`/`model` 继续 `video-status`，或保存已完成的同一 URL，不重跑创建命令。父目录移动后不向替换位置写入；`recovery.status=unavailable` 或 `path_verified=false` 时，停止向旧路径写入并重新核对目录身份。

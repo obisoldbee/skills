@@ -1,6 +1,6 @@
 ---
 name: media-understanding
-description: 仅在用户显式调用、宿主不能可靠读取附件，或任务明确要求专项 OCR/音视频、外部 provider、媒体 manifest/模型评测时使用。原生可读的普通单图或多图不要自动触发；显式进入后仍可走 `host_native`。原生不可读的单图默认用 MiniMax，除非用户另行指定或禁止外发。不负责生成。
+description: 用于原生无法可靠读取的附件、专项 OCR、音视频理解、外部媒体模型或模型评测。原生可读的普通单图或多图不要自动触发；显式调用后仍优先 host_native。原生不可读的单图默认用 MiniMax，用户指定路线和外发限制优先。
 ---
 
 # Media Understanding
@@ -17,9 +17,9 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 - 视频时间线、音视频联合、ASR、字幕、说话人、翻译或会议纪要；
 - 用户明确要求外部 provider/model、成本/隐私选型、批处理工作流、manifest/逐项结构化证据、正式媒体证据或媒体模型比较。
 
-不要仅因普通单图或多图、截图较多、需要逐张核价/分类，或结果要写入其他文件而隐式触发本 Skill。当前宿主/模型已确认能实际读取所需附件，且任务只是描述、粗略读字、分类、核价或直接问答时，直接使用宿主原生能力；图片数量本身不构成 provider 路由理由。只有当前宿主无法可靠完成所需附件读取时，才按不可读处理并进入本 Skill。
+不要仅因普通单图或多图、截图较多、需要逐张核价/分类，或结果要写入其他文件而隐式触发本 Skill。当前宿主/模型已确认能实际读取所需附件，且任务只是描述、粗略读字、分类、核价或直接问答时，直接使用宿主原生能力；只有当前宿主无法可靠完成所需附件读取时，才按不可读处理并进入本 Skill。
 
-显式点名只决定进入路由，不决定执行器，也不强制外部服务。进入后，只要当前宿主已实际读到本次所需的单张或多张附件，仍优先使用 `execution_path=host_native`；用户明确指定 provider/model 时除外。对不能读取本次附件的宿主/模型，用户提供单张图片并要求描述、读图或回答图片问题，即视为当前请求已授权仅将这张图片交给默认 `minimax-mmx-image` 执行；无需再次询问 provider 或普通单次调用成本。用户指定其他 provider/model、禁止外发，或请求批量/其他媒体时，不适用此默认授权。附件出现在界面里、模型名称看似支持视觉或 registry 中存在某项配置，都不等于本次附件已可读。
+显式点名只决定进入路由，不决定执行器，也不强制外部服务。进入后，只要当前宿主已实际读到本次所需的单张或多张附件，仍优先使用 `execution_path=host_native`；用户明确指定 provider/model 时除外。对不能读取本次附件的宿主/模型，用户提供单张图片并要求描述、读图或回答图片问题，即视为当前请求已授权仅将这张图片交给默认 `minimax-mmx-image` 执行；无需再次询问 provider 或普通单次调用成本。用户指定其他 provider/model、禁止外发，或请求批量/其他媒体时，不适用此默认授权。先用宿主附件工具读取本次文件，再决定是否需要外部路线。
 
 ## 输入、输出与写入边界
 
@@ -57,12 +57,12 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
    python3 <skill-root>/scripts/check_routes.py --route <route-id>
    ```
 
-   `configured_not_called` 只证明执行器和凭据槽位存在，不证明远端鉴权、余额、模型接受或本次素材成功。
+   `configured_not_called` 表示本地准备就绪；执行后记录实际鉴权、请求接受状态与结果。
 4. 除“无视觉宿主 + 本次单张图片 + 用户要求理解”默认授权外，外部调用必须得到当前请求对 provider、素材范围和成本边界的明确授权。默认条件成立时选择 `minimax-mmx-image`，授权范围只覆盖本次图片和一次常规图片理解请求。用户点名的 provider/model 优先；未经授权不得切换 provider。
 5. 委派到精确执行器：
    - 密集逐帧三合一：选择 `kimi-trimodal-swarm`，见 [kimi-trimodal.md](references/kimi-trimodal.md)。每秒 2 帧原尺寸输出到视频同目录 `frames_<视频名>`，导出音频和带词级时间戳的本地 ASR；Kimi Code + MiniMax-M3 的 3 个独立观察者各自读取全量材料，再由主 Agent 汇总。M3 声学听音尚未验证，转写理解不能冒充听音。该分支已明确约定同目录输出，作为通用显式 output-dir 规则的特定例外；原件仍只读。
-   - Kimi Code 内置媒体：普通 `kimi-readmedia`；增强 `kimi-readmedia-swarm` 默认 3 个独立观察者做同样工作，再由主 Agent 汇总。默认 `MiniMax-M3`，可选 `agnes-3.0-flash`。先读 [kimi-readmedia.md](references/kimi-readmedia.md)；视频需 Kimi profile 的 `video_in`，Agnes 原生视频按用户授权的兼容性实验及实测范围记录，配置标签不等于官方支持。同一步只能发出一个 AgentSwarm；多视频合并 items 或等待前一轮完整返回后顺序调用，详见该分支的多视频说明。Kimi profile 绑定与普通/Swarm 调用证据必须分开验证；
-   - MiniMax 快速图片：`$mmx-cli`，命令 `mmx vision describe`；CLI 不暴露底层模型，不得写成 `MiniMax-VL-01`。先按 [MiniMax CLI 绑定](references/minimax-cli.md) 同时固定 key、API host 与 region；仅有环境变量不能证明 CLI 选中了该 profile；
+   - Kimi Code 内置媒体：普通 `kimi-readmedia`；增强 `kimi-readmedia-swarm` 默认 3 个独立观察者做同样工作，再由主 Agent 汇总。默认 `MiniMax-M3`，可选 `agnes-3.0-flash`。先读 [kimi-readmedia.md](references/kimi-readmedia.md)；视频需 Kimi profile 的 `video_in`，Agnes 原生视频按用户授权的兼容性实验及实测范围记录，记录所用实验配置和本次实测结果。同一步只能发出一个 AgentSwarm；多视频合并 items 或等待前一轮完整返回后顺序调用，详见该分支的多视频说明。Kimi profile 绑定与普通/Swarm 调用证据必须分开验证；
+   - MiniMax 快速图片：`$mmx-cli`，命令 `mmx vision describe`；CLI 不暴露底层模型，不得写成 `MiniMax-VL-01`。先按 [MiniMax CLI 绑定](references/minimax-cli.md) 同时固定 key、API host 与 region；核对 CLI 实际选中的 profile；
    - MiniMax-M3 图片：选择 `minimax-m3-image`；默认走官方推荐的 Anthropic-compatible `/anthropic/v1/messages`，在 direct adapter 明确绑定前保持 `needs_explicit_binding`；
    - MiniMax 课程视频视觉：选择 `minimax-m3-course-video`，运行包内 `python3 <skill-root>/scripts/providers/minimax_m3_course_video.py --input <video> --output-dir <authorized-output-dir> [--analyze]`；M3 direct 默认走 Anthropic-compatible Messages；
    - MiniMax direct 同时支持显式 `--model MiniMax-M3.1-Flash --effort <low|medium|high|xhigh|max>`；Flash 强制 adaptive thinking，省略 effort 为官方 `max`。既有 M3 默认保留，不将 CLI 文本命令的 `MiniMax-M3.1-Flash-Preview` 别名替入 direct 或 Kimi profile。`check_routes.py --route <direct-route> --model <exact-id>` 与实际 adapter 必须选择同一模型；
@@ -72,7 +72,7 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
    - 火山生产主路由：普通 Ark Platform 的 Responses API + Files API；需要先绑定普通 Platform adapter 和非 Plan 的 Base URL/key；
    - 火山交互式配方：`arkcli +understand <recipe>`，使用 Ark CLI 自己的登录/配置，调用前核对 recipe 实际解析模型；
    - 火山 Agent/Coding Plan：只经官方支持的 AI/编程工具；不得把自定义 Python Chat/Responses 请求当作普通 Plan API；
-   - 本地 OCR/ASR：只在当前任务绑定到实际可用的本地执行器后使用；源码存在或文档提及不算可执行；
+   - 本地 OCR/ASR：只在当前任务绑定到实际可用的本地执行器后使用；先核对实际命令和运行条件；
    - MiMo：`mimo-v2.5-image|audio|video` 三条合同分别保留为 `disabled`，当前不得调用，也不得作为自动 fallback。
 6. MiniMax profile 的媒体合同见 [minimax-shared-api.md](references/minimax-shared-api.md)。只有需要结构化保存时读取 [result-contract.md](references/result-contract.md)；只有用户要求比赛/回归时读取 [benchmark-and-reporting.md](references/benchmark-and-reporting.md)。
 
@@ -117,4 +117,4 @@ description: 仅在用户显式调用、宿主不能可靠读取附件，或任�
 - `host_native` 与 portable route 分开报告；需要外部或本地执行器的任务选择唯一 route id。
 - 每个外部 route 指向明确执行器和独立凭据槽位，且没有秘密泄露。
 - 旧的中间层路径、旧 provider 独立 Skill 和自动 MiMo fallback 不再参与活动路由；需要保留的 Agnes/MiniMax 执行器由本包拥有。
-- 源码、配置、链接、已发现和真实 provider 执行状态分别报告。
+- 报告实际执行路径、结果与未完成项。

@@ -12,7 +12,7 @@ Use the decision table and shared guards below to select the requested lifecycle
 | “本机全量同步 Skills / 更新 GitHub 并让本机 Agent 使用 / 同步共享 Skill 根” | Device refresh | Plan first; one existing checkout and missing public allowlisted links in existing Agent roots |
 | “迁移旧目录到新结构” | Governance maintenance | Exact old/new paths and affected current mappings |
 
-`clone` does not authorize sibling scans or Agent installation. `update` does not authorize initialization. An explicit end-to-end request naming the target, repository, migration inputs, and consumers authorizes those exact stages without making the user reconfirm the same map.
+Execute the stages named in the current request. Reuse an explicit end-to-end authorization for its named target, repository, migration inputs and consumers.
 
 脚本模式 `adopt-existing` 指“旧项目治理接入”，它必须由用户针对每一个已有项目根目录单独明确授权。它只补齐 `AGENTS.md` 路由、项目本地准入助手和最小管理记录，不移动源码，不建立或移动 `Git` 仓库，不上传、发布、安装 `Skill` 或建立 `Agent` 消费者链接。必须先运行 `dry-run` 再运行 `apply`，冲突即停，失败回滚。无关修复不会因为旧项目缺少 `.project-conventions/` 而自动变成接入任务，也不得仅因此阻断原任务。完整合同见 `project-root-initialization.md`。
 
@@ -64,7 +64,7 @@ python -B <collection>/GitHub/project-conventions/scripts/validate_package.py \
   <collection>/GitHub/project-conventions
 ```
 
-The first command is intentionally `repository-root-only`; it does not replace the second.
+Run both checks for their respective root and package scopes.
 
 ### Stage 2: deterministic collection materialization
 

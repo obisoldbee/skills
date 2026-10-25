@@ -2,7 +2,7 @@
 
 The default policy is now `worktree-first`; read [worktree-collaboration.md](worktree-collaboration.md). The commands below apply only to a project explicitly retaining `legacy-claims` (including older configurations without a policy field). Do not request recovery or execute enter/check/finish in a worktree-first project. For an authorized policy switch, use `migrate_worktree_policy.py <project-root> --apply`; it does not enter or clear the legacy registry.
 
-Use this contract in a Project Root whose current AGENTS.md adopts the local helper. A missing helper in an unrelated legacy project does not authorize adoption or block its original task. This is cooperative coordination for every Harness, not a Codex-only filesystem lock.
+Use this contract in a Project Root whose current AGENTS.md adopts the local helper. For projects using worktree-first, follow `worktree-collaboration.md` instead.
 
 The task is to admit independent work while excluding actual write collisions. Before entering, bind the input Project Root from the current AGENTS.md and the exact output files or task-owned directory from the user's requested deliverable. If a new output name was not specified, choose a unique task name within the authorized location. Keep inputs read-only unless editing them is part of the task. Do not broaden a directory claim to avoid deciding the output boundary.
 
@@ -61,7 +61,7 @@ Read the current AGENTS.md, run status, select the task's actual effects, then e
 
 If a reader becomes an editor, finish its reader claim and obtain a write claim. Do not acquire additional overlapping writer claims while holding one: release, then reacquire the complete write set. This avoids hold-and-wait deadlocks. For a sequence-number allocation, briefly reserve conversation/ and rescan after admission; for a daily log, claim only memory/YYYY-MM-DD.md and reread before saving.
 
-Read-only tasks produce no report, screenshot, cache, Git, database, service or record writes. The helper itself writes local admission metadata. If even coordination writes are explicitly forbidden, do not enter or silently mutate the registry; follow the live project's read-only fallback and report the limitation. A failing configured helper means no task writes, but does not imply that the physical files cannot be read. Admission is concurrency permission within existing task authorization; it does not authorize expanding the task.
+Read-only tasks produce no report, screenshot, cache, Git, database, service or record writes. The helper itself writes local admission metadata. If even coordination writes are explicitly forbidden, do not enter or silently mutate the registry; follow the live project's read-only fallback and report the limitation. If a required helper fails, continue independent reads and diagnose that execution dependency before its writes.
 
 ## Upgrade an already adopted project
 
@@ -107,4 +107,4 @@ SQLite transactions make claims atomic for cooperating processes sharing the sam
 
 First-use schema creation and protocol migration commit in one transaction. Once all tables and the current protocol marker are committed, later connections read that schema without taking another initialization write lock. Transient SQLITE_BUSY/SQLITE_LOCKED during connection setup retain the bounded retry; claim BEGIN IMMEDIATE and COMMIT also have a bounded five-second retry with short SQLite waits. Only those boundaries repeat: claim reads, conflict decisions and inserts are never replayed. A busy COMMIT retains the original active transaction; an exhausted retry or non-lock error reaches the existing rollback. Real conflicting claims remain rejected under the same transaction.
 
-Validate admission behavior with real concurrent helper processes and temporary Git worktrees. Package/static tests are not proof that a specific Harness obeys AGENTS.md or that a Windows host has been tested. Report those boundaries honestly.
+Validate admission behavior with real concurrent helper processes and temporary Git worktrees. Report the platforms and runtime behavior actually tested.

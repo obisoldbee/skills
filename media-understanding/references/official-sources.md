@@ -15,7 +15,7 @@ Kimi local-image and sampled-frame compatibility is a separate runtime test; nev
 
 - [Agnes 3.0 Flash](https://agnes-ai.com/zh-Hans/docs/agnes-30-flash): model id `agnes-3.0-flash`.
 - [Quickstart](https://agnes-ai.com/zh-Hans/docs/quickstart) and [overview](https://agnes-ai.com/zh-Hans/docs/overview): OpenAI-compatible `POST https://apihub.agnes-ai.com/v1/chat/completions` with Bearer authentication.
-- The current image example proves a public `image_url`. It does not prove local upload, data URL, or Base64 support. Keep those transports disabled until separately documented or authorized and tested.
+- The current image example uses a public `image_url`. Enable local upload, data URL or Base64 transport only after checking its documentation and an authorized transport test.
 - [Token Plan](https://agnes-ai.com/zh-Hans/docs/tokenplan) distinguishes free, enterprise and Token Plan Key pools. Use the selected key profile; a subscription alone does not identify the current generic key pool. No new key is selected by this package.
 - Official client integration pages exist; a standalone Agnes Code CLI media command could not be verified from a live install source in this review. The package keeps its owned Chat adapter rather than adding an unverified CLI.
 
@@ -53,4 +53,4 @@ The reviewed public contract uses model `mimo-v2.5` and OpenAI-compatible `POST 
 
 For a local image, the client reads the file and encodes it before the request. OpenAI format uses `image_url.url = data:{MIME_TYPE};base64,...`; Anthropic format uses `source.type = base64` with `media_type` and `data`. The API does not accept a local path, `file://`, a file object, or a separate upload reference as the image content.
 
-The pages being readable does not prove local readiness. Keep each route disabled until its own adapter, credential binding, and authorized media/transport smoke test pass. Error categories must remain distinct; see [MiMo error codes](https://mimo.mi.com/docs/zh-CN/api/guidance/error-codes).
+Enable each route after its adapter, credential binding and authorized media/transport smoke test pass. Error categories must remain distinct; see [MiMo error codes](https://mimo.mi.com/docs/zh-CN/api/guidance/error-codes).

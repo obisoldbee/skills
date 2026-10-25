@@ -2,7 +2,7 @@
 
 ## 证据边界
 
-2026-08-13 对 11 个现有 Agent Skill 根做了只读扫描：共观察到 814 条可解析的 `SKILL.md` 路径；消除跨 Agent 链接和重复实体后为 545 个物理 Skill payload。另观察到 Codex plugin cache 中 260 个 `SKILL.md`。这些是文件系统计数，不证明宿主已发现、加载或执行。
+2026-08-13 对 11 个现有 Agent Skill 根做了只读扫描：共观察到 814 条可解析的 `SKILL.md` 路径；消除跨 Agent 链接和重复实体后为 545 个物理 Skill payload。另观察到 Codex plugin cache 中 260 个 `SKILL.md`。当前调用能力按执行宿主暴露的工具核对。
 
 扫描未调用生成供应商、未读取密钥值或 cookie。缺失的 `~/.claude/skills` 没有创建。`media-creator` 已在 11 个现有消费者中形成指向 GitHub 真源的健康直链。
 
@@ -30,7 +30,7 @@
 ## 当前无遗漏的合同面
 
 - 图片：文生图、单主体参考、通用图生图/编辑、多图合成及 mask 未验证边界；
-- 视频：文生、单图、首尾帧、图片关键帧、参考图/视频/音频，以及“参考视频不等于精确视频编辑”；
+- 视频：文生、单图、首尾帧、图片关键帧、参考图/视频/音频，以及参考条件生成与逐帧编辑的支持范围；
 - 音频：文字转语音、字幕、MiniMax Web Music 的原创歌曲与纯伴奏、以及显式资格受限的 MMX legacy 音乐/翻唱；
 - 运行：登录/依赖预检、MMX 配额三态、异步任务 ID、防重复提交、下载回读；
 - 治理：Codex 原生排除、浏览器路线的 `provider_execution_authority` / `visible_task_creation_authority` 分轴合同、当前任务浏览器优先与显式授权的 Luna→ego-browser 交接、MMX 外置且 music API eligibility-gated、其他 provider `observed_not_routed`、凭据不入包。

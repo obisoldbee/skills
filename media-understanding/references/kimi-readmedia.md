@@ -1,7 +1,6 @@
 # Kimi Code：ReadMediaFile 与 AgentSwarm
 
-这是一条新增执行分支。MiniMax direct、mmx、Ark 等原路线保留。这里的 Kimi Code
-是执行工具的 CLI；实际识别模型取决于选中的 API Key/profile，不等于 Kimi K3。
+这是一条新增执行分支。MiniMax direct、mmx、Ark 等原路线保留。Kimi Code CLI 按选中的 API Key/profile 调用实际识别模型。
 
 ## 选择模型与模式
 
@@ -18,16 +17,14 @@ subagents、旧报告或“已经看过”的自述冒充。Swarm 是可选增�
 从调用方 Kimi 配置解析 exact model ID 与 alias。默认配置 `~/.kimi-code/config.toml`，
 可显式传 `--config`；同模型有多个 alias 时必须选 `--model-alias`，不能混用 Key/endpoint。
 新 API Key/profile 可继续扩充模型：核对官方合同、当前 `image_in|video_in|tool_use`、
-实际绑定和授权 smoke test，再把结果加入已知模型表。Key 存在不证明能力，禁止靠加标签
-绕过检查。OAuth、额外 headers 或单独 protocol/endpoint override 目前需另行适配。
+实际绑定和授权 smoke test，再把结果加入已知模型表。按该模型的实际输入能力完成检查。OAuth、额外 headers 或单独 protocol/endpoint override 目前需另行适配。
 
 ## Swarm 调度与多视频任务
 
 Kimi Code 0.43.0 的原生 CLI 案例确认：同一个父 Agent 在同一模型步骤并列发出两次
 `AgentSwarm`，会在调度校验阶段被拒绝。**一次 Swarm 可以包含多个 items；多个 Swarm
 调用必须等前一次完整返回，再发下一次。** items 数量是任务总数，实际同时启动多少人由
-运行时并发上限决定；6 个 items 不等于6人同时运行。不要把这个限制扩大成禁止多子 Agent，
-也不要推断不同独立 CLI 进程必然共享此限制。
+运行时并发上限决定。每个父 Agent 遵守本次运行时的 Swarm 调度限制。
 
 可直接加入原生 CLI 的提示词：
 
@@ -63,17 +60,16 @@ CLI 使用上面的6项编排；使用当前脚本则为每个视频准备独立
   父模型生成这些工具调用仍可能产生费用，不能把本地拒绝说成整轮零成本。
 - 只纠正被拒绝的调度；不要因此去音轨、转码、换模型，也不要重试已经成功的子任务。
   若有子任务已启动或 provider 接受状态不明，沿用原有不自动重投边界，不能一概重新运行。
-- 界面6个红叉不能证明6次媒体理解分别失败；应分别报告调度、媒体读取、provider和内容质量。
+- 根据对应 `tool.result` 分别记录调度、媒体读取、provider 和内容质量的结果。
 
-案例来源：2026-09-16 原生 Kimi CLI 0.43.0 / MiniMax-M3 的直接使用，**不是调用本 Skill
-产生的缺陷**。证据确认同一步两次三人 Swarm 被拒绝，下一步改为单次调用；本次未核验该
+案例来源为 2026-09-16 原生 Kimi CLI 0.43.0 / MiniMax-M3 的直接使用。证据确认同一步两次三人 Swarm 被拒绝，下一步改为单次调用；本次未核验该
 用户会话最终报告，不记端到端成功。现有脚本的一次 Swarm 合同无需改为多 Swarm 调度器。
 
 ## 模型与媒体边界
 
 - MiniMax-M3：Kimi profile 需有 `video_in`。视频应先探测，按需要分段、H.264 转码；
   包内 `minimax_m3_course_video.py` 仅预处理时**不传 `--analyze`**，并显式传
-  `--keep-audio`。其旧 direct 默认去音轨不适用于本分支。保留音轨不证明模型能听懂。
+  `--keep-audio`。其旧 direct 默认去音轨不适用于本分支。声音结论要附可核对的听音证据。
 - Agnes 3.0 Flash：官方明确列出文本和图像 URL，未明确原生视频。用户可显式授权
   给其现有 Kimi model profile 增加 `video_in` 并测试原生 MP4。备份配置、仅修改对应
   capabilities、核对其他字段不变；不改 Key/endpoint。此时标签表示本地实验设置，
@@ -92,7 +88,7 @@ CLI 使用上面的6项编排；使用当前脚本则为每个视频准备独立
 ```
 
 路径须绝对、存在、逐项 hash 一致且不重复；补充处理参数、原视频时间范围和损失。
-Kimi 单文件上限 100 MiB 不等于 provider 的实际接受上限。视频可用前述分段脚本准备，
+同时核对 Kimi 的 100 MiB 单文件上限和 provider 的实际限制。视频可用前述分段脚本准备，
 再记录每个片段的 SHA-256。已支持视频的模型可共用相同片段和问题进行普通/Swarm 对照：
 
 ```bash
@@ -116,8 +112,7 @@ Kimi 的上下文溢出恢复可能另外触发压缩，因此执行器轮询 na
 `execution.json` 保存执行状态，`verification.json` 保存真实 native wire 证据检查：
 同模型、观察者人数、每人精确媒体读取、工具结果、完整输出与未改变输入。
 `native-records/` 保留脱敏 wire，`*-report.md` 保留每个观察者及主 Agent 原文。
-CLI 退出 0 或生成文字不等于通过：少一个观察者、没调用媒体工具、读错路径、偷偷换模型
-均不得 PASS。调用合同通过与内容正确性分别报告；仍需抽查具体画面和时间。
+验收要求观察者数量齐全、实际调用媒体工具、路径和模型符合任务；缺项时记录失败。调用合同通过与内容正确性分别报告；仍需抽查具体画面和时间。
 
 主 Agent 汇总要保留每条结论的观察者/事件 ID、独有细节、冲突及 Unknown。
 多数一致不是事实核验；不得消掉少数但具体的发现，也不能把视觉变化推成代码根因。

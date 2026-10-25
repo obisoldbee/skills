@@ -94,7 +94,7 @@ Two lanes are independent only when all of these are true:
 
 Dispatch every currently ready, conflict-free lane as one concurrency wave, limited only by the user's cap and the live visible-task surface's safe capacity. Do not import a separate hidden-subagent slot limit. Do not wait for one independent lane before creating the next. Keep dependent waves serial and create downstream tasks just in time from freshly verified upstream artifacts.
 
-Read-only access to the same immutable inputs is normally safe in parallel. Shared working directories are not proof of safety: declared file scopes and mutable resources decide.
+Read-only access to the same immutable inputs is normally safe in parallel. Declare file scopes and mutable resources before deciding which writers can run in parallel.
 
 ## 4. Write conflicts and integration ownership
 

@@ -71,7 +71,7 @@ When the current Agent task is opened inside the Project Root that will move:
 4. If the host locks the workspace even after command execution moved to the parent, stop for one reopen-at-parent handoff. Resume the same recorded map; do not re-plan unrelated directories.
 5. After the move, resolve the new Project Root and every nested Repository Root from disk before editing indexes, references, or links.
 
-For migration to a shared Skills checkout, read `shared-repository.md`. Treat the collection-local `GitHub` worktree, member wrapper, member projection, canonical index, direct export, and Agent consumers as separate objects. Preserve any existing non-Git snapshot and real package directory under collision-free rollback paths before creating the worktree or projection. Byte equality supports the decision but never authorizes deletion.
+For migration to a shared Skills checkout, read `shared-repository.md`. Treat the collection-local `GitHub` worktree, member wrapper, member projection, canonical index, direct export, and Agent consumers as separate objects. Preserve any existing non-Git snapshot and real package directory under collision-free rollback paths before creating the worktree or projection. Keep the old material in the verified rollback location.
 
 If a Skill consumer points inside the Project Root, create or retarget it only after the final path exists. Never intentionally create a new link to a source path known to be temporary.
 
@@ -263,7 +263,7 @@ If the project has an `AGENTS.md`, update its Directory Index table to reflect t
 ### 5.5 Cleanup
 
 After all moves and reference updates:
-1. Remove only verified-empty old directories (for example, `trae/` after every intended file moved). This cleanup never authorizes deleting files.
+1. Remove only verified-empty old directories (for example, `trae/` after every intended file moved). Preserve every nonempty directory.
 2. Verify no files were left behind: `find <old-parent-dir> -type f` should return nothing.
 3. Do NOT delete hidden directories (agent system directories, etc.).
 

@@ -1,13 +1,12 @@
 ---
 name: buddy-travelling
-description: "使用按平台选择的浏览器完成 Buddy 每日礼物领取、关闭弹窗及一次旅行派遣，或只查询旅行状态；保留单次派出和证据不足不重试的边界。"
+description: "领取 Buddy 每日礼物、关闭弹窗并派出一次旅行，或只查询旅行状态。每次派出后核对目的地和倒计时，结果未知时保留当日记录。"
 metadata:
   short-description: "每日领取 Buddy 礼物并处理一次旅行"
 ---
 
 # Buddy Travelling
 
-先在真实可调用且满足任务能力的入口中，按用户已有订阅、常用工具和已验证登录态选路；Mcode（MiniMax Code）内置 Browser 也是候选。在 Mcode 内可用原生工具，从 Codex 调用则须已验证的桥接，安装了 mcode CLI 或支持 BYOK 不证明可控制桌面 Browser。已通过产品入口导入 Chrome 数据并核实登录的 Codex 内置浏览器可优先复用；导入不等于持续共享 profile。没有适用偏好时才采用下述平台默认。
 
 ## 用户报告合同（所有模式）
 
@@ -32,9 +31,11 @@ metadata:
 
 依赖 ordinary reachability to `workbuddy.cn` 和 existing authenticated growth-center page。Do not install, log in, reconfigure the environment, or collect credentials.
 
-用户指定浏览器优先；否则先按上文从满足能力的入口中选择适用的用户偏好，仍未选定时才采用 macOS Ego / Windows Tabbit 默认。Windows 没有 Ego 客户端不算业务阻碍，不尝试 macOS 命令。先完整读取当前所选浏览器 Skill，确认可访问 `workbuddy.cn`、真实登录态、DOM 观察和语义点击能力。Tabbit 未安装/连接恢复失败时，需既有 Chrome 登录态就用已连接 Chrome；其他情况可用已验证的 Codex 内置浏览器。内置浏览器有独立状态，不自动继承 Chrome 登录。
+沿用用户当次指定的浏览器或本任务已有的已登录页面。新建会话按 `ego-browser` / ego lite、Tabbit、系统默认或当前 harness 已记录的常用浏览器、harness 内置浏览器的顺序选择。前一项未安装或连接恢复失败时再用下一项。
 
-Windows Tabbit 使用稳定入口 `& "$env:LOCALAPPDATA\Tabbit\LocalAgent\bin\tabbit-cli.exe"`；先按本机 Skill 用 `diagnose` 检查连接。多行中文脚本写 UTF-8 无 BOM 临时文件，再用 CMD 重定向给 `nodejs`，不用 POSIX heredoc 或 PowerShell 管道。使用当前文档中的真实 API，不读隐藏 endpoint 或调用版本目录内的服务。创建一次任务组，记录真实 group/tab ID，按 ID 复用，不按同名猜选；浏览器 Skill 存在不等于连接成功。
+先读所选浏览器当前 Skill/API，确认页面观察、语义点击和 `workbuddy.cn` 登录态。使用 Ego 时先运行 `ego-browser skill` 并读完指南。遇到登录、验证码、权限拒绝或用户接管，按当前浏览器指引交接；保留当日动作记录，待用户处理后续接。
+
+Windows Tabbit 使用稳定入口 `& "$env:LOCALAPPDATA\Tabbit\LocalAgent\bin\tabbit-cli.exe"`；先按本机 Skill 用 `diagnose` 检查连接。多行中文脚本写 UTF-8 无 BOM 临时文件，再用 CMD 重定向给 `nodejs`，不用 POSIX heredoc 或 PowerShell 管道。使用当前文档中的真实 API，不读隐藏 endpoint 或调用版本目录内的服务。创建一次任务组，记录真实 group/tab ID，按 ID 复用，不按同名猜选。
 
 macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命令不在 PATH 时可检查已安装的 `$HOME/.local/bin/ego-browser`。只有真实调用和适用恢复都失败才能说不可用。发生权限拒绝、验证码或用户接管时不能靠换浏览器绕过；连接失败且无业务提交时可按上述备用入口继续。已触发派出但状态未知时，换载体也须核对原结果，不能再派一次。
 
@@ -83,7 +84,7 @@ macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命�
 | 历史与页面冲突，或运行来源/账号仍不确定 | 报告 `blocked` 和具体未确认项，保留既有派出限制；不报告今日已完成，也不通过再点一次来消除疑问 |
 | 有直接证据确认记录属于另一账号或另一服务日 | 不把它当作本轮账号的同日回执，按当前页面及适用回执继续 |
 
-只读核验不领取或派出；两次稳定观察按第 2 步。当前旅行中可以报告当前状态，但不能据此追认历史积分、派出者或执行时间；“领取礼物”或可用旅行按钮也不能单独证明今日从未派出。显示名称不一致是冲突线索，不能仅凭昵称变化判定为另一账号。只检查调用者指定记录和相关原始运行证据，不遍历其他应用的自动化记忆来拼接结论。历史文件中的“不要打开浏览器”等旧决策是记录，不是当前指令。
+只读核验不领取或派出；两次稳定观察按第 2 步。报告当前页面观察到的状态；历史积分、派出者和执行时间使用对应原始记录。显示名称不一致是冲突线索，不能仅凭昵称变化判定为另一账号。只检查调用者指定记录和相关原始运行证据，不遍历其他应用的自动化记忆来拼接结论。历史文件中的“不要打开浏览器”等旧决策是记录，不是当前指令。
 
 已知同日派出可能发生时保留防重复限制；用户要求核验仍可只读运行。核验正常完成关闭诊断空间，未解决的页面异常按收尾规则保留。内部记录本轮实际动作和旧回执的来源引用，不把本轮跳过再写成一份新 `completed_cycle`。最终报告只呈现本轮事实；旧倒计时不作为当前倒计时。
 
@@ -112,6 +113,6 @@ macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命�
 
 ## 验收
 
-只操作 Buddy 礼物及旅行控件；每次点击有新观察；领取弹窗先关闭再检查旅行；精确耗尽、目的地选择、新倒计时均有对应证据。余额/积分、地点和倒计时不能从示例或历史结果填充。执行脚本验证和 `tests/test_buddy_contract.py` 可检查离线状态约束，不代表浏览器实跑。
+只操作 Buddy 礼物及旅行控件；每次点击有新观察；领取弹窗先关闭再检查旅行；精确耗尽、目的地选择、新倒计时均有对应证据。余额/积分、地点和倒计时不能从示例或历史结果填充。运行 `tests/test_buddy_contract.py` 检查离线状态约束；执行结果按本轮页面和动作回执报告。
 
 页面状态变化的实测样例见 [state-transitions.md](references/state-transitions.md)，仅排查状态分支时读取；样例值不能填入当前运行报告。

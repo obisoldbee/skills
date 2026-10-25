@@ -118,7 +118,7 @@ Verification requires platform-exact link type and exact target. Unix additional
 
 The named package's `update_shared_checkout.py` is the update entry. After fetch, it freezes the upstream commit, extracts only the named package into an isolated temporary tree, runs that candidate's package validator, then rechecks local Git state and fast-forwards only the exact validated commit. A linked package, linked validator, or failed candidate validation leaves local `HEAD` and the worktree unchanged; the fetch may still change remote-tracking refs. It may not change wrapper files, projections, indexes, records, exports, or consumer links.
 
-Because Git updates a repository commit, other published package bytes in that checkout can also advance. This does not authorize work on their wrappers or consumers. Report the named package validation and stop.
+Git advances the whole repository commit. Report the named package validation and finish update-only at that point.
 
 ## Consumer links
 
@@ -140,7 +140,7 @@ Migration from a copied or member-local package is governance maintenance, not u
 2. Snapshot the old package tree, candidate `GitHub` path, member wrapper, index/export files, and existing consumers.
 3. If `GitHub` is absent, clone into a collision-free staging path, validate it, then atomically place it at `GitHub`.
 4. If `GitHub` is a non-Git snapshot, preserve it under a collision-free backup name before cloning; never clone over it.
-5. Compare the old canonical package with the verified shared package. A match supports migration but never authorizes deletion.
+5. Compare the old canonical package with the verified shared package. Preserve the old package at its rollback path during the authorized migration.
 6. Preserve the old real package under a collision-free rollback path, then create the projection at the now-free source entry.
 7. Update wrapper routing, canonical member index, root mirror, and direct export.
 8. Run package validation, control tests, projection readback, and the Projects Workspace inspector again.
@@ -154,4 +154,4 @@ The repository and index contain only relative collection mappings. Device-speci
 
 Do not sync symlink/junction metadata as though it were portable configuration. Recreate and read it back on each device.
 
-Source portability and runtime eligibility are separate. An environment-bound Skill must declare non-secret device and network labels plus a verification and stop rule. If both axes are constrained, both must match. A healthy checkout, projection, or Agent consumer link does not prove that the current device or network can execute the Skill.
+Source portability and runtime eligibility are separate. An environment-bound Skill must declare non-secret device and network labels plus a verification and stop rule. If both axes are constrained, both must match. Check the current device and network against those requirements before execution.

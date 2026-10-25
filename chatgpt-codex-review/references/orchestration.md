@@ -33,7 +33,7 @@ Astra Controller 单写 `RUN_ROOT/state.json` 和 `events.jsonl`，核实 Luna �
 
 例如：开发聊天留在 A、用户要求开发在 B，就向 A 上该聊天发消息，让其用已验证的 B 远端会话/SSH 执行；开发聊天本就在 B 且终端身份已核实，则直接在 B 执行。用户明确要求新建 B 机聊天时，才按 `project-handoff` 核实该主机真实项目并创建；用户明确要求搬迁现有聊天时，才使用 `handoff_thread`。该工具移动聊天及其 Git 状态，不是消息通道。Project Root 非 Git 或聊天迁移失败，不阻断现有任务通讯，也不把原本获准的开发自动降为只读；只有实际执行能力、必要材料或授权缺口才阻塞相应动作，独立工作继续。
 
-项目规定的开发/构建/验收主机始终有效。相同绝对路径可能经共享挂载指向同一批文件；不同主机或聊天不构成文件隔离，仍需各写入者的独立 worktree 与输出目录。收到消息、任务创建或聊天迁移成功只证明对应操作，最终以指定主机的执行回执和产物核验为准。
+项目规定的开发/构建/验收主机始终有效。相同绝对路径可能经共享挂载指向同一批文件；各写入者使用独立 worktree 与输出目录。在指定主机核验执行回执和产物。
 
 ## 默认收取与结束门槛
 
@@ -41,7 +41,7 @@ Astra Controller 单写 `RUN_ROOT/state.json` 和 `events.jsonl`，核实 Luna �
 
 发送前、inline 期限到或当前回合结束前，Controller 以 `followup_check` 和最新 observer record 核对：原请求是否已发送；正文/必需文件是否收齐；结果是否收讫；若仍未齐，实际 Luna owner、唯一 ACTIVE heartbeat、下一次检查和可执行返回入口是否齐备。工具拒绝、缺创建/通讯授权时报告具体未满足项，不把本地待办或内部 Agent 当运行中的后台。普通生成慢、前端断流、固定刷新预算耗尽只改变检查/恢复动作，不解除收件责任。仅已确认登录/用户接管等人工前提、实际路由错配、用户明确停止或完成收取与收讫时，才按原暂停合同停止对应跟进。
 
-Controller 结束当前回合后，不能只留下“以后主动 read”而没有实际唤醒入口。优先使用已获授权的 Luna→Controller 结果通知；缺反向消息权限时，发送前绑定另一条实际可用的收件唤醒入口或取得所缺通讯授权。共享文件只证明结果可读，不证明接收者会醒来。Luna 保存完整结果及小回执，Controller 收讫后做质检；定时器 tick 成功、上传成功、Luna 收集完各是不同阶段。
+Controller 结束当前回合后，不能只留下“以后主动 read”而没有实际唤醒入口。优先使用已获授权的 Luna→Controller 结果通知；缺反向消息权限时，发送前绑定另一条实际可用的收件唤醒入口或取得所缺通讯授权。核实接收者实际使用的通知或唤醒入口。Luna 保存完整结果及小回执，Controller 收讫后做质检；定时器 tick 成功、上传成功、Luna 收集完各是不同阶段。
 
 通讯授权中的一次消息、收齐报告后通知等条件按原人类指令映射为 state-contract 的可选结构化 policy；建议器不制造授权。仍有次数的完成通知可覆盖未来返回，不等 Controller QA/completed 才允许后台等待；实际发送核对请求产物收齐的绑定证据，稳定中断回复不触发。条件不符、次数用尽或旧自由文本尚未忠实映射时，只停止该发送，保留 payload/history；Controller 仍主动读取、QA、收取和继续同范围已授权 review。请求输出收齐、Controller 收讫、质检 coverage 和产品验收分别核实。回合结束时仍要核实实际获准返回入口；通知用尽不把本地收件工作变成待批准工作。
 
@@ -63,10 +63,10 @@ Astra 给 Luna 的输入是冻结的 run/round/source/token、prompt SHA、合�
 
 发送前冻结请求、核实同一 heartbeat 的 ACTIVE view 与本 run 活跃 ID 清单，进入 `awaiting_send` 的短发送窗口；首次 `/c/id` 尚未产生时先绑定 run/state/owner，发送读回后补 URL。每轮发送前重新 arm 同一 ID，等待恢复也核实 ACTIVE；已发送但调度失效只修跟进，不重发。正常跨轮保留 ID；旧 ID 确认已删除/不存在且有原始工具证据才换绑，禁止同一 run 重复活跃调度。旧 v2 的 Controller heartbeat 先按宿主工具暂停/删除并保存真实 readback，再绑定 Luna；新门禁会拒绝旧 owner，不能为关闭旧任务而伪造 Luna。检查旧/新任务去重；不假定宿主能原位改 owner。
 
-每次 heartbeat 先核实本轮实际模型/强度是否符合 Luna owner 的保留合同，再执行页面动作；角色名不证明执行者。确认不符时保留结果和恢复入口，暂停本 run 受影响的调度并回读，按已授权入口去重通知；恢复必须有实际新执行值通过，不能靠提示词“继续”清除异常。其余独立工作继续。核实后读主 state，再写独立 observer record。`waiting_web` 只观察本轮新回复；正文稳定后若必需附件仍缺，只继续 capture，repairing/validating 也只补该轮缺件。无变化、普通流式变化、同一旧错误保持静默，不激活 Astra。新可行动进展、稳定回复或实质错误转变由门禁产生一条小回执；去重绑定 source/round/message+内容 SHA 或错误转变。先保存原 payload、通知 key/SHA 与待交记录，再按直接用户通讯授权通知。投递成功不等于 Controller 收讫；采集后只核对独立回执/Controller state，不重开已收齐页面。unknown 核对原请求；即使历史暂未出现，也不代表超时请求不会稍后落地。明确未送达后，按 handoff 恢复原写入入口，保存绑定本条通知/上次尝试的 write_endpoint_recovery；idle 本身不能解锁重试。冷却及有效授权仍适用，原 payload 不变。预算耗尽留可读检查点和低成本收讫核对，Controller 主动读取即可收敛。无通讯授权也保留原件供读取。
+每次 heartbeat 先核实本轮实际模型/强度是否符合 Luna owner 的保留合同，再执行页面动作。确认不符时保留结果和恢复入口，暂停本 run 受影响的调度并回读，按已授权入口去重通知；恢复必须有实际新执行值通过，不能靠提示词“继续”清除异常。其余独立工作继续。核实后读主 state，再写独立 observer record。`waiting_web` 只观察本轮新回复；正文稳定后若必需附件仍缺，只继续 capture，repairing/validating 也只补该轮缺件。无变化、普通流式变化、同一旧错误保持静默，不激活 Astra。新可行动进展、稳定回复或实质错误转变由门禁产生一条小回执；去重绑定 source/round/message+内容 SHA 或错误转变。先保存原 payload、通知 key/SHA 与待交记录，再按直接用户通讯授权通知。投递后核对 Controller 的独立收讫回执或 state，保留已收齐页面的采集结果。unknown 时核对原请求及迟到结果，保留原消息身份。明确未送达后，按 handoff 恢复原写入入口，保存绑定本条通知/上次尝试的 write_endpoint_recovery；idle 本身不能解锁重试。冷却及有效授权仍适用，原 payload 不变。预算耗尽留可读检查点和低成本收讫核对，Controller 主动读取即可收敛。无通讯授权也保留原件供读取。
 
 Astra 处理 observation、artifact_receipt 或 assessment 时可在同次 state 更新记收讫，无需额外往返/审批；直接读取共享回执也可记 controller_received。采集和收讫已闭合但尚未应用原事件时，Controller 从最新 ledger 的 process_saved_result 取得原 payload 本地处理；Luna 只 pause_followup，不承担裁决，不因旧 waiting_web 再启网页轮询。处理后正常 triage/附件处理/交付动作保持。既有 state 已核实处理同一 message/body SHA 或相同附件回执时，亦是收讫证据。处理结果、接续恢复和关闭本 run 跟进时将最新 Luna record 传给 helper；缺旧 record 不伪造空记录，按原件核对。消息仅提示，Controller 仍负责核实原件、收件和获准 repair_loop 的后续派修。
 
-本 run 的正文/必需文件和已排队收讫义务均闭合、用户停止或已确认必须人工处理时，暂停**同一现有** heartbeat 并 view 读回 PAUSED；暂时忙碌、额度恢复等待和刷新预算耗尽不取消低成本观察。Luna 可执行已获准的本 run 暂停并写独立 readback，Controller 后续核对并更新主 state。项目级 Luna watcher 尚有开发/构建等待时仅关闭网页子义务，不能暂停整个 watcher。暂停保存未收讫 payload/检查点；真实人工停止先按 browser-loop/state-contract 核对对应 browser_gate 的解除来源（定时 prompt 的“继续”不算），再核实同一 Luna owner 的 ACTIVE 状态后继续核对，不改用 Controller heartbeat。下一次发送前 re-arm。模型/host 无法验证时保留恢复入口并报告能力缺口；durable 请求仍待满足。旧工作无调度则直接验收，不先建再关。离线 helper 只校验声明结构与决策，不证明真实调度/模型/browser 执行。
+本 run 的正文/必需文件和已排队收讫义务均闭合、用户停止或已确认必须人工处理时，暂停**同一现有** heartbeat 并 view 读回 PAUSED；暂时忙碌、额度恢复等待和刷新预算耗尽不取消低成本观察。Luna 可执行已获准的本 run 暂停并写独立 readback，Controller 后续核对并更新主 state。项目级 Luna watcher 尚有开发/构建等待时仅关闭网页子义务，不能暂停整个 watcher。暂停保存未收讫 payload/检查点；真实人工停止先按 browser-loop/state-contract 核对对应 browser_gate 的解除来源（定时 prompt 的“继续”不算），再核实同一 Luna owner 的 ACTIVE 状态后继续核对，不改用 Controller heartbeat。下一次发送前 re-arm。模型/host 无法验证时保留恢复入口并报告能力缺口；durable 请求仍待满足。旧工作无调度则直接验收，不先建再关。离线 helper 校验结构与决策；调度、模型和浏览器执行按宿主原始回执核实。
 
 最后门槛按 scope：review_only 要当前源码的完整审查、所需附件和约定报告交付，保留确认问题/待核实建议；约定检查失败也保留证据并交未通过报告，acceptance_passed=false，不派修或要求先批准修复。repair_loop 还需确认缺陷和待裁决主张归零、同一合同的本地必需检查与交付通过。不为纯审查添加原生构建/修复门槛。测试宿主错误不冒充产品缺陷，网页检查不冒充设备验收；新源码/合同使旧证据失效。发布、合并和安装各按原授权，未获推送许可不冒用旧版本。自动选路或用户选择 local_packet 时，将本次获授权原件打包上传即可，不要求先推送；已发 run 若换路线则另冻新 run 并关联旧证据。

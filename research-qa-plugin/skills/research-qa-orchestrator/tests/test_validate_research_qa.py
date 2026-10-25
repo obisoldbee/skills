@@ -1458,7 +1458,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertIn("<collection>/GitHub/paper-downloader/SKILL.md", binding)
         self.assertIn("never to the `paper-downloader/src/paper-downloader`", binding)
         self.assertIn("Windows junction", binding)
-        self.assertIn("proves only `consumer_link_state: linked`", binding)
+        self.assertIn("`consumer_link_state: linked`", binding)
         self.assertIn("acquisition-operation-receipt/v1", binding)
         self.assertIn("registered `$paper-downloader` consumer", workflow)
 

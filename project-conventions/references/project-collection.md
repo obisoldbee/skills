@@ -80,12 +80,12 @@ Rules:
 4. The projection must resolve exactly to that scope.
 5. Unix uses the exact final-path-relative symlink; Windows uses a final-path directory junction. Reject absolute Unix links and Windows directory symlinks even when they resolve to the expected bytes.
 6. Agent exports point directly to the true package, not through the projection.
-7. Updating the shared checkout does not authorize wrapper/index/link changes.
+7. Update-only ends after the checkout and named package validation.
 8. Private or local-only members outside that checkout remain independent.
 
 An optional owned private distribution follows the same explicit `repository_root` plus `managed_scope` mapping, but its remote identity and private visibility must be verified before push or export. The standard public initializer does not create it.
 
-A third-party checkout pool is different: the pool root has no `.git/`, every named child is an independent upstream Repository Root, and mere presence never authorizes export or adoption.
+A third-party checkout pool has no `.git/` at its root. Preserve each child's upstream Repository Root and use the adoption workflow when the user requests adoption.
 
 ## Publication class and runtime boundary
 
@@ -134,7 +134,7 @@ The source is collection-relative and must resolve inside the collection to a pa
 - reject apply-to-all;
 - read back every created link/junction.
 
-Initialization creates no Agent link. A successful link is not proof of runtime discovery.
+For authorized Agent installation, read back each consumer link and check discovery through an available runtime.
 
 ## Workspace indexing
 

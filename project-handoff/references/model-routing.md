@@ -43,11 +43,11 @@ All supported aliases use `visible_thread` and the live `create_thread` tool. No
 
 Baselines as of 2026-09-30: Sol is GPT-6.1, Luna is GPT-6. Existing tasks keep their verified original model/effort; do not reroute them by reinterpreting an old alias. Spark aliases and model ID are retired and rejected. The bundled executor and its instructions have been removed. An explicit request for a retired route requires a new user choice, never an automatic Luna replacement.
 
-Capability observation on 2026-09-30: the calling task schema advertises GPT-6 Astra and GPT-6.1 Sol with low, medium, high, xhigh, max, ultra; GPT-6 Luna with low, medium, high, xhigh, max. Recheck the actual destination: an observation is not a permanent provider guarantee. `destination_state.supported_reasoning` or the catalog below can restrict the pair. Static validation or UI availability does not prove live dispatch.
+Capability observation on 2026-09-30: the calling task schema advertises GPT-6 Astra and GPT-6.1 Sol with low, medium, high, xhigh, max, ultra; GPT-6 Luna with low, medium, high, xhigh, max. Recheck the actual destination: an observation is not a permanent provider guarantee. `destination_state.supported_reasoning` or the catalog below can restrict the pair. Read back the actual task and execution binding after dispatch.
 
 ### Newest available family policy
 
-For a **new** unversioned family alias or automatic role, prefer the highest numeric version in the same family among visible releases supported by the target task service. Compare version tuples, so 6.10 is newer than 6.9; never sort lexically. This is the user's upgrade preference, not evidence of universal capability, speed or price superiority. Do not cross families, include preview/custom suffixes by guesswork, or invent an ID from a version announcement.
+For a **new** unversioned family alias or automatic role, follow the user's upgrade preference by choosing the highest numeric version in the same family among visible releases supported by the target task service. Compare version tuples, so 6.10 is newer than 6.9; never sort lexically. Keep selection within that family and use only verified release IDs.
 
 Record `route.model_catalog` (also `context.model_catalog` for the fixture resolver):
 
@@ -94,7 +94,7 @@ Choose an appropriate executor before tuning polling frequency. The preferred di
 
 An explicit user selection of Luna-max monitoring, including a policy established earlier in the request, is the observer's route choice: retain `requested_route=luna-max` and the alias's two axes as `explicit_skill_route`. Reuse that choice without repeated confirmation. With authorized `auto`, classify a bounded status/checklist/script observation as `task_kind=mechanical`; semantic research or product acceptance is a different role. Preserve explicit alternative routes and unselected axes outside this observer scope.
 
-The scheduled task must actually run under the selected model/effort. Verify the observer thread and automation owner/target using the live host contract; heartbeat prompt text neither selects nor locks the executing model. Target settings and creation arguments are not evidence for later turns; verify current-turn runtime values under [runtime verification and alerts](runtime-alerts.md). Do not replace a selected Luna observer with an Astra heartbeat or downgrade `max` merely to schedule it. See [result collection](result-collection.md) for the bounded observation goal, quiet checks, escalation, and receipt gate. This is a workload-routing policy, not a measured price or savings claim.
+Bind the automation to the selected observer thread and verify its owner/target through the live host contract. For each scheduled turn, compare the actual model/effort with that selection under [runtime verification and alerts](runtime-alerts.md). Preserve the selected Luna observer and `max` effort during scheduling. See [result collection](result-collection.md) for the bounded observation goal, quiet checks, escalation and receipt gate.
 
 ## Mixed work and continuity
 

@@ -22,7 +22,7 @@ Get-AppxPackage *Codex* | Select-Object Name,Version,PackageFamilyName,InstallLo
 
 结合桌面父子进程和安装元数据确定核心；不要选到独立 daemon、code-mode-host 或沙箱服务。分别对已确认的可执行文件运行 `--version`。不要用 `Get-Content` 读 exe，也不要改 WindowsApps 权限或替换包内二进制。不同版本会使用不同布局，禁止硬编码缓存哈希目录或商店包版本。
 
-通过应用更新工具检查当前渠道；`busy/unavailable/error` 不等于没有更新。商店包可进一步通过已发现的包标识检查 Microsoft Store/winget；显示名可能是 ChatGPT。不能拿 `winget list --name Codex` 无结果断言未安装。检查和实际升级分开：升级只在任务授权时执行，不硬编码历史商店 ID。
+通过应用更新工具检查当前渠道；返回 `busy/unavailable/error` 时记录检查未完成及具体原因。商店包可进一步通过已发现的包标识检查 Microsoft Store/winget；显示名可能是 ChatGPT。不能拿 `winget list --name Codex` 无结果断言未安装。检查和实际升级分开：升级只在任务授权时执行，不硬编码历史商店 ID。
 
 ### macOS：定位当前应用内的核心
 
@@ -75,7 +75,7 @@ python -B <skill>/scripts/probe_models.py --binary <核心绝对路径> --codex-
 [Environment]::GetEnvironmentVariable('CODEX_CLI_PATH', 'User')
 ```
 
-注册表值回读成功不代表运行中的进程环境已变。可使用当前平台支持的环境变更通知促使启动器刷新，但通知成功仍不是继承证明。对目标应用正常退出重开；必要时从**独立、已授权且明确设置本次 Process 环境**的启动器按已核实的应用入口启动。不要从旧环境的 shell 重开后就宣称生效，不结束 Explorer 来强制刷新。
+注册表保存后，检查新启动进程的实际环境。可使用当前平台支持的环境变更通知促使启动器刷新。对目标应用正常退出重开；必要时从**独立、已授权且明确设置本次 Process 环境**的启动器按已核实的应用入口启动。不要从旧环境的 shell 重开后就宣称生效，不结束 Explorer 来强制刷新。
 
 重开后核对桌面子进程实际路径和版本、UI 模型列表，以及普通聊天和所需工具是否正常。核心跨版本可能有兼容问题；出现启动/工具异常即撤销本轮覆盖并正常重开，保留失败证据。不能把 CLI 查询成功当成桌面协议兼容证明。
 

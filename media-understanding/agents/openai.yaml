@@ -1,4 +1,4 @@
 interface:
   display_name: "媒体理解与模型路由"
   short_description: "原生可读直接看；原生不可读的单图默认用 MiniMax"
-  default_prompt: "使用 $media-understanding 路由当前媒体：原生可读时走 host_native，即使显式调用也不强制外部服务；原生不可读的单图才默认走 MiniMax，用户另行指定或禁止外发时优先服从。"
+  default_prompt: "使用 $media-understanding 处理当前媒体，原生可读时走 host_native，显式调用也不强制外部服务；原生不可读的单图才默认走 MiniMax，用户指定路线和外发限制优先。"

@@ -35,7 +35,7 @@
 
 项目并发默认采用 worktree-first：代码任务分别在独立分支和工作目录中修改，最后由一个执行者合并；只读任务和独立报告不申请持久化 claim。已有项目需按 `project-conventions` 的迁移说明切换本地规则，旧数据库保留为历史。当前提供执行指引和策略迁移工具，尚不自动分配 worktree 或强制重定向 Agent 的编辑位置，实际隔离依赖 Agent 创建并使用正确的工作目录。
 
-`chatgpt-codex-review` 在当前可调用且满足任务能力的浏览器中，优先按用户常用工具、已有订阅和已验证登录态选路，包括 Mcode 内置 Browser，以及通过产品入口导入 Chrome 数据后的 Codex 内置浏览器。无适用偏好时 macOS 默认 Ego、Windows 默认 Tabbit；跨 harness 调用需有真实桥接，数据导入不等于持续共享 Chrome profile。还需要已登录的 ChatGPT 网页和 Codex 协作工具。执行时可说：“用 chatgpt-codex-review 审查这个项目，有 GitHub 仓库就审查固定提交，没有可读固定提交时用已配置的 MCP 内容快照，或完整打包授权的本地原件上传，按原范围审查或返修复审。”当前默认 GPT-6 Luna max 负责网页消息、上传、定时观察、回复保存与附件下载校验；新结果或实质阻碍才唤醒 GPT-6 Astra high 核实编排，GPT-6.1 Sol max 开发测试。角色和强度可显式覆盖，未固定版本的系列名遵循 `project-handoff` 的目标能力解析规则。已有 GitHub 的访问或推送故障须在原路径解决，不自动切换 MCP。它是 Agent 工作流，不会自行部署 MCP 或常驻监控；真实跨回合观察必须绑定已验证的 Luna 任务与宿主调度，不能以高成本 Controller 的轮询冒充 Luna 定时执行。
+`chatgpt-codex-review` 将项目交给已登录的 ChatGPT 网页审查，再由 Codex 开发、测试和复审。浏览器默认依次选择 Ego lite、Tabbit、系统默认或当前 harness 已记录的常用浏览器、harness 内置浏览器；沿用用户当次指定和正在使用的登录会话。仓库、MCP 快照和本地附件的选用，以及角色、模型和定时观察配置，见包内 [执行指引](chatgpt-codex-review/SKILL.md)。
 
 2026-10-07 的执行记录审查、原因判断及本次修复见 [执行一致性说明](chatgpt-codex-review/references/execution-incidents-2026-10-07.md)。
 
@@ -188,9 +188,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.p
 
 The operation requires this exact checkout to be a clean attached `main` tracking `origin/main` with no local-ahead commits or Git operation in progress. Unix apply fetches and pins a full candidate commit, extracts only its root-managed files as data, and checks them with the currently running trusted verifier. It never executes the candidate verifier. Before fast-forwarding that exact SHA it checks landing conflicts across the whole update, rechecks HEAD/branch/upstream/remote/operation state and the real index's identity, bytes and entry flags, and uses `--no-overwrite-ignore`. Ignored local files are not permission to overwrite user content.
 
-After updating, it rereads `config/skill-exports.tsv` and `config/agent-paths.tsv`, preflights every selected existing compatible Agent root, then creates only missing declared links. It skips missing Agent roots during an all-Agent run and fails for a specifically requested missing Agent. This is not a transaction across the repository and all consumers: a later consumer failure does not roll back a completed repository update.
+After updating, it rereads `config/skill-exports.tsv` and `config/agent-paths.tsv`, preflights every selected existing compatible Agent root, then creates only missing declared links. It skips missing Agent roots during an all-Agent run and fails for a specifically requested missing Agent. If consumer creation fails after the repository update, report the completed update and the exact remaining consumer conflict.
 
-It never creates another checkout or a missing Agent root, modifies a member package, changes export policy, replaces a real path or wrong/dangling link, touches local wrappers/indexes/records, or proves runtime discovery. Packages not declared in the public export allowlist are not installed by this operation.
+It never creates another checkout or a missing Agent root, modifies a member package, changes export policy, replaces a real path or wrong/dangling link, touches local wrappers/indexes/records, . Packages not declared in the public export allowlist are not installed by this operation.
 
 ## Agent installation
 
@@ -202,7 +202,7 @@ Unix apply requires exclusive directory-fd symlink creation: it binds the write 
 
 Windows supports scoped `-Agent` or `-Target` installation with `-Skill` or `-AllSkills`. The NT helper pins the checked directory handle, creates a new leaf exclusively, and sets/verifies the Junction through its own handle. Existing files, directories and wrong/dangling links remain conflicts; it never overwrites them. `-AllAgents -Apply` is rejected. Combined `-SyncDevice -Apply` remains unavailable: update the authorized checkout separately, validate it, then perform scoped installation.
 
-Publication does not imply Agent exposure. The Trae allowlist explicitly includes all 11 published top-level Skill entries (including the nested research orchestrator). Internal bundled personas, private repositories and third-party pools are not flattened into consumer exports. A link does not supply an unavailable tool, OS capability or network environment.
+Publication does not imply Agent exposure. The Trae allowlist explicitly includes the entries listed in `config/skill-exports.tsv`. Internal bundled personas, private repositories and third-party pools are not flattened into consumer exports. Check the selected Skill's tool, OS and network requirements before running it.
 
 Cross-Agent packages can be scoped to the shared `agents` consumer so runtimes that already scan `~/.agents/skills` do not receive duplicate same-name brand-root links.
 
@@ -229,7 +229,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\link-windows.p
 
 For an explicit request to replace existing installations, first record exact conflicts and preserve each real directory in a unique rollback location outside the Agent discovery root. Record the old link target for a wrong or dangling link. Recheck the original before moving it, never delete its contents, then rerun the scoped installer and read back every target. This conflict-preservation workflow requires installation/replacement authority; the installer itself never performs backups or replacements. An all-skills apply can leave earlier successful links if a later entry fails, so always rescan before continuing.
 
-The repository scripts derive each exported source from the current checkout, so consumers point directly to the declared path inside the matching `GitHub/<package>` scope when run from the recommended layout. They never create missing target parents or replace conflicts.
+The repository scripts derive each exported source from the current checkout, so consumers point directly to the declared path inside the matching `GitHub/<package>` scope when run from the recommended layout. They preserve missing-parent and existing-entry conflicts for review.
 
 For the cross-Agent web package, use the shared consumer id:
 
@@ -324,7 +324,7 @@ python3 -B document-workspace/scripts/validate_package.py document-workspace
 python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
 ```
 
-`ROOT-MANIFEST.sha256` intentionally lists only root-owned files. Root verification does not validate package contents. A filesystem link also does not prove that an Agent discovered, loaded, or executed a Skill; verify that in a fresh Agent task.
+`ROOT-MANIFEST.sha256` intentionally lists only root-owned files. Root verification does not validate package contents. When discovery verification is requested, use an available runtime readback.
 
 ## Repository structure
 

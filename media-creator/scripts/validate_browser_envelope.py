@@ -11,7 +11,9 @@ from typing import Any
 
 
 SCHEMA = "media-creator-browser-envelope/v1"
-BROWSER_EXECUTORS = {"ego-browser", "tabbit", "chrome", "codex-browser", "mcode-browser"}
+BROWSER_EXECUTORS = {"ego-browser", "tabbit", "chrome", "codex-browser", "mcode-browser",
+                     "edge", "system-browser", "harness-browser"}
+BOUND_BROWSER_EXECUTORS = {"edge", "system-browser", "harness-browser"}
 EXECUTION_MODES = {"execute"}
 NON_EXECUTION_MODES = {"prompt", "planning", "preview", "dry_run"}
 ROUTES = {"chatgpt-web-image", "minimax-web-music"}
@@ -216,6 +218,15 @@ def validate_envelope(envelope: Any) -> dict[str, Any]:
         and envelope.get("request_authority") == "explicit_visible_task"
     )
     expected_fields = set(BASE_FIELDS)
+    executor = envelope.get("executor")
+    if mode in EXECUTION_MODES and isinstance(executor, str) and executor in BOUND_BROWSER_EXECUTORS:
+        expected_fields.add("browser_binding")
+        binding = envelope.get("browser_binding")
+        if exact_fields(binding, {"browser", "control_tool", "evidence_ref"}, "browser_binding", errors):
+            for field in ("browser", "control_tool", "evidence_ref"):
+                value = required_string(binding.get(field), f"browser_binding.{field}", errors)
+                if value.casefold() in {"unknown", "unverified", "none", "null", "unavailable"} or value.startswith("<"):
+                    add_error(errors, f"browser_binding.{field} must name the observed browser/control evidence")
     if non_execution:
         expected_fields.add("side_effects")
     if visible_execution:

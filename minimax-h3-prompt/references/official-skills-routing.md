@@ -67,7 +67,7 @@ python3 <skill-root>/scripts/resolve_official_skills.py --route h3-ref
 python3 <skill-root>/scripts/resolve_official_skills.py --route <一个风格目录名>
 ```
 
-`status=available` 只证明返回的文件来自当前已审查、干净的官方检出；不证明许可、安装、MiniMax Hub 工具、账号、额度或生成能力。只读取 `files`，不运行上游代码。`status=unavailable` 时不联网、不更新、不安装、不绕过 HEAD 校验。
+`status=available` 时只读取返回的 `files`，提取提示词结构与创意要求。执行生成时另查所选工具、账号和额度。`status=unavailable` 时不联网、不更新、不安装、不绕过 HEAD 校验。
 
 ## 来源与许可边界
 

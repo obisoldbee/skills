@@ -1,4 +1,4 @@
 interface:
   display_name: "Buddy Daily Travel"
-  short_description: "每日领取 Buddy 礼物并安全处理一次旅行状态检查"
+  short_description: "领取 Buddy 礼物、派出一次旅行或查询状态"
   default_prompt: "Use $buddy-travelling for one receipted Buddy check: consume any prior same-day receipt, dispatch only one uniquely verified destination, and stop without retry on daily-limit or unknown outcomes."

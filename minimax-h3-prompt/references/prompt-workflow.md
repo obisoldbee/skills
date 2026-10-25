@@ -94,7 +94,7 @@ non_diegetic_music:
 - `<Subject N>`：从参考素材中抽象出的可见人物、物体、场景、服装、动作、构图或风格。
 - `<Picture N>`：只有图片本身是首帧、尾帧、关键帧、编辑帧或构图锚点时才单独定义；只提供人物或风格时，应写进对应 `<Subject N>` 来源。
 - `<Video N>`：整个视频作为编辑源、续写起点或时间结构来源；视频里的人物、场景和动作仍用 `<Subject N>`。
-- `<Audio N>`：确实被复制或参考的音频信号；视频带声音不等于必须创建音频标签。
+- `<Audio N>`：确实被复制或参考的音频信号。仅当任务使用该声音时创建音频标签。
 
 `summary` 以方括号任务类型开头，只选实际关系并用 ` + ` 连接：`keyframe completion`、`reference generation`、`video editing`、`video continuation`、`audio reuse`、`audio reference`。
 

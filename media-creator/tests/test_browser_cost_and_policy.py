@@ -34,6 +34,25 @@ class BrowserCostAndPolicyTests(unittest.TestCase):
                 self.assertEqual(expected, result["valid"], result)
                 self.assertEqual(expected, result["cost_preflight_valid"])
 
+    def test_observed_edge_and_generic_browser_bindings(self):
+        base = json.loads((ROOT / "tests/browser-envelope-cases.json").read_text())["bases"]["current-image"]
+        for executor, browser in (("edge", "Microsoft Edge"), ("system-browser", "Firefox"),
+                                  ("harness-browser", "Current harness browser")):
+            with self.subTest(executor=executor):
+                envelope = copy.deepcopy(base)
+                envelope["executor"] = executor
+                self.assertFalse(envelope_validator.validate_envelope(envelope)["valid"])
+                envelope["browser_binding"] = {"browser": browser, "control_tool": "current_browser_tool",
+                                               "evidence_ref": "current task page and file capability readback"}
+                self.assertTrue(envelope_validator.validate_envelope(envelope)["valid"])
+                for field in ("browser", "control_tool", "evidence_ref"):
+                    broken = copy.deepcopy(envelope)
+                    broken["browser_binding"][field] = "unverified"
+                    self.assertFalse(envelope_validator.validate_envelope(broken)["valid"])
+        envelope = copy.deepcopy(base)
+        envelope["executor"] = "invented-browser-command"
+        self.assertFalse(envelope_validator.validate_envelope(envelope)["valid"])
+
     def test_shared_policy_drift_or_missing_copy_is_detected(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

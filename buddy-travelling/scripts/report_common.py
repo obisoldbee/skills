@@ -18,7 +18,7 @@ def validate_space_id(value):
         return value
     if (isinstance(value, str) and len(value) <= 256 and "```" not in value
             and re.fullmatch(
-                r"(?:ego-browser|tabbit|chrome|codex-browser|mcode-browser):"
+                r"(?:ego-browser|tabbit|chrome|edge|system-browser|harness-browser|codex-browser|mcode-browser):"
                 r"(?:space|group|tab):[^\s\x00-\x1f\x7f]+", value)):
         return value
     raise ValueError("space_id must be a nonnegative integer or runtime:kind:id")

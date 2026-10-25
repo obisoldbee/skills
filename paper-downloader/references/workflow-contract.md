@@ -1,6 +1,6 @@
 # Canonical execution contract
 
-The canonical Skill package is an executable downloader after fresh, scoped authorization. Runtime consumers must resolve `$paper-downloader` directly to this package; a copied wrapper or historical runtime directory is not an authorized source. Route selection alone does not grant network, browser, write, or institutional-access authority.
+Resolve `$paper-downloader` to this canonical package and reuse the current request’s scoped authorization. Confirm the source set and output root before downloading.
 
 The execution envelope must record:
 
@@ -34,10 +34,7 @@ Final reporting rereads manifest, inventory and disk after persistence and
 refuses target-processing closure while any target queue/follow-up/manual-review gate or
 required blocker evidence remains. Supplementary pending states are disclosed separately.
 
-Network concurrency defaults to one active lane per public egress IP. Multiple
-workers may run offline validation concurrently, but disjoint output paths are
-not evidence that their network effects are independent. Interactive browser
-follow-up uses the contract in [browser routing](ego-browser-route.md): explicit choice, then applicable caller preferences among callable, task-capable routes, then platform defaults and verified fallbacks. Browser choice never removes shared-egress serialization.
+Network concurrency defaults to one active lane per public egress IP. Other workers can validate offline. Select interactive browser follow-up through [browser routing](ego-browser-route.md) and keep the same shared-egress token.
 
 ### Supplementary collection and quota
 

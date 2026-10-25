@@ -29,7 +29,7 @@ The member index separates:
 - `repository_root`: collection-relative Git worktree;
 - `managed_scope`: repository-relative package.
 
-This prevents a package name from being mistaken for another checkout directory and prevents update requests from triggering collection initialization.
+Use these three fields to locate the file source before editing.
 
 The standard initializer creates one public `obisoldbee/skills` checkout. Governance maintenance may add another explicitly mapped owned distribution, with at most one checkout per remote identity, or a non-Git third-party checkout pool whose children keep independent upstream histories. It never creates those optional roots as a side effect of public initialization.
 
@@ -62,7 +62,7 @@ The shared Skills initializer creates a complete `skills/` control project, four
 
 ## Validate
 
-The deterministic Python tools support Python 3.11 and newer. CI exercises the Windows initializer junction fallback on Python 3.11 and the native junction API on the latest Python. This is separate from consumer creation: the repository Windows link script supports scoped `-Agent`/`-Target` apply with the tested NT directory-handle helper; combined `-SyncDevice -Apply` is unavailable. Do not infer Windows consumer apply support from initializer tests.
+The deterministic Python tools support Python 3.11 and newer. CI exercises the Windows initializer junction fallback on Python 3.11 and the native junction API on the latest Python. This is separate from consumer creation: the repository Windows link script supports scoped `-Agent`/`-Target` apply with the tested NT directory-handle helper; combined `-SyncDevice -Apply` is unavailable. Validate Windows consumer installation through the scoped consumer tests.
 
 The following commands are a catalog. Run the package validator after package edits and select tests for the changed contract or behavior. Generator changes need the relevant initialization/idempotence regressions; inspector changes need inspector tests. The lifecycle suite already invokes the ordinary Project Root and scoped-access suites, so a full lifecycle run need not repeat them separately. Read-only inspection and wording edits do not require unrelated suites.
 
@@ -81,4 +81,4 @@ For repository-root files changed within their own authorized scope, also run fr
 python3 -B scripts/verify_release.py .
 ```
 
-The root verifier and package validator have different scopes. Skill discovery and execution are separate runtime states; use an available fresh runtime readback to verify the relevant state. Create a new user-visible Agent task only when the user explicitly requests it. Otherwise complete the authorized filesystem checks and report unavailable runtime verification separately.
+Run the root verifier for root-owned changes and the package validator for this package. Verify discovery through an available runtime when requested.

@@ -3,7 +3,7 @@
 | Output | Capability and required evidence |
 |---|---|
 | Embedded thumbnail/page PNG | Recovered preview only; record pixel dimensions. Not a high-resolution original reconstruction. |
-| XHTML and extracted SVG | Converter intermediate and candidate geometry. Confirm pages, coverage, paints and text appearance. Paths alone do not prove fidelity or editable text. |
+| XHTML and extracted SVG | Converter intermediate and candidate geometry. Confirm pages, coverage, paints and text appearance. Check fidelity and text editability in the delivered file. |
 | PDF / transparent PNG / white preview | Rendered derivatives inherit conversion losses. Read back PDF, check alpha/background and requested dimensions. |
 | Object/layer SVG or PNG asset package | Conditional on correct source reading and verified object/layer membership. Converter groups must not be silently relabeled as original layers. |
 | Layered PSD assembled from PNGs | Raster layers, not native editable text/vector layers; requires actual assembly and independent reopen/flatten comparison. Not implemented by the bundled helpers. |

@@ -17,9 +17,9 @@
       "source_name": "Nick Norwitz",
       "target": "personas/Nick Norwitz",
       "file_count": 23,
-      "total_bytes": 560695,
-      "skill_md_sha256": "513fba788c79adb91e6d72e03dcad2ee555ef3c04b20864a242b32a2d35c1059",
-      "tree_sha256": "83f4dfb83685c50931e8fe0151a8a8ee2881259b4d19959ceaf1957d1c8e1798"
+      "total_bytes": 560129,
+      "skill_md_sha256": "c91e3e8357e5180ca5534402593f22e110762f16fa894660039722e395026407",
+      "tree_sha256": "dd1c51c8b1240aa406ca3cf26abc993e0f79032f64c754b05e89a943e61b9cdc"
     },
     {
       "id": "persona-02",
@@ -27,9 +27,9 @@
       "source_name": "Anthony Chaffee",
       "target": "personas/Anthony Chaffee",
       "file_count": 8,
-      "total_bytes": 898194,
-      "skill_md_sha256": "a7c18e5f068f77154e6da4ec1d9368ab8bb39d1be5dca563f2cd3783b8f3e053",
-      "tree_sha256": "c88ee7827fbce25780a672a23d842d37a87779db368d5f6ff474059e621dfbfb"
+      "total_bytes": 897628,
+      "skill_md_sha256": "4d243767f3eadd8dbe58526b76ad7f4d678e27c342aacbc7bb6daed1d05f02de",
+      "tree_sha256": "6b3b43fef48128a2214a5a55e63cac1b81abee8a10df7b28e8394d56727dfb97"
     },
     {
       "id": "persona-03",
@@ -37,9 +37,9 @@
       "source_name": "PeterAttia",
       "target": "personas/PeterAttia",
       "file_count": 12,
-      "total_bytes": 1162907,
-      "skill_md_sha256": "4da816b03b10039cc2837f3f5106480068d8ba827c2bcde7f8616c5de35f5dd8",
-      "tree_sha256": "7e8332405a81798c873dd67dee545ac44de1f3596871ddbd47058374829d4c24"
+      "total_bytes": 1162380,
+      "skill_md_sha256": "85580962924cbc16ca7561e2a748fa4be91df40cfd82006fffc0b5b7524bcbaa",
+      "tree_sha256": "d5a1145fb048e5c4b63e8ed0ea2906f75df5334149f5c3f9c3ea449a5f1fb862"
     },
     {
       "id": "persona-04",
@@ -47,9 +47,9 @@
       "source_name": "Dr Eric Berg",
       "target": "personas/Dr Eric Berg",
       "file_count": 8,
-      "total_bytes": 10617838,
-      "skill_md_sha256": "5d3469626d472b990cd4de58f433ce2c4842fd400aeab046d2adc60ede9dca18",
-      "tree_sha256": "355977fb6302079760b22b49f61ed06a8e7456b2d1dc1602571cf783a07104f4"
+      "total_bytes": 10617272,
+      "skill_md_sha256": "89c887ea30f4c319183505a1bd0b33e7a298da6f2931e952d0b85c428c39037c",
+      "tree_sha256": "dbe4c03308975fc9939ae136a2ecfc82ec1698a1513d1a91fd5ea3383244a1ba"
     },
     {
       "id": "persona-05",
@@ -57,9 +57,9 @@
       "source_name": "Steak and Butter Gal",
       "target": "personas/Steak and Butter Gal",
       "file_count": 8,
-      "total_bytes": 684694,
-      "skill_md_sha256": "c9e79e775b140e817129f17ee2d63ad279a95fb023549938ae90fc9dc954fbe0",
-      "tree_sha256": "01c209cc6ebfe4ac227b6a4e2ca7eddeb7c297b311b079ba9144696d42e93e38"
+      "total_bytes": 684128,
+      "skill_md_sha256": "dadc28a7b3d5990e76f994ed5eb815ac6964d158e589f4176702d1ede7f16f9e",
+      "tree_sha256": "572629b6a8aff158a622c8ee67c6acb49aa121b1c8e87b2eb0e7d45f6013ebf3"
     },
     {
       "id": "persona-06",
@@ -67,9 +67,9 @@
       "source_name": "Dr Stan Ekberg",
       "target": "personas/Dr Stan Ekberg",
       "file_count": 58,
-      "total_bytes": 926543,
-      "skill_md_sha256": "ce07e0a5eff86d33c292ced9c7a2a401068dcd7b513c5be1cd4951625b956d29",
-      "tree_sha256": "f52760c06c52b5efa96a13ecc8fe89be4011de54d27d829695379e25b4098cd3"
+      "total_bytes": 925977,
+      "skill_md_sha256": "3da23493af0f0643eb83cf4615a86048f9e1b386ee8985cd8932806ed6781211",
+      "tree_sha256": "51591d714b9ee8937f762bc8e9c450377efec18ce9acc52af8539b52e35853df"
     },
     {
       "id": "persona-07",
@@ -77,9 +77,9 @@
       "source_name": "Dr Robert",
       "target": "personas/Dr Robert",
       "file_count": 8,
-      "total_bytes": 932660,
-      "skill_md_sha256": "a98a8f5fce7350a8b37bdb93f0a32cf8003e33922ab97b33bb63c3374179c04e",
-      "tree_sha256": "e1b87c2359cdebc7af5ed84efb12942f6612b1cf8f77b53a5766bbd2f63e99f6"
+      "total_bytes": 932094,
+      "skill_md_sha256": "a3776197b60358f4c410b5fd029a89ab2ef620b72586c9bc302fa1a4a79eda6f",
+      "tree_sha256": "9e54beb40fed70e3398e528db0fa5db649b41193086cd7147a290918a7ce1a4d"
     },
     {
       "id": "persona-08",
@@ -87,9 +87,9 @@
       "source_name": "ShawnBaker",
       "target": "personas/ShawnBaker",
       "file_count": 11,
-      "total_bytes": 2065856,
-      "skill_md_sha256": "c38333a96bd7d1522bec939040784f6b6d98e1ac5d9698d2ad2025a3daed8181",
-      "tree_sha256": "cd29c75748f882910cc921750ddc52ff8999029e4a04ee48d43b13fce3624710"
+      "total_bytes": 2065329,
+      "skill_md_sha256": "38922201daa866f524bd70a5d8bae948c2f2f1ed6f2388383f48f2791482f1fd",
+      "tree_sha256": "6482fba53c7a651259419aaeaa185c0671aed6df038cccfb483aa7597141b337"
     },
     {
       "id": "fuxi-skill",
@@ -97,9 +97,9 @@
       "source_name": "fuxi-skill",
       "target": "fuxi-skill",
       "file_count": 5,
-      "total_bytes": 69186,
-      "skill_md_sha256": "f931497002bfa14c3ddef41052fa9e1b721508bf4b75155df533e8b73627c4d4",
-      "tree_sha256": "5e839c99746b0aea0bc011013bb2e56181685af341c18b82bf31bafef2bcf9a4"
+      "total_bytes": 68748,
+      "skill_md_sha256": "b082ad92cc5ff6f1a2408ea0a3856edc9d39e66fecea5dc1af458bd2bfc5888a",
+      "tree_sha256": "8ae70478671ebce57d812d11b8fcbf60b20fc7ec4eccf5b51691ce77512586b7"
     }
   ]
 }

@@ -11,29 +11,13 @@ description: >-
 
 # Project Handoff
 
-Route work from verified project state. Preserve complete portable handoff as a first-class result while using one Controller for decomposition, dispatch, synchronization, and integration when execution is requested.
+Create a portable handoff, dispatch a requested visible task, or coordinate dependent tasks through result review and integration. Read the target project's instructions, current files, accepted decisions, requested deliverables, write scope and selected model/effort before choosing the outcome below.
 
-Execution dispatch includes progress follow-up, result collection, and Controller quality review by default, even for one worker. The user need not separately say “wait for the result.” Only an explicit request to send/create and leave follow-up to the user selects `dispatch_only`; one lane, a successful send, or the absence of a timer does not.
+Execution dispatch includes follow-up, result collection and Controller quality review, including for one worker. Use `dispatch_only` when the user explicitly leaves follow-up to themselves. Executors can develop, research, operate a computer or observe a scheduled process. Assign bounded mechanical observation to an explicitly selected observer, and keep unchanged checks quiet.
 
-An executor (`worker`) performs any assigned task: development, research, review, computer operation, or scheduled observation. The role is not limited to a developer. A scheduled observer is also an executor; its observations, return evidence, and monitoring lifecycle require appropriate quality checks.
+Resolve task creation and messaging from the user's current and earlier direct instructions. “Reuse a suitable task, otherwise create one” permits creation when no suitable task exists. Ordinary continuation and internal collaboration use the current task's tools; preserve a visible surface when the user selected one. Reuse existing authorization and read [authorization continuity](references/thread-dispatch.md#resolve-authorization-in-context) when a local binding is missing.
 
-Optimize cost per accepted result by assigning the work to an appropriate model before tuning check frequency. Prefer Luna-max for clearly specified mechanical observation, leaving Astra's attention for decisions, exception handling, and substantive quality review when it is the selected Controller. Reuse an explicit Luna-max monitoring policy; do not equate an Astra wake-up with a Luna check merely because both consume tokens. A bare Skill invocation still does not override unselected model axes.
-
-Background: Use this Skill as the single control surface for complete handoff, bounded dispatch, or dependency-aware orchestration. A handoff or task receipt is routing evidence, not authority to deploy, publish, install, or adopt.
-
-Scope: Ordinary continuation or internal subagent collaboration stays within the current task's rules. The visible-task guard prohibits substituting subagents for requested visible tasks; it does not prohibit internal help. Simplifying instructions or merging roles preserves applicable earlier model, effort and visible-surface choices for the same responsibility; calling that responsibility internal does not erase them. For complete handoff, load the portable template; for execution, load only the references required by the selected route and outcome. Reuse current readings until the relevant contract or state changes.
-
-Resolve dispatch authority from the user's current and earlier direct instructions under the live tool's requirements. A contextual confirmation of an explicitly described task-creation action needs no repeated keyword or approval. Preserve the applicable selected model/effort separately; check the [authorization continuity contract](references/thread-dispatch.md#resolve-authorization-in-context) before treating a missing local binding as missing user permission.
-
-Materials: Read the target project's current instructions, accepted decisions, active goal, file state, authorized read/write roots, required deliverables, validation commands, recipient capabilities, and any explicit model/reasoning/concurrency choices.
-
-Constraints: Preserve explicit user choices and scope; keep secrets and unrelated history out; do not dispatch when the user only asks for an explanation; do not parallelize conflicting lanes or infer deployment/provider/formal-layer authority.
-
-Objective: Select exactly one outcome, verify current state, build a self-contained handoff or safe dependency graph, dispatch only when authorized, synchronize artifacts and task state, and close through the named validation/integration gate.
-
-Output format: Return the selected outcome, route and basis, visible task or artifact receipts, changed/output files, validation, lifecycle/integration state, blockers, and explicit non-authorized actions. For complete handoff, use the portable template.
-
-Success criteria: The recipient can continue from verified materials without hidden context; every requested lane or handoff artifact satisfies its gate; conflicts and stale work are reconciled; no task creation or fluent worker response is mislabeled as integrated success.
+Return the selected outcome, task/artifact entry, actual changes, validation, blockers and remaining work in the user's language. A portable handoff must be usable without hidden chat context. A dispatch completes after the requested result is reviewed and the declared integration checks pass.
 
 ## Non-negotiable dispatch guard
 
@@ -43,7 +27,7 @@ For this Skill's selected visible-task execution route, apply this gate before v
 2. Validate that attempt with `scripts/validate_dispatch_route.py` and retain its `attempt_sha256`. For a multi-lane run, also put `requested_route` and `surface` in every plan route and run `scripts/validate_orchestration_plan.py`.
 3. Proceed only on `valid: true`. For visible creation, copy only the validator's `create_thread_arguments`; never fill a field listed in `omitted_create_thread_fields`. After creation, record the actual arguments and attempt hash in the normalized receipt, then require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to return `valid: true` before recording task creation.
 4. Do not treat a worker prompt, a tool schema, a planned action, or prose review as proof of the tool actually called.
-5. Before accepting a selected formal execution, compare the retained selection with actual runtime/session/readback model, effort and surface through `scripts/validate_execution_binding.py`. Keep the original applicable selection as `--previous` across simplification or role merging. A creation receipt proves routing, and requested arguments alone do not prove the actual execution pair. Ordinary helpers remain allowed under their own scope; unselected axes stay omitted. For recurring execution, model drift, or exception notifications, read [runtime verification and alerts](references/runtime-alerts.md): verify each actual turn, retain pending notifications until receipted, and never treat heartbeat inheritance as a model lock.
+5. Before accepting a selected formal execution, compare the retained selection with actual runtime/session/readback model, effort and surface through `scripts/validate_execution_binding.py`. Keep the original applicable selection as `--previous` across simplification or role merging. Read the actual execution pair from runtime/session evidence. Ordinary helpers remain allowed under their own scope; unselected axes stay omitted. For recurring execution, model drift, or exception notifications, read [runtime verification and alerts](references/runtime-alerts.md): verify each actual turn, retain pending notifications until receipted, and never treat heartbeat inheritance as a model lock.
 
 Hard invariants:
 
@@ -53,7 +37,7 @@ Hard invariants:
 - Automatic role defaults: Astra ultra for the hardest reasoning, Astra high for orchestration, Sol max for writing/development, Sol medium for computer operation, Luna max for simple browser operation, mechanical audits and file lookup. Record verified `task_kind`; a review/audit label alone never selects Luna. These are routing preferences, not measured strength or pricing claims.
 - Spark execution has been removed. Reject retired Spark aliases/model IDs and do not revive the deleted CLI executor or silently replace an explicit Spark request with Luna.
 - The 2026-09-30 baseline is Astra=`gpt-6-astra`, Sol=`gpt-6.1-sol`, Luna=`gpt-6-luna`. Unversioned family aliases prefer the newest visible numbered release actually supported by the destination task service, using `model_catalog` evidence as described in `references/model-routing.md`. Never invent a release or silently fall back when the requested effort fails. Follow-ups preserve the existing task's verified route, including historical GPT-6/GPT-5.6 tasks, instead of reapplying today's alias.
-- `unsupported_parameter` or “could not validate reasoning effort” indicates a capability-validation failure, not proof the model is unavailable. A generic `invalid_request` also needs the actual error and failed stage: `already has an active writer` is a thread transport conflict, not a model error. Keep the requested model and `thinking`; diagnose the relevant capability or transport. Never downgrade effort, swap models, or use CLI/subagents to pretend visible creation passed.
+- For `unsupported_parameter`, “could not validate reasoning effort” or generic `invalid_request`, retain the exact error and classify the failed stage. Check the destination model/effort pair for capability-validation errors; for `already has an active writer`, recover the bound thread write endpoint. Preserve the requested model and `thinking` during diagnosis, then retry only under the route's supported recovery rule.
 - The synchronization retry allowance applies only to reading an already identified task or retrying title metadata after a classified visibility/readback/title delay. It never authorizes a new task, a model/reasoning change, or a retry of an unsupported parameter, invalid request, permission, authentication, quota, or provider/model failure.
 
 ## Choose the outcome
@@ -86,25 +70,13 @@ Boundary examples:
 - Example 5: “重新派一个 sol-max 做 coding Agent 进行修复” → dispatch, follow progress, collect the candidate, review its actual changes and validation, and request authorized corrections. Do not stop after confirming startup.
 - Example 6: “只创建并发过去，后续我自己跟” → explicit `dispatch_only`; verify delivery and required initial readback, report work pending, and name the user as the follow-up owner.
 
-## Dispatch tool contract
+## Collect the result
 
-Purpose: Use the current Codex task tools to deliver one authorized lane to a capable recipient and preserve a verifiable receipt.
+Before execution dispatch, read [result collection and quality review](references/result-collection.md). Bind the reader, return location, next check and acceptance criteria. Use current Codex task tools with the guard-produced arguments and store the returned `thread_id`/`host_id`, or queued `client_thread_id`, exact tool, delivery status and receipt result.
 
-Use when: The user explicitly requests visible dispatch/orchestration, and the target project, lane scope, route, dependencies, outputs, validation, and authority are known.
+For long waits, use an already authorized observer or completion trigger. Verify the observer's actual model/effort under [runtime alerts](references/runtime-alerts.md), and retain the Controller's open quality-review obligation. A bounded inline wait is suitable when delegation would cost more than the check. Continue result collection after a transport interruption using [cross-device transport](references/cross-device-transport.md); reconcile delivery before resending.
 
-Do not use when: The user asks only for a complete text/file handoff or explanation; task tooling is unavailable; a requested explicit route is unsupported; dependencies or write conflicts are unresolved; or the action would exceed granted authority.
-
-Parameters: Project/host target, lane id and goal, self-contained prompt, exact read/write paths, mutable resources, dependencies, expected outputs, validation, requested/effective model/reasoning axes with separate bases, the validator-produced `create_thread_arguments` and `attempt_sha256`, concurrency cap, integration owner, retry budget, and archive policy.
-
-Before execution dispatch, read [result collection and quality review](references/result-collection.md). Bind the result reader, readable return location, next check entry, and acceptance criteria. Select the observation executor first: a chosen Luna-max policy gives Luna a precise goal, read scope, mechanical checks, return format, escalation triggers, and stop condition. Verify the automation actually runs on that Luna/max owner; putting “Luna” in an Astra-thread prompt does not change the executor. For long/uncertain waits, use this observer or a real completion trigger, keep unchanged checks quiet, and wake the Controller only for actionable evidence. A short bounded inline wait remains useful when delegation overhead would exceed the check. Once actual follow-up and result delivery are verified, the current turn may end with work explicitly pending; collection and quality review remain open. Preserve selected model/effort and monitoring authority. Web capture and development/build waiting remain separate obligations.
-
-Returns: A confirmed `thread_id` plus `host_id`, a queued `client_thread_id`, exact `actual_tool`, prompt-delivery/readback state, receipt-guard result, current cursor/status, artifact/validation receipts, or an exact structured failure.
-
-Failure handling: Classify the exact failure with the dispatch guard. Metadata synchronization retries and message transport recovery are separate. For a writer conflict or connection failure, follow [cross-device transport](references/cross-device-transport.md): retain the original request, reconcile delivery, restore its verified write endpoint and continue result collection. A transport failure leaves that delivery pending; it does not stop the project. Never silently change route, scope, authority, executor, or create a second task by stripping a rejected parameter.
-
-Tool stop rule: End explicit `dispatch_only` after verified delivery and host-required initial observation, reporting work pending. Otherwise continue through result receipt, quality review, authorized rework, and the declared integration gate. A wait timeout, missing reverse notification, or absent timer does not close that obligation. User stop or a genuine unresolved external dependency leaves an explicit incomplete state. An exhausted communication retry budget ends immediate resends only; keep collecting readable results and doing independent work.
-
-Task: Apply the verified materials, selected outcome, route basis, authority boundary, dependency/conflict analysis, tool contract, and stop rules above to produce the requested complete handoff or close the authorized dispatch through its artifact and integration gates.
+Complete `dispatch_only` after verified delivery and required initial readback, reporting work pending. Otherwise continue through collected result, review, authorized rework and integration. On a user stop or unresolved dependency, record the unfinished work and exact resumption entry.
 
 ## Verify current state
 
@@ -126,7 +98,7 @@ For two or more lanes, or any gated phase transfer:
 4. Decide independence before selecting concurrency. Dispatch all ready conflict-free lanes in the same wave; keep dependent waves serial.
 5. Declare same-file, read/write, service, worktree, lockfile, and generated-output conflicts. Narrow scopes or serialize them; an integration owner does not make concurrent conflicting writes safe.
 6. Route model and reasoning per lane, preserving explicit user choices.
-7. Validate every route attempt with `scripts/validate_dispatch_route.py`, then validate a durable JSON plan with `scripts/validate_orchestration_plan.py`; after creation, validate every normalized visible-task receipt with `scripts/validate_visible_task_receipt.py`. Treat plan validation as declared-state checking, not proof of the tool actually called.
+7. Validate every route attempt with `scripts/validate_dispatch_route.py`, then validate a durable JSON plan with `scripts/validate_orchestration_plan.py`; after creation, validate every normalized visible-task receipt with `scripts/validate_visible_task_receipt.py`. Record the actual tool call in its receipt after plan validation.
 
 Do not split a task merely to use more Agents. Keep tightly coupled work in one lane when decomposition would increase integration risk or duplicate context.
 
@@ -171,7 +143,7 @@ Read `references/thread-dispatch.md` and use the live Codex task tools exclusive
 
 Do not use `handoff_thread` to create a successor; it moves an existing task and Git state. Read `references/thread-dispatch.md` for tool contracts and failure handling.
 
-For cross-device communication, also read [cross-device transport](references/cross-device-transport.md). Bind the proven **write endpoint per caller and target thread**; a newly discovered readable host never replaces it. `local` is relative to the caller. Send once, then wait/read and collect the result even if the return notification fails. Reuse a healthy binding without extra probes; use `scripts/resolve_thread_transport.py` when resolving or recovering delivery. `idle` does not prove that a writer was released.
+For cross-device communication, also read [cross-device transport](references/cross-device-transport.md). Bind the proven **write endpoint per caller and target thread**; a newly discovered readable host never replaces it. `local` is relative to the caller. Send once, then wait/read and collect the result even if the return notification fails. Reuse a healthy binding without extra probes; use `scripts/resolve_thread_transport.py` when resolving or recovering delivery. For a writer conflict, verify release at the bound write endpoint.
 
 ## Maintain controller state and lifecycle
 
@@ -199,20 +171,8 @@ Use `scripts/make_handoff.py` for a Markdown scaffold and `references/legacy-han
 
 A lane is only ready for integration when the Controller has actually collected its output, reviewed it against the original request, verified the applicable evidence, and recorded an acceptance decision for that exact version. Report changed files, remaining risks, and handoff state. Worker self-tests support review but do not replace it. A failed review returns `needs_fix` with concrete corrections and continues within the existing authority. For a response-only lane, review the final response and its verifiable sources without requiring an unrequested disk artifact. The run succeeds only when the integration owner reconciles all required lanes and conflicts, all applicable declared integration checks pass, stale/retried work is resolved, and the final deliverable is reported. Do not add unrelated suites or repeat passing checks without a new change, failure, or unresolved concern.
 
-Using multiple Agents, creating tasks, or receiving plausible worker prose is never a success condition.
+Using multiple Agents requires the same result review and integration checks as a single lane.
 
-## Stop rules
+## Blocked work
 
-- Do not silently replace an explicit executor or reasoning level.
-- Do not turn Skill invocation, implicit triggering, or a bare task-creation request into automatic model/reasoning selection. Never pass a value for an axis recorded as `platform_default`.
-- Do not dispatch, follow up, retry, or make model-availability claims without the matching guard/evidence.
-- Do not revive retired routes or downgrade a max route on follow-up.
-- Do not create a hidden subagent when a visible task was requested.
-- Do not write `created_confirmed`, `created_unconfirmed`, or `queued` without a valid create-thread receipt containing the required real task identifier.
-- Do not claim a task received work until readback or a creation receipt supports it.
-- Do not infer dispatch_only from a single-task request or stop at startup because no timer or reverse message exists. Result collection and quality review remain the Controller's responsibility unless the user explicitly transfers it.
-- Do not call a model when complete handoff was requested.
-- Do not parallelize lanes with undeclared or unresolved shared mutable state.
-- Do not start downstream work before its upstream artifact gate passes.
-- Do not mark a lane complete from an unsupported self-report or mark a run complete before its declared integration validation. Evaluate response-only outputs against their requested evidence gate.
-- Do not turn a candidate, audit, or handoff into installation, deployment, adoption, or publication authority.
+Preserve the selected route and current evidence. Pause the affected dispatch on failed guards, missing authority, unsupported parameters or unresolved write conflicts; continue independent work. Resume from the existing task after resolving the cause. Apply the route, receipt and dependency conditions above to each new attempt.

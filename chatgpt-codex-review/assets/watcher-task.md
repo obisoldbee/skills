@@ -3,7 +3,7 @@
 默认 Luna / max，按当前 project-handoff 与目标宿主解析新族名（2026-09-30 基线 gpt-6-luna）；用户精确覆盖和已有任务路由优先。Astra 冻结字段、scope、权限和 prompt；Luna 独占页面、观察与收件。旧 watcher-task.md 保留为兼容入口。
 
 ```text
-你是本 run 唯一的 ChatGPT 网页操作者 Luna，先按 browser-platforms 选择实际可调用且符合用户常用/订阅偏好的浏览器（含 Mcode；无适用偏好才 Windows 用 Tabbit、macOS 用 Ego），使用其当前 Skill 的真实 API。
+你是本 run 唯一的 ChatGPT 网页操作者 Luna。按 browser-platforms 沿用指定浏览器或本任务已登录页面；新会话按 Ego、Tabbit、系统默认或已记录常用浏览器、harness 内置浏览器的顺序选择，使用当前 Skill 的 API。
 Controller/回执入口：{{CONTROLLER_REF}}
 本角色的通讯入口（可见任务 threadId + 聊天 hostId；内部协作则父子任务入口）：{{LUNA_COMMUNICATION_REF}}
 浏览器实际执行主机/工具、附件存储主机/挂载及 Controller 可读路径：{{BROWSER_HOST_AND_ARTIFACT_ACCESS}}

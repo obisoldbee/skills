@@ -1,159 +1,50 @@
-# OB Skills Distribution Repository
+# OB Skills Distribution
 
-Background:
-This is the owned portable Git source for public Skill packages. A package present only in an unpushed local commit is not remotely published. In the standard local Skills Project Collection, clone this repository exactly once as `<collection>/GitHub`.
+这是 `obisoldbee/skills` 的公共发行源码。先确定本次操作和包范围，再读取对应 wrapper、包内指引和当前 Git 状态。
 
-Materials:
-- `<checkout-root>` is the real Git worktree that owns this file. The same bytes may be read through `<collection>/skills/src/AGENTS.md`; that projection path is not a Git root.
-- Root-owned publication files are `.gitattributes`, `.github/workflows/verify.yml`, `.gitignore`, `AGENTS.md`, `README.md`, `ROOT-MANIFEST.sha256`, `config/`, and `scripts/`.
-- Each top-level Skill package, such as `project-conventions/`, `web-bookmark-intelligence/`, `media-understanding/`, `research-qa-plugin/`, `paper-downloader/`, `buddy-travelling/`, `media-creator/`, `project-handoff/`, `others-manager/`, `minimax-h3-prompt/`, or `document-workspace/`, is an independently validated managed scope.
-- A local collection wrapper, control project, member records, and Agent links live outside this repository.
+## 源码位置
 
-Constraints:
-- Resolve the lifecycle before any write: clone/bootstrap, update-only, package maintenance, or repository-root maintenance.
-- When entered through a `skills/src/{AGENTS.md,README.md,config,scripts}` projection, resolve the matching physical entry under `<collection>/GitHub` before running Git or repository validation.
-- Do not initialize Git at the surrounding Project Collection root.
-- Do not clone this repository into a member package path when the target uses the shared collection profile; use the exact collection-local `GitHub` path.
-- Do not create application-data or user-global source directories in place of a user-selected target.
-- A repository-root manifest PASS verifies only root-owned files. Validate a named package separately.
-- Package-change authority is not implied by repository-root maintenance authority.
-- Update-only may fast-forward this checkout and validate one named package; it must not initialize wrappers, edit local indexes/records, scan siblings, or relink Agent consumers.
-- Repository-wide device refresh is a separate root operation. It may fast-forward this one checkout and reconcile only missing links declared by the repository-root allowlists in already existing Agent roots; it must not modify member packages, local wrappers, indexes, records, or export policy.
-- Never create missing Agent parents or replace real paths, wrong links, or dangling links without explicit conflict-preservation authority.
-- Root refresh validates candidate files as data with the current trusted verifier, checks whole-update landing conflicts, freezes the actual index as well as Git refs, and fast-forwards only the validated SHA without overwriting ignored files.
-- Consumer checks use filesystem identities for the confirmed collection boundary and its aliases. Unix creation requires the directory-fd helper; scoped Windows creation requires the NT directory-handle helper. Combined Windows `-SyncDevice -Apply` remains unavailable; an explicitly authorized checkout update followed by scoped installation is supported. Do not substitute `ln` or `New-Item` after a safe-create failure.
-- Do not expose credentials, caches, local inventories, or machine-specific paths.
-- Base completion claims on current Git/disk/link readback and reply in the user's language.
+- 根文件由 `AGENTS.md`、`README.md`、`.gitattributes`、`.gitignore`、`.github/workflows/verify.yml`、`ROOT-MANIFEST.sha256`、`config/`、`scripts/` 组成。
+- 每个顶层包是独立维护范围。嵌套研究 Skill 的入口在 `research-qa-plugin/skills/research-qa-orchestrator/`。
+- 合集中的 canonical 路径为 `<collection>/GitHub`。从 `skills/src/` 进入时，解析到本仓库同名项后再运行 Git。
+- wrapper 保存本地 docs、conversation、memory；公共源码留在本仓库。消费者直接指向 allowlist 声明的真源。
+- `skills/src/` 恰好映射本仓库根的 `AGENTS.md`、`README.md`、`config`、`scripts` 四项。
 
-Collaboration:
-- Ordinary reads and independent exact report files require no admission claim. Use no-clobber creation and task-specific records; one integrator updates shared logs/indexes.
-- Concurrent Git writers use distinct branches and linked worktrees of this repository. Authorized code work includes ordinary local setup: bind repository, base commit, unique branch and absent destination; then actually edit/test there. Preserve dirty inputs and keep canonical projections/consumer links unchanged.
-- A linked worktree is not a duplicate clone. Canonical distribution maintenance may use one editor in this checkout; it does not allow multiple writers to share the same physical files. Worktrees do not isolate services, databases, ports or common output paths.
-- Controller/integrator roles apply to the current task and named shared resources, not a permanent project-wide reservation. Independent authorized work needs no release from a historical chat or claim. Diagnose actual Git/file/runtime conflicts at the affected resource.
-- Reload current guidance after a rule or scope change. Reuse task authorization and current readings; response-only work creates no records. A missing compatibility helper does not block ordinary work.
-- Verify changed files and affected checks, then report integration state. Commit, push, publication and consumer changes follow their own task authorization.
+## 操作选择
 
-Lifecycle routing:
-
-1. **Clone/bootstrap only**: clone to the exact named destination, verify Git identity, run root validation and the named package validator, report commit, and stop.
-2. **Fresh shared Skills collection**: clone this repository as `<collection>/GitHub`, then run `project-conventions/scripts/initialize_skills_control_project.py` dry-run and apply from that checkout. It creates the collection overlay, the control project's four root-management projections, the stable member wrapper, and the member projection. It creates no Agent links.
-3. **Update-only**: run the requested package's `scripts/update_shared_checkout.py`. It permits only clean, attached, ahead-zero fast-forward behavior, validates that named package, and stops.
-4. **Device refresh**: for “本机全量同步 Skills”, run `scripts/link-macos.sh --sync-device` or `scripts/link-windows.ps1 -SyncDevice` without apply first. Supported Unix apply may update this checkout and create only missing allowlisted public Skill links in existing compatible Agent roots. Windows combined refresh is plan-only; for an authorized update and installation, validate/update the checkout separately and use scoped `-Agent` or `-Target` apply.
-5. **Package maintenance**: modify only the explicitly authorized top-level package and run its validators/tests.
-6. **Repository-root maintenance**: modify only root-owned files, rebuild `ROOT-MANIFEST.sha256`, verify it, and do not modify package content.
-7. **Agent installation**: separately scan and apply only exact authorized consumers using the collection control scripts or this checkout's scoped link scripts.
-
-Shared collection invariants:
-
-```text
-<collection>/skills/src/AGENTS.md -> ../../GitHub/AGENTS.md
-<collection>/skills/src/README.md -> ../../GitHub/README.md
-<collection>/skills/src/config    -> ../../GitHub/config
-<collection>/skills/src/scripts   -> ../../GitHub/scripts
-
-<collection>/GitHub/project-conventions                  # true source
-<collection>/project-conventions/src/project-conventions # member projection
-<agent-root>/project-conventions                         # direct consumer link to true source
-
-<collection>/GitHub/web-bookmark-intelligence                  # true source
-<collection>/web-bookmark-intelligence/src/web-bookmark-intelligence # member projection
-<agent-root>/web-bookmark-intelligence                         # direct consumer link to true source
-
-<collection>/GitHub/media-understanding                        # true source
-<collection>/media-understanding/src/media-understanding       # member projection
-<agent-root>/media-understanding                               # direct consumer link to true source
-
-<collection>/GitHub/research-qa-plugin                         # true package source
-<collection>/research-qa-plugin/src/research-qa-plugin         # member projection
-<agent-root>/research-qa-orchestrator                           # direct link to first-level Skill
-
-<collection>/GitHub/paper-downloader                            # true source
-<collection>/paper-downloader/src/paper-downloader              # member projection
-<agent-root>/paper-downloader                                   # direct consumer link to true source
-
-<collection>/GitHub/media-creator                               # true source
-<collection>/media-creator/src/media-creator                    # member projection
-<agent-root>/media-creator                                      # direct consumer link to true source
-
-<collection>/GitHub/project-handoff                             # true source
-<collection>/project-handoff/src/project-handoff                # member projection
-<agent-root>/project-handoff                                    # direct consumer link to true source
-
-<collection>/GitHub/others-manager                              # true source
-<collection>/others-manager/src/others-manager                  # member projection
-# Trae export is declared for others-manager
-
-<collection>/GitHub/minimax-h3-prompt                           # true source
-<collection>/MiniMax-H3-prompt/src/minimax-h3-prompt            # member projection
-<agent-root>/minimax-h3-prompt                                  # direct consumer link to true source
-```
-
-- The control project has exactly those four repository-root management projections. It has no aggregate `src/skills` link and no package projection.
-- Unix member projection: relative symlink `../../GitHub/<package>`.
-- Windows member projection: junction to the final absolute package path.
-- Agent consumer links point directly to the true source, not through the member projection.
-- A link proves filesystem state only, not runtime discovery or execution.
-- `document-workspace/` is published and exported to Trae, without a collection wrapper. Do not invent a wrapper during unrelated maintenance.
-
-Validation:
-
-The commands below are a scope-indexed catalog, not a sequence to run for every change. For root-owned changes, rebuild and verify the root manifest; run refresh/consumer regressions when their behavior or boundary changes. For a named package, run its validator and checks relevant to the changed contract or behavior. Read-only inspection and wording-only edits do not require unrelated package suites. Preserve any specifically required acceptance gate; explain an unavailable or failing check instead of substituting a broader suite.
-
-Within the authorized write set, complete the edit, inspect the result, fix failures caused by that edit, and rerun affected checks without asking for approval at each step. Stop when the requested deliverable and its applicable gates are satisfied, or report the exact unresolved blocker. This does not authorize dependency installation, live provider/model runs, consumer changes, commit, push, or publication.
-
-```text
-python3 -B scripts/verify_release.py <checkout-root>
-python3 -B scripts/test_repository_refresh.py
-python3 -B scripts/test_consumer_boundaries.py
-python3 -B project-conventions/scripts/validate_package.py <checkout-root>/project-conventions
-python3 -B project-conventions/scripts/test_inspect_projects_workspace.py
-python3 -B project-conventions/scripts/test_lifecycle_workflows.py
-python3 -B web-bookmark-intelligence/scripts/validate_skill.py
-python3 -B -m unittest discover -s web-bookmark-intelligence/tests -p 'test_*.py'
-python3 -B media-understanding/scripts/validate_skill.py
-python3 -B -m unittest discover -s media-understanding/tests -p 'test_*.py'
-python3 -B research-qa-plugin/skills/research-qa-orchestrator/scripts/validate_research_qa.py plugin
-python3 -B -m unittest discover -s research-qa-plugin/skills/research-qa-orchestrator/tests -p 'test_*.py'
-python3 -B research-qa-plugin/skills/research-qa-orchestrator/bundled/verify_bundled.py
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" paper-downloader
-python3 -B -m unittest discover -s paper-downloader/scripts/tests -p 'test_*.py'
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" buddy-travelling
-python3 -B -m unittest discover -s buddy-travelling/tests -p 'test_*.py'
-python3 -B media-creator/scripts/validate_skill.py
-python3 -B -m unittest discover -s media-creator/tests -p 'test_*.py'
-python3 -B project-handoff/scripts/validate_package.py project-handoff
-python3 -B -m unittest discover -s project-handoff/tests -p 'test_*.py'
-python3 -B others-manager/scripts/validate_package.py others-manager
-python3 -B -m unittest discover -s others-manager/tests -p 'test_*.py'
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" minimax-h3-prompt
-python3 -B document-workspace/scripts/validate_package.py document-workspace
-python3 -B -m unittest discover -s document-workspace/tests -p 'test_*.py'
-```
-
-For an authorized repository-root edit, use `--rebuild-root-manifest` and then verify again. For a package edit, do not rebuild the root manifest unless root-owned files also changed.
-
-Output:
-Report lifecycle, exact paths, before/after commit where relevant, validators, link/projection readback, stop boundary, and unresolved blockers. Distinguish cloned, Git-backed, projected, linked, discovered, and executed states.
-
-Entry points:
-
-| Path | Purpose |
+| 操作 | 做法 |
 |---|---|
-| `README.md` | Bootstrap, update, validation, and linking overview |
-| `ROOT-MANIFEST.sha256` | Digests for repository-root files only |
-| `scripts/verify_release.py` | Offline root verifier and strict repository check/fast-forward gate |
-| `scripts/link-macos.sh` | Scoped Unix Agent consumer link tool |
-| `scripts/link-windows.ps1` | Windows Agent consumer scan and scoped junction installation |
-| `scripts/consumer_paths.py` | Shared identity-based consumer boundary and handle-bound Unix and Windows link creation |
-| `project-conventions/SKILL.md` | Lifecycle and filesystem-governance package |
-| `web-bookmark-intelligence/SKILL.md` | Receipted public-web and bookmark evidence package |
-| `media-understanding/SKILL.md` | Multimodal task router and provider-binding package |
-| `research-qa-plugin/plugin.json` | Agent Plugins v1 research QA package manifest |
-| `research-qa-plugin/skills/research-qa-orchestrator/SKILL.md` | Audited five-stage research QA entry point |
-| `paper-downloader/SKILL.md` | Lawful academic PDF acquisition and disk-receipt verification |
-| `buddy-travelling/SKILL.md` | Bounded daily Buddy gift and travel workflow |
-| `media-creator/SKILL.md` | Non-native cross-Agent image and video generation router |
-| `project-handoff/SKILL.md` | Portable handoff and verified visible-task orchestration controller |
-| `others-manager/SKILL.md` | Plan-gated management of independent third-party GitHub checkouts |
-| `minimax-h3-prompt/SKILL.md` | MiniMax H3 input routing and prompt-authoring guidance |
-| `document-workspace/SKILL.md` | Local-first document workspace lifecycle and evidence package |
+| Bootstrap | 克隆到指定 canonical 路径，核对来源，验证根文件与指定包 |
+| Fresh collection | 运行 `project-conventions/scripts/initialize_skills_control_project.py` dry-run，审核后 apply，读回目录与投影 |
+| Update-only | 运行指定包的 `scripts/update_shared_checkout.py`，验证固定候选包并快进后报告 |
+| Device refresh | `scripts/link-macos.sh --sync-device` 或 Windows `-SyncDevice` 先生成计划；Unix 按已有授权 apply；Windows 更新与指定消费者安装分开执行 |
+| Package maintenance | 修改用户指定包，运行该包 validator 和受影响检查 |
+| Root maintenance | 修改根文件，重建 `ROOT-MANIFEST.sha256` 并验证 |
+| Consumer installation | 扫描已有目标，按 `config/skill-exports.tsv` 和 `config/agent-paths.tsv` 逐个处理授权消费者 |
+
+消费者创建使用本仓库安全链接工具。缺失 Agent 根、真实目录、错误链接或失效链接发生冲突时，保留现场并报告具体条目；已获冲突处理授权时，先保存旧内容再操作。安全创建失败后保留错误，按工具实际条件诊断。
+
+仓库刷新核对 clean、attached、tracked、ahead=0 和可快进状态，用当前 verifier 检查固定候选根文件，再核对 refs、真实 index 和落地冲突。凭据、缓存、本机清单和私密数据留在发行源码外。
+
+## 协作
+
+读取直接进行。独立记录使用精确任务路径和不覆盖创建；并发 Git 写入各用独立分支和 linked worktree，保留并转入本任务需要的未提交输入。一个整合者更新 canonical 文件和共享索引。服务、数据库、端口和构建输出按实际资源协调。
+
+在已授权范围内完成修正和受影响检查。提交、推送、发布、消费者变更或新增依赖按相应请求执行。
+
+## 浏览器和文字
+
+需要页面操作时，默认依次选用 Ego lite、Tabbit、系统默认或 harness 已记录常用浏览器、harness 内置浏览器。用户当次指定和需继续的已登录会话优先。使用对应浏览器自己的工具；固定执行器的产品依赖在包内说明。
+
+入口和 Skill 只写会改变任务执行的事实、动作和条件。具体前置条件写清核对方法，删掉重复免责声明、假想误解和泛泛的完成状态口号。
+
+## 验证
+
+按改动范围选择检查。根文件改动执行下面两条命令；单包改动运行包内 validator。元数据与指引修改另用 skill-creator quick_validate，脚本和行为修改运行受影响测试。
+
+```text
+python3 -B scripts/verify_release.py . --rebuild-root-manifest
+python3 -B scripts/verify_release.py .
+```
+
+根 verifier 检查根文件，包 validator 检查对应包。每个包的测试入口在其 README 或 scripts 中。报告实际改动、路径、验证结果和剩余阻塞。

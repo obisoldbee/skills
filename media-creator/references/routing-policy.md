@@ -1,5 +1,5 @@
 # 路由策略与能力矩阵
-浏览器先按 [宿主偏好与平台选择](browser-platforms.md) 执行：先考虑当前可调用且满足能力的用户常用/已订阅 harness 浏览器（含 Mcode）及已导入数据的 Codex 浏览器；没有适用偏好时 macOS 默认 Ego、Windows 默认 Tabbit，其他已连接入口作备用。后文 Ego 示例只适用于 macOS；不存在的 Ego 不是 Windows 业务阻碍。
+浏览器选择与恢复统一见 [browser-platforms.md](browser-platforms.md)。
 
 
 ## 目录

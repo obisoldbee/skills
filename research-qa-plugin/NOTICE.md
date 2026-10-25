@@ -1,6 +1,6 @@
 # Publication Notice
 
-The bundled persona and Fuxi trees are frozen local inputs selected for this workflow. Their manifest hashes prove package integrity, not third-party redistribution rights.
+The bundled persona and Fuxi trees are local inputs selected for this workflow. Verify their source licenses and redistribution terms before external distribution.
 
 Before any commit, push, release, marketplace submission, or public redistribution:
 
@@ -9,4 +9,4 @@ Before any commit, push, release, marketplace submission, or public redistributi
 3. confirm no personal machine paths, secrets, credentials, private source text, or restricted material remain;
 4. rebuild and verify `bundled/source-manifest.json` after any approved change.
 
-The current local migration does not claim that this publication review has passed. Local source status and remote publication readiness are separate states.
+Record the publication review result before distributing the package.

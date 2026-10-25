@@ -31,16 +31,16 @@ python3 -B "<skill_dir>/scripts/render_report.py"
 | `reason` | 可选。仅阻塞/异常时一行简短中文原因，不填正常执行解释，不复制日志。 |
 | `action` | 可选。确需用户操作时只写一项必要动作；正常和维护自动等待均省略，不写“结束/无/建议优化”。 |
 
-`space_id` 是兼容字段名，不把组或标签伪装成 Ego 数字空间。`runtime` 为 ego-browser / tabbit / chrome / codex-browser / mcode-browser，`kind` 为实际观察到的 space / group / tab；ID 保留原值，非空、无空白/控制字符，整个字符串不超过 256 字符。不使用任务名称或把十六进制组 ID 转为整数；保留实际工具回执。所有带 ID 的状态都校验格式，但 closed/not_created 不在短报告中展示 ID。格式通过不证明连接或所有权。
+`space_id` 是兼容字段名，不把组或标签伪装成 Ego 数字空间。`runtime` 为 ego-browser / tabbit / chrome / edge / system-browser / harness-browser / codex-browser / mcode-browser，`kind` 为实际观察到的 space / group / tab；ID 保留原值，非空、无空白/控制字符，整个字符串不超过 256 字符。不使用任务名称或把十六进制组 ID 转为整数；保留实际工具回执。所有带 ID 的状态都校验格式，但 closed/not_created 不在短报告中展示 ID。system-browser 和 harness-browser 按实际控制工具归类，在本轮记录中保留具体浏览器名称。连接和所有权按本轮实际工具回执核实。
 
 维护脚本 `transition:entered/recovered` 分别映射 maintenance_entered/maintenance_recovered，status 使用其真实发送结果；无变化不产生通知项。未执行通知、配置缺失、发送失败、回执未知、已送达必须区分。通知情况独立于业务结果：发送失败不抹掉已完成动作，业务正常也不能掩盖收尾或发送异常。
 
 ## Buddy 输入
 
 - `receipt`：本轮 canonical helper 的完整返回对象。新派出必须来自 `dispatch_receipt()`；仅已有状态使用对应 helper。渲染器校验 receipt，不接受另行指定成功结论。只领礼物用 status_only_receipt 并附观察到的状态，不伪造新派出。
-- `gift`：claimed / not_claimed / unknown。仅本轮点击领取并确认“已领取”才是 claimed，并传整数 `points`；本轮没有点击领取（包括只读核验、历史回执拦截）一律为 not_claimed；仅本轮已点击领取而结果不明才是 unknown。历史奖励不明不等于本轮领取不明。其他状态 points 省略或 null，不能引用历史积分。
+- `gift`：claimed / not_claimed / unknown。仅本轮点击领取并确认“已领取”才是 claimed，并传整数 `points`；本轮没有点击领取（包括只读核验、历史回执拦截）一律为 not_claimed；仅本轮已点击领取而结果不明才是 unknown。只按本轮动作填写领取状态。其他状态 points 省略或 null，不能引用历史积分。
 - 旅行地点/倒计时来自本轮 receipt。派出未知时不把 expected_destination 当成已到达地点；同日旧回执拦截后，不拿旧倒计时冒充当前值。
-- 同日可靠旧回执拦截时，结果为“据历史回执跳过（本轮未派出）”，不声称本轮已完成。只有历史叙述且来源/账号未核实时，先按 SKILL 的只读核验分支处理；仍有冲突用 blocked，并填一行实际原因。helper 校验通过不等于历史浏览器动作真实发生。
+- 同日可靠旧回执拦截时，结果为“据历史回执跳过（本轮未派出）”，不声称本轮已完成。只有历史叙述且来源/账号未核实时，先按 SKILL 的只读核验分支处理；仍有冲突用 blocked，并填一行实际原因。历史动作需核对原始浏览器回执。
 - 结果只由 receipt 决定；维护是业务暂停，不是完成领取/派出。关闭、通知仍按各自真实回执。
 - blocked 必须传 `reason`，最多 40 字，只说明阻塞原因，例如“历史记录与当前页面不一致，今日完成未确认”。不要写账号、文件路径、状态字段或处理流程。长证据保留内部；不能在 renderer stdout 后自行加行、加说明段，也不能把没有 reason 的输出手工补成报告。
 

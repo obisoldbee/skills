@@ -1,13 +1,13 @@
 ---
 name: research-qa-orchestrator
-description: "Run an audited five-stage research QA workflow: lock a user topic, obtain independent additions from eight manifest-bound experts, perform Akashic-first literature search and truthful acquisition, send the complete 30-plus publication corpus to eight clean expert contexts with independent audits, then produce an independently audited synthesis in a pending Akashic candidate package. Use for explicit deep research, literature QA, evidence disputes, or other multi-paper questions where download, citation, and audit failures are costly. Do not use for simple answers, personal diagnosis or treatment, automatic persona distillation, formal Akashic absorption, or research that cannot satisfy the 30-publication hard gate."
+description: "Coordinate deep literature research with eight manifest-bound experts, independent audits, verified paper acquisition, and a synthesis saved as an Akashic candidate. Use for explicit research or evidence disputes requiring at least 30 reviewable target publications."
 ---
 
 # Research QA Orchestrator
 
 Background:
 
-Treat this directory as the orchestrator inside an Agent Plugins v1 package. Source presence, current Git observation, consumer link/junction state, runtime discovery, runtime operation execution, validated run output, and formal adoption are separate states. A filesystem link proves only `linked`; it never proves discovery or execution.
+Use this orchestrator inside the Agent Plugins v1 package. Validate its bundled expert manifest before starting the five-stage workflow.
 
 Produce only a new candidate package under:
 
@@ -15,7 +15,7 @@ Produce only a new candidate package under:
 ${HOME}/Documents/Akashic/12-agent-submissions/YYYY/MM/DD/<new-package-id>/
 ```
 
-Use an exactly four-digit `YYYY`, exactly two-digit `MM` and `DD`, and a real Gregorian calendar date. Preflight the nonexistent destination with `scripts/validate_research_qa.py destination --package <absolute-package-path>`, then reserve it through the Akashic v2 ordinary-submission workflow. Require `.reservation.json`, `manifest.yaml` with `status: pending`, and `formal_absorption: false`. Never reuse, merge, append to, or overwrite an existing package. Do not escape this hierarchy or write any other Akashic path. A completed QA run remains a candidate submission; it is not formal absorption, Wiki publication, Skill installation, or policy adoption.
+Use an exactly four-digit `YYYY`, exactly two-digit `MM` and `DD`, and a real Gregorian calendar date. Preflight the nonexistent destination with `scripts/validate_research_qa.py destination --package <absolute-package-path>`, then reserve it through the Akashic v2 ordinary-submission workflow. Require `.reservation.json`, `manifest.yaml` with `status: pending`, and `formal_absorption: false`. Never reuse, merge, append to, or overwrite an existing package. Do not escape this hierarchy or write any other Akashic path. Leave the completed package pending for the user’s separate adoption process.
 
 ## Literal run handoff
 
@@ -46,22 +46,11 @@ Before planning or dispatching a real run, read these files completely:
 
 At runtime, read `bundled/source-manifest.json` relative to this Skill directory. Use it to locate exactly eight expert Skills and one Fuxi Skill. Fail closed if the manifest, any declared file, or any declared SHA-256 binding is missing or invalid. Never discover experts by recursively scanning `bundled/`, guessing names, or using remembered personas.
 
-Success criteria:
+## Completion gates
 
-- Require the requested target quota, with at least 30 unique, on-scope, auditor-confirmed `reviewable` target publications before entering the expert phase. Fewer than 30 means `collection_not_ready`; a scarcity explanation cannot waive the gate.
-- Before search, run all eight experts in distinct contexts to add research angles and freeze a hash-bound research brief in a separate integrator context.
-- Query Akashic by canonical publication identity before any download. Reuse exact matches with `download_attempted: false`; never download them again.
-- Call a source `downloaded` only after disk readback proves a PDF larger than 5 KiB with a valid `%PDF` header, terminal `%%EOF`, consistent `startxref` plus classic xref/trailer or xref-stream structure, byte count, and SHA-256.
-- Run exactly the eight expert lanes declared in the validated bundled manifest. Each lane independently reviews the same frozen source package.
-- Require eight distinct clean Stage 4 author contexts and an exact per-expert coverage roster for the complete frozen reviewable corpus.
-- Treat every expert output as a candidate. Require a separate auditor decision of `pass` before the output can enter synthesis.
-- Allow one initial expert attempt plus at most three rework attempts. Preserve every draft, rejection, requested change, and retry binding. If any expert has no passing attempt after attempt 04, stop without successful synthesis.
-- Require 8/8 audited expert passes. Agent launches, task returns, file existence, or 7/8 passes are not success.
-- Treat the synthesis as a candidate. Have an independent auditor review it; allow one initial synthesis attempt plus at most three reworks. Publish no successful final report unless an attempt passes.
-- Require a complete, internally linked event/receipt/rejection/retry chain before setting `success`.
-- Require `plugin-validation.json` receipt v2 to bind the complete runtime tree, critical contracts, validator path/hash/command/result, bundled manifest/tree, and separately observed Git HEAD/tracked/dirty fields.
-- Require runtime discovery evidence for the linked `$paper-downloader` consumer and one hash-bound Paper Downloader operation receipt for every attempted acquisition. PDF bytes without that receipt are not even structurally complete execution evidence.
-- Require every topic expert, integrator, collector, material auditor, expert author/auditor, and synthesis author/auditor to bind a normalized runtime operation receipt. For Codex, it must contain a confirmed visible `create_thread` receipt plus successful result readback; a string `context_id`, hidden subagent ID, or task creation without completion is insufficient. The offline validator can validate only the retained receipt shape and byte bindings; package-local JSON never independently proves that the host operation occurred.
+The workflow requires at least 30 unique, on-scope, reviewable target publications, all eight independent expert contributions and reviews, and an independently accepted synthesis. Apply the exact evidence, coverage, retry, and receipt checks in the references above. Preserve each rejected attempt and its rework chain. Stop a lane after attempt 04 without an audit pass.
+
+For each download, validate the PDF bytes, identity, structure, byte count and SHA-256, and retain the Paper Downloader operation receipt. For each expert, integrator and auditor, retain the runtime’s original operation result and readback alongside the normalized receipt. Validate these against the complete plugin receipt and live-rule hash before reporting completion.
 
 ## Live Akashic rule
 
@@ -84,7 +73,7 @@ Require an explicit runtime identity; do not infer it from prose or model style.
 - For another agent runtime, use that runtime's available independent audit executor.
 - If no independent auditor is available, stop with `auditor_unavailable`. Do not self-approve in the authoring context and do not silently fall back to MiniMax.
 
-Use the same independence rule for source-material review, every expert attempt, and every synthesis attempt. The deterministic validator checks receipts and structure; it never substitutes for semantic audit.
+Use the same independence rule for source-material review, every expert attempt, and every synthesis attempt. Use the deterministic validator for receipt structure and a separate auditor for semantic review.
 
 Task:
 
@@ -115,21 +104,11 @@ Use `scripts/validate_research_qa.py` only for offline structural validation.
 - Failure handling: do not retry unchanged input. Fix the named structural cause or stop.
 - Stop rule: any invalid/unreserved calendar package, path escape, symlink, missing manifest binding, stale plugin receipt, link-only executor claim, missing/hidden/self-reported runtime evidence, absent independent host attestation, Stage 2 roster/context failure, Akashic redownload, false download, duplicate identity count, count below 30, incomplete corpus coverage, thin output, context reuse, incomplete audit chain, non-pass expert, or non-pass synthesis prevents success.
 
-Constraints:
+## Scope and report
 
-- Do not provide personal diagnosis, treatment, medication changes, or individualized medical instructions.
-- Do not bypass paywalls, access controls, captcha, credentials, or site policies.
-- Do not install packages, create symlinks, create `mcp.json`, call unapproved providers, commit Git, or claim external execution from a plan or file.
-- Do not trigger Fuxi automatically.
-- Do not count duplicates, off-topic rows, blocked leads, unverifiable citations, or unaudited records toward the 30-publication gate.
-- Do not download a publication after an exact Akashic registry/source match.
-- Do not call HTML, a landing page, an intended filename, or a failed task return a downloaded paper.
-- Do not call a run successful because multiple agents started or eight tasks returned.
-- Do not turn a synthetic corpus, fixture label, self-reported context ID, hidden subagent metadata, symlink, or junction into a discovery or execution claim. The deterministic validator checks normalized receipt structure and byte bindings; platform-side receipt provenance still requires the originating runtime readback.
+Keep the research question at the population or evidence level; refer personal diagnosis, treatment and medication decisions to an appropriate clinician. Use lawful sources and existing authorized runtime routes. Count only unique, on-topic, auditor-confirmed publications toward the requested target quota.
 
-Output format:
-
-Report the candidate package path and pending Akashic state; plugin runtime-tree receipt and separate Git observations; consumer link state; runtime discovery/execution as `runtime_not_verified`; structurally validated acquisition/runtime receipt counts; Stage 2 receipt completion; live-rule path/SHA; Akashic reused count; structurally valid downloaded-PDF count; verified-abstract and failure counts; unique reviewable source count; package-declared audit/pass receipts as structural facts only; validator result; unresolved host-attestation blocker; and explicit installation/formal-absorption states.
+Return the candidate package path, research question, synthesis and source links, target/supplementary counts, audit results, validator status, and any unresolved issue that blocks completion. Include receipt, hash or runtime details when they explain that issue. Keep the package pending in Akashic.
 
 ## Supplementary evidence and requested quota
 

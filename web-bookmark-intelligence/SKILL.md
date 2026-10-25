@@ -1,111 +1,68 @@
 ---
 name: web-bookmark-intelligence
-description: Read, summarize, evaluate, or fact-check public webpages and WeChat Official Account articles from one or more URLs. Use whenever the user supplies a webpage or WeChat/微信公众号 link, including a bare URL with no stated task; acknowledge this Skill and ask one concise question when the intended result is unclear. Also use for supplied webpage screenshots or long images. Default to response-only; create files, evidence cases, batches, or action cards only when explicitly requested.
+description: Read, summarize, evaluate, compare, or fact-check supplied webpages, WeChat Official Account articles, and webpage screenshots. Save evidence or process batches when requested. For a bare URL with no clear intent, ask one concise question.
 ---
 
 # Web Bookmark Intelligence
 
-先在真实可调用且满足任务能力的入口中，按用户已有订阅、常用工具和已验证登录态选路；Mcode（MiniMax Code）内置 Browser 也是候选。在 Mcode 内可用原生工具，从 Codex 调用则须已验证的桥接，安装了 mcode CLI 或支持 BYOK 不证明可控制桌面 Browser。已通过产品入口导入 Chrome 数据并核实登录的 Codex 内置浏览器可优先复用；导入不等于持续共享 profile。没有适用偏好时才采用下述平台默认。
+Read the supplied source and answer the user's question. Ordinary review returns an answer in the chat. Save files only when the user asks to save, archive, audit, or process a batch.
 
-Background:
+## Inputs and mode
 
-Read and evaluate public web content without binding the task to a particular Agent, browser, or capture product. A bare Skill invocation does not authorize file creation, archiving, adoption, installation, or publication.
+Use the supplied URLs, screenshots, long images, PDFs, pasted text, or source list. Read related page text and media as needed for the question.
 
-Materials:
+| Request | Work |
+|---|---|
+| Read, explain, summarize, evaluate, compare, or fact-check | Read-only review |
+| Save, archive, audit, batch-process, or resume saved sources | Durable evidence |
+| Install or adopt a discovered project | Handle the requested action under that project's instructions |
 
-Use only the webpage URL, screenshot, long image, PDF, pasted text, or batch list supplied by the user, plus body or media evidence obtained through an authorized available route. Do not load unrelated project history or create a knowledge package for an ordinary review.
+For a bare URL, use the conversation's established purpose. Ask one concise question when the intended result remains unclear. In the first short update, name `web-bookmark-intelligence` when using it.
 
-Parameters:
-
-- `source`: one or more user-supplied URLs or local inputs.
-- `requested_result`: read, summarize, evaluate, compare, fact-check, save, archive, or batch-process.
-- `output_root`: required only when the user asks for saved files and no project rule already defines the destination.
-
-Path boundary: this general Skill has no fixed `input/` or `output/` directories. In read-only review, every user-supplied input is read-only and no filesystem path is writable. In durable mode, only the authorized `output_root` is writable.
-
-Do not use this Skill for general web searching without a supplied source, authenticated private content without explicit access authority, or installing/adopting a project discovered on a webpage.
-
-Task:
-
-Choose the mode from the result the user requested:
-
-| User request | Mode |
-| --- | --- |
-| Read, summarize, evaluate, explain, compare, or fact-check a page | Read-only review |
-| Save, archive, audit, batch-process, or resume a set of pages | Durable evidence |
-| Install, adopt, publish, deploy, or write to a formal knowledge layer | Stop for explicit authorization |
-
-When handling a supplied webpage or WeChat article, say in the first short progress update that `web-bookmark-intelligence` is handling the link. If the user sends only a URL and their intended result is unclear, ask one concise question. Explicitly naming this Skill alone does not switch a read-only request into durable mode.
+Durable work needs an `output_root` supplied by the user or defined by the current project. Ask for a destination if neither exists. Keep writes inside that root and leave the supplied inputs unchanged.
 
 ## Select The Retrieval Route Before Access
 
-Choose the primary route before opening or fetching the page.
+Honor the user's explicit tool choice and reuse the current task's working, logged-in page. For a new browser session, use the first available route in this order:
 
-1. If the user explicitly selected a browser or retrieval tool, that choice overrides the default priority. Use that route and obey its own fallback and stop rules.
-2. Otherwise select among currently callable, task-capable routes using caller-supplied subscription/frequent-use and verified session preferences, including Mcode Browser or an imported and verified Codex browser session under the boundary above. If no applicable preference selects a route, inspect the current Skills and tools for a purpose-built page-extraction or browser-control route and follow its stated priority. Read the selected Skill/API completely. For browser extraction without an applicable preference, default to Ego on macOS and Tabbit on Windows; a listed Ego Skill does not imply a Windows client exists. Read the selected runtime’s current Skill and check connection/page extraction. If the default is absent/unavailable, prefer connected Chrome when its existing login session is needed, or the Codex built-in browser for public/local pages or its independent session. The built-in browser does not automatically inherit Chrome cookies. Do not install software, export profiles or switch browsers to bypass login, tool denial or user takeover. This is conditional capability discovery, not a required edition or dependency of `web-bookmark-intelligence`.
-3. A generic browser selected by explicit choice or an applicable verified preference need not wait for purpose-built routes to fail. Otherwise use the current runtime's authorized generic web or browser capability only when no applicable purpose-built route is available.
-4. A static fetch that returns only metadata is a probe, not the one allowed rendered-browser attempt. It must not prevent use of the selected browser route.
-5. If the selected route reports an ordinary bootstrap or sandbox-only availability failure, follow that route's documented recovery once. Then use at most one materially different authorized route if its contract permits fallback. A listed Skill or healthy link does not prove execution availability; its executable may still be unavailable. Do not switch tools to evade an explicit safety-policy, access-control, CAPTCHA, login, or user-control stop.
-6. If a tool rejects the URL before navigation, report that the selected automation route was blocked. Do not claim that the webpage itself is inaccessible unless a request actually reached the page and established that fact.
+1. `ego-browser` / ego lite.
+2. Tabbit.
+3. The system default browser or a commonly used browser recorded by the current harness.
+4. The harness's built-in browser.
 
-Examples:
+Read the chosen browser's current Skill/API. For Ego, run `ego-browser skill` and read its complete output before browser actions. Check that the route supports the page access and operations required by this task. If it is absent or connection recovery fails, continue to the next available route. Stop for user action at a login, CAPTCHA, permission denial, or user takeover.
 
-| Situation | Required action |
-| --- | --- |
-| WeChat link plus “如何评价” | Use the verified platform-selected browser, read the substantive body, return a response only |
-| WeChat link plus “如何评价”, with no purpose-built route listed | Use the runtime's authorized generic browser, return a response only |
-| A chosen browser rejects the URL by an explicit safety policy | Stop that browser route; report the route-level blocker without calling the page unavailable |
-| WeChat link plus “保存到本地” | Enter durable mode; do not confuse the archive request with ordinary review |
+For public text, an available extraction tool can retrieve the body directly. If it returns only metadata or incomplete text, open the page in the selected browser. Keep the page's actual response separate from a tool connection or pre-navigation URL rejection when reporting a failure.
 
-## Read-Only Review
+## Read-only review
 
-Use this mode by default.
+1. Retrieve the substantive page text. Render the page when static extraction is incomplete.
+2. Inspect images or canvas content when the requested judgment depends on them. Use the current runtime's image capabilities; read [media-routing.md](references/media-routing.md) if external media processing or saved media evidence is needed.
+3. Answer in the user's language. State the source, relevant claims, your assessment, and any evidence gap that affects the conclusion. Link important sources.
+4. If usable content remains unavailable, identify the failed route and request pasted text, a screenshot, or a PDF.
 
-1. Retrieve the supplied public page with the primary route selected above. Runtime-neutral means the Skill does not require one brand everywhere; it does not mean ignoring a higher-priority route that is actually listed and available in the current session.
-2. Prefer substantive body text. Render the page when a static response is incomplete, and keep title, metadata, body text, and image evidence distinct.
-3. Inspect images or canvas content only when they carry claims needed for the requested review and the current runtime can safely inspect them.
-4. If the selected route and its permitted recovery cannot obtain usable body or media evidence, apply the fallback and hard-stop rules above. When no permitted route remains, ask for pasted text, a long screenshot, PDF, or another authorized input.
-5. Reply in the user's language with the requested summary or evaluation, the main claims, evidence quality, and important uncertainties.
+Keep ordinary review in the chat. Preserve body evidence already obtained if a later probe fails. Mention tool versions, hashes, and receipt fields only when they explain a requested diagnostic or saved audit.
 
-Read-only review is response-only. Do not create a case, reserve a package, write files, query unrelated context, refresh GitHub records, or build action cards unless the user asked for those effects.
+## Durable evidence
 
-An unavailable browser or legacy adapter means only that route is unavailable. Do not describe the Skill itself as unusable when another authorized route or user-supplied content can still satisfy the request.
+1. Create one case per source with `scripts/intake_case.py` inside the authorized `output_root`.
+2. Capture the page using the route above. Save case-local HTML and relevant media, then run `scripts/capture_pipeline.py`.
+3. When claims depend on images, preserve the body/media distinction and complete the inventory in [media-routing.md](references/media-routing.md).
+4. Bind the case with `scripts/assess_capture_evidence.py`. Create page-purpose notes or action cards when requested.
+5. For a batch, use `scripts/plan_batch.py` to create or resume the plan, then capture each planned case through the selected route.
 
-## Durable Evidence
+Read [capture-and-quality-gates.md](references/capture-and-quality-gates.md) for saved capture checks and [batch-profiles.md](references/batch-profiles.md) for batch processing. Use historical adapters only for an explicitly requested compatibility run.
 
-Enter this mode only when the user explicitly asks to save, archive, audit, batch-process, or resume later.
+## Access and evidence
 
-1. Use a user-provided output root or a project-rule-defined writable root already in scope. If neither exists, ask for the destination before writing.
-2. Create one case per source with `scripts/intake_case.py`.
-3. Capture the page with the current runtime's authorized browser or retrieval capability, save only the authorized case-local HTML/media, then run `scripts/capture_pipeline.py`.
-4. When material claims depend on images, use the available image-understanding route and preserve the body/media distinction described in [media-routing.md](references/media-routing.md).
-5. Bind the case with `scripts/assess_capture_evidence.py`. Prepare page-purpose notes or action cards only when the user requested them.
-6. For batches, use `scripts/plan_batch.py` to create or resume the case plan. The plan does not select or execute a browser; the current Agent captures each planned case with an authorized available route.
+- Base the answer on page text and relevant media. Identify observations, interpretation, and unresolved facts where they affect the answer.
+- Use authorized access. Leave login, CAPTCHA, paywall, or other access challenges for the user.
+- For direct network requests by package code, accept public `http`/`https` destinations, reject embedded credentials and non-public addresses, validate redirects, and keep TLS verification enabled.
+- Before sending private or restricted content to an external provider, obtain authorization for that asset and provider.
+- Install missing software only when installation is requested.
 
-Read [capture-and-quality-gates.md](references/capture-and-quality-gates.md) only for durable capture and quality checks. Read [batch-profiles.md](references/batch-profiles.md) only for a requested batch. Historical adapter receipts and compatibility code remain regression/provenance material; they are not the default route and must not appear in a normal user response unless the user is diagnosing that adapter.
+## Completion
 
-Constraints:
+A review is complete when it answers the requested question from substantive source content, or reports the specific missing content that prevents an answer.
 
-- A title, meta description, cover, browser-open event, route prediction, or exit code is not article-body evidence.
-- Keep observed page content, media interpretation, your analysis, and unknowns distinct.
-- Never bypass login, CAPTCHA, paywalls, or access controls.
-- When package code makes direct network requests, accept only public `http` or `https` destinations, reject embedded credentials and non-public addresses, validate redirects, and keep TLS verification enabled. Runtime-managed browsers rely on their own enforced network boundary.
-- Do not send private or restricted content to an external provider without approval for the exact asset and provider.
-- Do not silently switch a user-selected browser, suppress a failed attempt, or claim that discovery equals adoption.
-- Once a route has produced substantive body evidence, do not let a later weaker probe or failed route downgrade it to “正文不可得”.
-- Do not install a missing browser, executor, or compatibility component unless the user explicitly asks for installation.
-- Do not mention executor brands, versions, hashes, receipt schemas, or internal status codes in an ordinary review. Surface them only for an explicitly requested diagnostic or durable audit where they materially explain the result.
-
-Output format:
-
-For read-only review, return the observed source/title, concise summary or evaluation, main claims, evidence quality, and uncertainties. State plainly when the review is partial or blocked.
-
-For durable mode, additionally report the output path, completed/partial/blocked/failed counts, and whether saved artifacts were read back and their hashes verified.
-
-Success criteria:
-
-Read-only review succeeds only when substantive body or necessary media evidence was obtained and the answer is grounded in it. No filesystem or formal-layer write may occur.
-
-Durable mode succeeds only when the user authorized persistence, every written path stays inside the authorized root, artifacts are read back with matching hashes, and each source has a terminal or resumable status. A truthful blocker is a valid outcome, but it is not a successful capture.
-
-Final task: obtain the best authorized body or media evidence for the user's supplied source, answer the requested question, and report route-level blockers without turning them into unsupported claims about the page or the Skill.
+For durable work, read back saved artifacts, verify their hashes and same-case bindings, and give the output path plus completed, partial, blocked, and failed counts. Leave every incomplete source in a resumable state with its next action.

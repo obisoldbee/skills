@@ -5,11 +5,10 @@ description: Download and verify academic PDFs and references from DOI, PMID, PM
 
 # Paper Downloader
 
-先在真实可调用且满足任务能力的入口中，按用户已有订阅、常用工具和已验证登录态选路；Mcode（MiniMax Code）内置 Browser 也是候选。在 Mcode 内可用原生工具，从 Codex 调用则须已验证的桥接，安装了 mcode CLI 或支持 BYOK 不证明可控制桌面 Browser。已通过产品入口导入 Chrome 数据并核实登录的 Codex 内置浏览器可优先复用；导入不等于持续共享 profile。没有适用偏好时才采用下述平台默认。
 
 ## Purpose
 
-Perform real paper acquisition after the user authorizes the named sources, network use, browser route, and output root. This Skill is not merely a retrieval plan: it runs the bundled downloaders when their prerequisites are present, validates every PDF, reconciles disk state, and records exact outcomes. It does not judge medical claims, treat a download as Akashic adoption, or bypass access controls.
+Acquire the requested papers using lawful access, validate every PDF, reconcile disk state, and record exact outcomes. Reuse the current request’s authorization for network access, browser work, and the declared output root.
 
 ## Materials
 
@@ -25,14 +24,13 @@ Require one bounded input set:
 
 Stop on title-only similarity, wildcard/search-result URLs, missing output scope, or unclear access authority. Never infer a DOI from a similar title.
 
-Read these files before execution:
+Read [download-rules.md](references/download-rules.md) for attempts and stop conditions. Load the other references for the current branch:
 
-- [download-rules.md](references/download-rules.md) for attempt and surrender rules;
-- [package-contract.md](references/package-contract.md) for Akashic package output;
-- [ego-browser-route.md](references/ego-browser-route.md) for the preferred interactive browser route and shared-egress serialization;
+- [package-contract.md](references/package-contract.md) when writing an Akashic package;
+- [ego-browser-route.md](references/ego-browser-route.md) for interactive browser selection and shared-egress serialization;
 - [browser-route-playbook.md](references/browser-route-playbook.md) for browser batches and runtime failures;
-- [shoulong-page-capture.md](references/shoulong-page-capture.md) only for the Shoulong branch;
-- [provenance.md](references/provenance.md) for source/version lineage.
+- [shoulong-page-capture.md](references/shoulong-page-capture.md) for Shoulong article capture;
+- [provenance.md](references/provenance.md) for source or version maintenance.
 
 ## Constraints
 
@@ -42,20 +40,20 @@ Constraints: These rules protect lawful access, user credentials, package bounda
 - Do not bypass paywalls, CAPTCHA, DRM, login walls, robots blocks, rate limits, or other access controls. Never use shadow libraries, leaked credentials, pasted cookies, or disabled TLS verification.
 - When a human verification or institutional-login page appears, preserve the receipt and ask the user to complete it; do not automate the challenge.
 - Treat outbound HTTP, browser, and download activity through one public IP as the shared mutable resource `shared-egress-ip:paper-download`. Permit one active network lane by default. Other workers may do only offline inventory, hash, PDF, or report validation until the Controller transfers the token.
-- Follow `references/ego-browser-route.md`: explicit browser choice first, then caller-supplied subscription/frequent-use and verified session preferences among callable, task-capable routes. Only without an applicable preference use macOS Ego / Windows Tabbit defaults and their verified fallbacks. Record runtime and selection or fallback reason; do not bypass authentication or resend unknown requests.
+- Select the browser using [ego-browser-route.md](references/ego-browser-route.md). Record the runtime and any fallback reason; preserve pending request identities.
 - Do not store browser profiles, cookies, tokens, passwords, or session databases in the package. Runtime browser data belongs under a temporary directory.
 - Do not add PDFs to Git or write outside the declared output root. In Akashic mode, do not write `03-metadata`, `04-extracts`, `05-wiki`, `10-events`, `11-reports`, or `99-system`.
 - The declared output root must be neither the Skill package nor any ancestor or
   descendant of it. Every persisted path is an explicit CLI argument or a
   documented child of one, and no output may alias an input.
-- A raw HTTP 403/HTML response is `browser_required`, not final proof that a paper is unavailable. Conversely, browser startup or navigation is not download success.
+- Queue a raw HTTP 403/HTML response as `browser_required`; inspect the normal browser route before classifying access failure.
 - For the Shoulong branch, capture only public article-page text/metadata and explicit citation identifiers. Do not invoke image understanding/OCR, inspect images for citations, or create paper tasks from images.
 
 ## Tools
 
 Resolve `<skill-root>` from this `SKILL.md` real path. Do not assume a caller cwd or a historical `00-agent-skills` path.
 
-Every tool contract below states its purpose, when to use or not use it, parameters or input shape, return/output shape, failure handling, retry boundary, and stop rule. Do not install a missing runtime dependency without separate authority.
+Use the existing tools below. Request installation only if a missing runtime dependency prevents the task and the current authorization does not cover it.
 
 ### Inventory builder
 
@@ -83,7 +81,7 @@ Every tool contract below states its purpose, when to use or not use it, paramet
 
 ### Browser follow-up
 
-- Primary browser: the runtime selected under `references/ego-browser-route.md`, honoring explicit choice and applicable caller preferences before platform defaults; use one owned task space/group for the active download lane.
+- Primary browser: select through [ego-browser-route.md](references/ego-browser-route.md); use one owned task space/group for the active download lane.
 - Preparation tools: `scripts/build_browser_followup_inputs.py`,
   `scripts/extract_doi_papers.py`, and `scripts/extract_pmcids.py`.
 - Fallback tools: `scripts/doi_downloader.py`, `scripts/pmc_downloader.py`, and `scripts/with_playwright_python.sh` only under the platform fallback contract and when the user did not mandate a different runtime. The `.sh` wrapper requires a compatible POSIX shell; do not prescribe it as a native PowerShell command.
@@ -133,7 +131,7 @@ Task: Download and verify every in-scope paper that has a lawful route, then rep
    do-not-cite rows.
 5. Acquire the shared-egress token, run the dependency-light first pass with one network worker, and validate any local/OA PDF immediately. Parallel workers may only perform offline work.
 6. Build DOI/publisher follow-up batches and PMCID follow-up queues. Check PubMed full-text links whenever PMID exists and no PDF has been found.
-7. Run interactive browser follow-up through the platform-selected browser with one owned task
+7. Run interactive browser follow-up through the selected browser with one owned task
    space/group, pacing, and bounded smoke batches. Record each outcome in the prepared
    row-bound result journal; then apply/reconcile it idempotently. Keep
    user-assisted verification points open for the user; never solve them

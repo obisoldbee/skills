@@ -39,7 +39,7 @@ python3 <skill-root>/scripts/providers/minimax_m3_course_video.py \
   --model MiniMax-M3.1-Flash --effort high --max-tokens 4096 --analyze
 ```
 
-去掉 `--analyze` 仅预处理。保留当前素材和成本授权，模型支持的文档描述不证明账号权限或本次调用成功。图片/视频/ASR 分别使用自己的 payload；普通 MiniMax MCP 也需当前发现的精确工具，不能从文档存在推断通用理解能力。
+去掉 `--analyze` 仅预处理。保留当前素材和成本授权，执行前核对账号权限，执行后读回本次结果。图片/视频/ASR 分别使用自己的 payload；普通 MiniMax MCP 也需当前发现的精确工具，不能从文档存在推断通用理解能力。
 
 ## 恢复与失败
 

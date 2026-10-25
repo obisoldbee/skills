@@ -1,10 +1,10 @@
 ---
 name: media-creator
-description: Route non-native media generation for video, speech, music, and provider-explicit ChatGPT Web, MiniMax Web Music, MiniMax MMX, or Agnes requests. In Codex, do not use this Skill for ordinary image generation or image editing while the built-in imagegen/image_gen path is available; let native imagegen handle those requests directly. Use it for generic image generation on non-Codex agents, preferring an authenticated ChatGPT Web browser route with a runtime-verified browser on the execution host and using MMX only for supported pre-submission fallback modes. Also use it for MiniMax Web Music, MMX or Agnes video generation, MMX speech or explicitly eligible legacy music/cover generation, or when the user explicitly names one of these providers.
+description: Route video, speech, music, provider-specific media generation, and image generation on hosts without native image tools. Use for ChatGPT Web, MiniMax Web Music/MMX, or Agnes workflows; ordinary Codex images use native imagegen.
 ---
 
 # Media Creator
-浏览器先按 [宿主偏好与平台选择](references/browser-platforms.md) 执行：先考虑当前可调用且满足能力的用户常用/已订阅 harness 浏览器（含 Mcode）及已导入数据的 Codex 浏览器；没有适用偏好时 macOS 默认 Ego、Windows 默认 Tabbit，其他已连接入口作备用。后文 Ego 示例只适用于 macOS；不存在的 Ego 不是 Windows 业务阻碍。
+浏览器按 [浏览器选择与操作](references/browser-platforms.md) 选用 Ego Lite、Tabbit、系统默认或已记录的常用浏览器，最后使用当前 harness 内置浏览器。用户当次指定和正在使用的已登录页面优先。
 
 
 统一管理非原生图片、视频、语音和音乐生成，同时保留每个宿主的原生能力边界。
@@ -48,7 +48,7 @@ ChatGPT Web 图片和 MiniMax Web Music 都把创意规划与网页机械执行�
 
 ## 图片
 
-- 非 Codex 文生图：在按平台选定的浏览器可用且 ChatGPT 登录态已核实时优先 ChatGPT Web，并按上面的分轴授权/最终 payload 合同执行；只有在选定浏览器路线之前就确认所需 browser capability 根本不存在时，才可按未指定 provider 的预提交 fallback 使用 MMX；已选定浏览器路线但缺少可见任务授权时返回 `needs_visible_task_authority`。
+- 非 Codex 文生图：在按平台选定的浏览器可用且 ChatGPT 登录态已核实时优先 ChatGPT Web，并按上面的分轴授权/最终 payload 合同执行；只有在选定浏览器路线之前就确认所需 browser capability 根本不存在时，才可按未指定 provider 的预提交 fallback 使用 MMX；选定浏览器路线后，当前任务能执行就在当前任务完成；仅当当前任务无法执行且用户未授权新可见任务时，返回 `needs_visible_task_authority`。
 - 非 Codex 通用图生图、编辑或多图合成：ChatGPT Web 当前只观察到可用的多文件上传控件，端到端编辑尚未验证；先做运行时验证。不可用或验证失败时询问是否改用 Agnes。MMX 当前不是通用图生图 fallback。
 - Agnes 图片：使用 `agnes-image-2.5-flash`，仅在用户显式指定，或能力不匹配后用户确认切换时使用。按图片用途明确需要改变和保留的元素，多图逐一绑定角色；参数、尺寸和 Base64 用法见图片 reference。
 - MMX 图片：仅承诺文生图和单主体参考，不承诺 mask、通用编辑或多图合成。
@@ -69,7 +69,7 @@ mmx quota show --output json --quiet --non-interactive
 - `known_exhausted`：明确耗尽，询问“继续 MMX 付费路径，还是切换 Agnes”；
 - `unknown`：查询失败、缺少对应模型、字段歧义或 H3 Pay-as-you-go 路线，不能当成零次，也必须询问。
 
-MMX H3 的参考视频是参考条件生成，不等于确定性的原视频编辑、逐帧变换或保真 video-to-video。Agnes 默认使用 `agnes-video-2.5-flash`：支持文生视频、首帧/尾帧控制，以及最多 5 张图片、3 段音频的参考生成；固定 720P，时长 4–12 秒，不支持参考视频。用户显式选择同代标准版 `agnes-video-2.5` 后，可使用更高分辨率、最多 8 张参考图和 1 段参考视频。标准版单独按其价格与参数判断，不自动切换；两者都不承诺精确原视频编辑。
+MMX H3 用参考视频作为生成条件。需要逐帧保真编辑时，先检查具体路线是否支持。Agnes 默认使用 `agnes-video-2.5-flash`：支持文生视频、首帧/尾帧控制，以及最多 5 张图片、3 段音频的参考生成；固定 720P，时长 4–12 秒，不支持参考视频。用户显式选择同代标准版 `agnes-video-2.5` 后，可使用更高分辨率、最多 8 张参考图和 1 段参考视频。标准版单独按其价格与参数判断，不自动切换；两者都不承诺精确原视频编辑。
 
 Agnes 2.5 使用 `mode=text|keyframe|reference`、`seconds`、`size`、`aspect_ratio` 等新参数。旧版任意关键帧数组和帧数参数不得默默转义或丢弃；参数冲突在提交前修正。查询和恢复必须保留原始 `video_id` 与模型，使用 `video-status` 查询同一任务。
 
@@ -83,11 +83,11 @@ Agnes 2.5 使用 `mode=text|keyframe|reference`、`seconds`、`size`、`aspect_r
 
 ## 其他本地生成能力
 
-本机还可能存在宿主原生、垂直工作流或其他供应商 Skill。它们不自动成为本 Skill 的 fallback，也不应因“目录存在”被吸收或视为可执行。当前盘点与处置边界见 [local-skill-audit.md](references/local-skill-audit.md)。
+需要其他本地生成能力时，按 [local-skill-audit.md](references/local-skill-audit.md) 核对其用途和当前工具绑定，再由用户选择所需路线。
 
-- Codex 系统 `imagegen`、其他宿主的内置媒体工具：保留宿主所有权；文件链接不证明工具绑定可用。
+- Codex 系统 `imagegen`、其他宿主的内置媒体工具：通过当前宿主暴露的工具调用。
 - Seedream/Seedance、HeyGen 等其他供应商：只作为已观察候选，除非用户显式点名且对应独立 Skill 的当前合同已验证，否则不进入本路由。
-- HyperFrames、Remotion、故事视频、封面/专辑等：属于合成或上层生产流程，可调用生成后端，但不等于通用 provider 路由。
+- HyperFrames、Remotion、故事视频、封面/专辑等：用于合成或上层生产，可按各自流程调用生成后端。
 - `media-understanding`、转写、录屏、压缩、增强：属于理解或后处理，不纳入生成 provider fallback。
 
 若未来要增加新 provider，先单独审计鉴权、输入模式、异步任务、配额、下载与失败语义，再修改 `config/routes.json` 和回归测试；不要只把另一个 Skill 目录复制进本包。
@@ -113,9 +113,8 @@ python3 -B scripts/agnes_media.py <subcommand> ... --execute
 
 ## 状态与安全
 
-- 使用用户要求的语言交付文件链接、已验证结果和剩余限制；文档参数和静态验证不证明本次生成成功。
+- 使用用户要求的语言交付实际文件链接、验证结果和未完成项。
 - 区分 `documented`、`configured_not_called`、`submitted`、`completed` 和 `verified_artifact`。
-- 安装、健康链接、登录页或 masked auth 不证明供应商调用成功。
 - 不输出、复制或提交 API Key、cookie、账号标识或浏览器私有历史。
 - 缺少登录时按浏览器 Skill 交给用户完成正常登录；不读取凭据，不绕过 CAPTCHA、MFA 或 QR。
 - 所有输出路径必须由当前任务明确提供；禁止写死个人目录。

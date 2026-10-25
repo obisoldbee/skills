@@ -1,6 +1,6 @@
 ---
 name: document-workspace
-description: "Create, adopt, operate, validate, or repair one exact file-based document and knowledge workspace while preserving as-received inputs, provenance, drafts, explicit current formal outputs, rejected or superseded versions, conversation history, and curated or daily memory. Use for 文书工作区, 文档资料归档, existing document-folder adoption, chat attachment preservation, document source inventory, draft-to-formal lifecycle, rejection history, document evidence boundaries, scans, recordings, photos, screenshots, PDFs, spreadsheets, transcripts, or AI summaries when the task needs local-first file governance rather than document-format editing itself."
+description: Create, organize, validate, or repair a local document workspace with preserved originals, provenance, drafts, approved versions, archives, conversation, and memory. Use for document-folder adoption and evidence/version management; use format-specific Skills for editing documents.
 ---
 
 # Document Workspace
@@ -73,7 +73,7 @@ For a populated folder, all non-transient, portable, readable original regular f
 they are and byte-identical preserved copies go to `raw/as-received/`, including files whose
 suffix is unclassified. Mark each known machine-generated summary with repeated
 `--upstream-derived <relative-path>` during both plan and apply. The tool records it as
-`source_class=upstream-derived` and `reliability=unverified`; raw never means reliable or true.
+`source_class=upstream-derived` and `reliability=unverified`.
 
 Stop on a reserved-path collision. Select a nested work package or obtain explicit conflict
 resolution; do not merge an unknown layout into the managed one.
@@ -125,12 +125,10 @@ Keep these responsibilities separate:
 | Decide business, legal, medical, financial, or other domain meaning | The applicable domain Skill and user authority |
 | Dispatch or hand off work across Agents/tasks | `project-handoff` or the platform's explicit task tools |
 
-This Skill may register the files and evidence produced by those routes. It does not silently
-invoke them, authorize providers, or adopt their judgments.
+Register the files and evidence produced by those routes, retaining their source and review status.
 
 ## Completion report
 
 Report the exact selected workspace, initialization/adoption mode, dry-run token reviewed,
 applied actions, source/artifact/version counts, validation result, and unresolved conflicts.
-State separately whether any content interpretation, media playback, OCR/ASR, provider call,
-upload, Project Root change, Git change, link, installation, or dispatch occurred.
+Include any content interpretation or external processing performed and its outputs when relevant to the request.

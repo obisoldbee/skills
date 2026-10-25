@@ -20,7 +20,8 @@ import service_health
 
 IDENTITIES = [9, "tabbit:group:FF07F2943109A214EF7BA5155F89A0F5",
               "chrome:tab:1824401190", "codex-browser:tab:page-1",
-              "mcode-browser:tab:page-1"]
+              "mcode-browser:tab:page-1", "edge:tab:edge-23",
+              "system-browser:tab:safari-4", "harness-browser:tab:task-page-7"]
 
 
 def report(identity, status="unconfirmed"):

@@ -69,25 +69,19 @@ Materials:
 - `references/research/r08/05-decisions.md`
 - `references/research/r08/06-timeline.md`
 - `references/research/r08/merged.md`
-- No maintenance scripts were present.
-- No other bundled files were present.
 - If the user provides additional materials, label them separately as `user_context` and keep them distinct from the bundled source skill.
 
 Constraints:
 - Default output language is Chinese. Keep short English catchphrases only when they are part of the original expression DNA or the user's wording.
-- Treat this as a perspective-simulation skill, not as the real person's statement. Do not imply live endorsement, private knowledge, or current beliefs beyond the bundled sources.
-- For medical, nutrition, medication, lab, pregnancy, child, or disease questions, frame the answer as viewpoint analysis plus safety caveats. Do not diagnose, prescribe, tell the user to stop medication, or replace clinician advice.
+- Present the requested perspective using the bundled source’s time frame. Verify current factual claims when the user asks for an up-to-date answer.
+- For health questions, explain the requested viewpoint and its supporting evidence. Refer individualized diagnosis, prescriptions and medication changes to a clinician.
 - Preserve source boundaries. Use exact quotes only when they appear in `references/source-skill-original.md`; otherwise label the line as an inference from the source skill.
 - If bundled source details conflict with user-provided current facts, state the conflict and choose based on the user's requested frame: historical persona simulation uses the bundled source; current factual claims need verification.
 - Stop after one missing-file check. If a referenced file is unavailable, say which path is missing and continue from the available `SKILL.md` instructions rather than inventing details.
 
-Tools:
-- Purpose: bundled files support source-grounded perspective answers and maintenance checks.
-- When to use: read `references/source-skill-original.md` for detailed style, quotes, heuristics, chronology, or any answer that depends on the original distillation.
-- When not to use: do not run maintenance scripts for an ordinary chat answer; do not treat scripts as factual evidence about health claims.
-- Parameters: file paths under this skill folder, especially `references/source-skill-original.md`, `references/*`, and `scripts/*`.
-- Returns: loaded markdown evidence, maintenance logs, or script check output.
-- Failure handling: if a file or script fails, stop retrying after one direct check, report the failed path or command, and answer from the remaining bundled material with uncertainty marked.
+## Reading the source
+
+Read `references/source-skill-original.md` when the answer needs detailed heuristics, chronology, quotations, or expression patterns. Use the listed research files for the relevant supporting material. Run maintenance scripts only for package maintenance. If a required file is missing, name it and answer from the available material with the affected uncertainty stated.
 
 ## Research QA lane handoff
 
@@ -102,7 +96,7 @@ For `phase: topic_expansion`:
 For `phase: expert_review`:
 
 1. Require `expert_id`, `attempt_no`, assigned Skill path/hash, frozen inventory/source payloads, frozen-set path/hash, exact reviewable roster/count/hash, live-rule path/baseline, and declared attempt, coverage, receipt paths.
-2. Verify every binding, enumerate the exact sorted roster, and review every source ID at its permitted access depth. Persona references define the lens and attributable opinion; scientific support must cite frozen source IDs. Unfrozen user context is not evidence.
+2. Verify bindings and review the complete sorted roster at each source's permitted access depth. Check clinical claims against the original studies and their causal strength, cite frozen source IDs, and attribute persona opinions. Refer new material to the coordinator before citing it.
 3. Write candidate sections for claims, cited evidence, conflicts/limits, counterexamples, attributable persona opinion, and unresolved questions; then write coverage containing every roster ID and the bound receipt.
 4. Stop as a candidate. Do not self-audit, mark `pass`/`accepted`, synthesize other experts, or give individualized diagnosis, treatment, medication, pregnancy, or child-health instructions.
 

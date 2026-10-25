@@ -1,8 +1,8 @@
-# Optimized Prompt
+# Page-purpose and action-card prompt
 
 ```text
 Background:
-This is a candidate evidence case, not an adopted project or a formal record. Distinguish page text, OCR, visual evidence, permitted user context, GitHub snapshots, and your own inference. A final evidence status may be full_body, full_body_with_media_supplement, needs_image_supplement, or failed.
+Assess this candidate evidence case using page text, OCR, visual evidence, permitted user context, and GitHub snapshots. Attribute each conclusion to its source. A final evidence status may be full_body, full_body_with_media_supplement, needs_image_supplement, or failed.
 
 Materials:
 - Intake case: {{case_json}}
@@ -24,9 +24,8 @@ Constraints:
 - No classification grants installation, adoption, deployment, or formal writeback.
 - Stop rule: stop when evidence is missing, privacy blocks use, or permitted context is insufficient. Report the blocker; do not retry with another source class or provider.
 
-Tools:
-- Evidence index. Purpose: locate a supplied text span, image region, or video time range. When to use: before making a substantive claim. When not to use: to invent missing evidence or search another source class. Parameters: evidence id and requested claim. Return: references or not_found. On failure: mark the claim unsupported. Stop rule: do not retry with a different source class.
-- Context matcher. Purpose: compare content units with permitted context. When to use: after evidence-backed content units exist. When not to use: with private/restricted records, draft material, or to infer user priorities. Parameters: content-unit id and context record ids. Return: matched ids, conflicts, or context_insufficient. On failure: preserve unknown. Stop rule: do not infer priority or retry against disallowed context.
+Evidence handling:
+Before each substantive claim, locate its supplied text span, image region, or video time range. Mark unsupported claims unknown. Match content units only against context whose privacy and allowed-use fields permit that comparison. Return context_insufficient when no permitted match exists.
 
 Example 1:
 Input has only a long-image project list and a short meta description. Output final evidence as needs_image_supplement, request/cite OCR and image regions, and do not invent ten repository records from the description.
@@ -47,12 +46,5 @@ Output format:
 Return JSON with page_purpose, content_units, comparison, action_cards, uncertainties, and evidence_gaps. Each action card needs recommendation, reason, same_as_existing, new_vs_existing, matched_context_ids, matched_repo_ids, evidence_refs, freshness_state, and user_decision_required.
 
 Success criteria:
-Every substantive output is evidence-linked; unsupported facts are unknown; context use is bounded; a user can decide the next action without mistaking a viewed page for adoption.
+Every substantive output has evidence references; unsupported facts remain unknown; context use follows its allowed-use fields; each action card gives the user a concrete next-action decision.
 ```
-
-# MiniMax Adaptation Check
-
-- Prompt shape: flat task/background/materials/constraints/tools/examples/output/success sections, an explicit Chinese default, and four boundary examples.
-- Remaining risk: semantic interpretation can still overread weak OCR or stale repository metrics; pass only authorized media and a filtered context snapshot.
-- Outside this prompt: provider-specific payloads, real GitHub refreshes, and any semantic model call require separate authorization and adapters.
-- Documentation basis: local MiniMax prompting snapshot (2026-07-20).

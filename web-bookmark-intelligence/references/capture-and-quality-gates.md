@@ -12,7 +12,7 @@ public URL -> authorized browser or retrieval tool -> case-local HTML/media
   -> assess_capture_evidence.py -> optional purpose notes/action cards
 ```
 
-The Agent selects the route before access using the [Skill entry's retrieval priority](../SKILL.md#select-the-retrieval-route-before-access): explicit choice, then applicable caller preferences among callable, task-capable routes, then purpose-built and platform defaults. A generic browser selected by explicit choice or a verified preference need not wait for purpose-built routes to fail. Read the selected route's contract and preserve its recovery and stop rules. A static metadata probe does not consume the rendered-browser route.
+Select the browser using the [Skill entry’s retrieval priority](../SKILL.md#select-the-retrieval-route-before-access), then follow its current API and recovery rules. Render the page if text extraction is incomplete.
 
 An ordinary bootstrap or sandbox-only availability failure may use the selected route's documented recovery once. An explicit safety-policy, access-control, CAPTCHA, login, or user-control stop must not be bypassed through another tool. A route rejected before navigation proves only that route was blocked, not that the webpage was inaccessible. Do not expose executor versions, hashes, or internal compatibility codes unless the user requested a capture diagnostic.
 
@@ -56,4 +56,4 @@ The legacy adapter keeps TLS verification enabled and preserves per-attempt rece
 
 - `fixtures/historical-15.json` keeps the old meta-description conflict boundary: a historical marker never qualifies as a body pass.
 - `fixtures/recapture-regression.json` preserves five historical capture receipts and their actual final states.
-- Historical replay validates retained evidence only. It is not proof of current browser availability, network compatibility, or capture execution.
+- Use historical replay for retained evidence. Check browser availability and network access during the current capture.
