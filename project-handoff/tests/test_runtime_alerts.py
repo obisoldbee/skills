@@ -1,6 +1,7 @@
 import json
 import hashlib
 import os
+from contextlib import closing
 from pathlib import Path
 import subprocess
 import sys
@@ -131,7 +132,7 @@ class RuntimeAlertsTests(unittest.TestCase):
                 pending = run(['pending'])
                 self.assertEqual(pending[0]['actual']['reasoning'], 'low')
                 self.assertEqual(pending[0]['selection_ref'], self.contract['selection_ref'])
-                with alerts.connect(state) as db:
+                with closing(alerts.connect(state)) as db:
                     expected = 'session:' + hashlib.sha256(alerts.encoded(self.contract).encode()).hexdigest() + ':route'
                     self.assertEqual(db.execute('SELECT key FROM states').fetchone()[0], expected)
                 run(['hook', '--registry', str(registry)], event)
