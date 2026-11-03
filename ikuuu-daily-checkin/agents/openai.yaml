@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ikuuu Daily Check-in"
+  short_description: "使用 ego-browser 登录 Ikuuu 并安全完成每日签到"
+  default_prompt: "使用 $ikuuu-daily-checkin 检查 Ikuuu 登录状态并安全完成今天的签到。"

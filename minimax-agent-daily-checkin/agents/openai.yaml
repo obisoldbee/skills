@@ -1,0 +1,4 @@
+interface:
+  display_name: "MiniMax Agent 每日签到"
+  short_description: "使用 ego-browser 查询 MiniMax 签到状态与积分，明确授权后才领取"
+  default_prompt: "使用 $minimax-agent-daily-checkin 只查询今日签到状态和剩余积分，不领取积分。"

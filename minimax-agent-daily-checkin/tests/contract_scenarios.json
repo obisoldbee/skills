@@ -1,0 +1,5338 @@
+{
+  "service": "minimax",
+  "basis": "Synthetic author-labelled action traces; not natural-language, model, browser, Mavis or Lark acceptance.",
+  "cases": [
+    {
+      "id": "query_available",
+      "intent": "query-only",
+      "require_checkin_route": true,
+      "request": "今天签到了吗？还剩多少积分？",
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": false,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "query_completed",
+      "intent": "query-only",
+      "request": "只查今日签到状态，不要领取。",
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "query_logged_out",
+      "intent": "query-only",
+      "request": "只查状态。",
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "observe",
+          "login": "not_confirmed"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "query_inside_scheduled",
+      "intent": "query-only",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "round": 2,
+      "cron": true,
+      "request": "先只查余额，不要签到或发消息。",
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "query_does_not_reset_terminal",
+      "intent": "query-only",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "round": 2,
+      "cron": true,
+      "terminal": true,
+      "deletes": [
+        "terminal"
+      ],
+      "request": "我现在只想查余额，不是继续重试。",
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "ambiguous",
+      "intent": "ambiguous",
+      "request": "帮我看看打卡。",
+      "events": [
+        {
+          "action": "report",
+          "kind": "clarify"
+        }
+      ]
+    },
+    {
+      "id": "conflicting_intent",
+      "intent": "ambiguous",
+      "request": "只查询，不要执行；顺便帮我签到。",
+      "events": [
+        {
+          "action": "report",
+          "kind": "clarify"
+        }
+      ]
+    },
+    {
+      "id": "scheduled_missing_target",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": false,
+      "request": "执行计划签到，但未提供通知目标。",
+      "events": [
+        {
+          "action": "report",
+          "kind": "clarify"
+        }
+      ]
+    },
+    {
+      "id": "scheduled_missing_authority",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": false,
+      "target_present": true,
+      "request": "定时查一下，未授权领取、提醒或通知。",
+      "events": [
+        {
+          "action": "report",
+          "kind": "clarify"
+        }
+      ]
+    },
+    {
+      "id": "manual_explicit",
+      "intent": "execute",
+      "require_checkin_route": true,
+      "request": "请完成今天的签到。",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "login"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "manual_conditional",
+      "intent": "execute",
+      "request": "如果没有签到就帮我签。",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "manual_menu_fallback_when_direct_card_absent",
+      "intent": "execute",
+      "require_checkin_route": true,
+      "request": "如果没有签到就帮我签。",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": false,
+          "route": "menu"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "scheduled_success",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "scheduled_already_with_reminder",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "first_failure_one_reminder",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "second_failure_reuses_reminder",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "ten_rounds_exhausted",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 4,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 5,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 6,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 7,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 8,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 9,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 10,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "failed"
+        },
+        {
+          "action": "notify",
+          "kind": "failed",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "attention_terminal",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "login_failed"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "attention"
+        },
+        {
+          "action": "notify",
+          "kind": "attention",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "browser_cleanup_failure",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "failed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "handoff_failure",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "login_failed"
+        },
+        {
+          "action": "cleanup",
+          "result": "failed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "retry_creation_unknown",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "unknown"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "terminal_deletion_failed_then_residue_ok",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "success"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "failed"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "residual"
+        },
+        {
+          "action": "delete",
+          "stage": "residual",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "both_deletions_fail_later_wakes_report_only",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "failed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "unknown"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "residual"
+        },
+        {
+          "action": "delete",
+          "stage": "residual",
+          "result": "failed"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "notification_failure_stays_terminal",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 4,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 5,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 6,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 7,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 8,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 9,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 10,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "failed"
+        },
+        {
+          "action": "notify",
+          "kind": "failed",
+          "result": "failed"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "runtime_unavailable_with_reminder",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "runtime_ready": false,
+      "round": 1,
+      "cron": true,
+      "events": [
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "query_runtime_unavailable",
+      "intent": "query-only",
+      "runtime_ready": false,
+      "events": [
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "target_lost_on_continuation",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": false,
+      "round": 1,
+      "cron": true,
+      "events": [
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "page_changed",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "page_changed"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "attention"
+        },
+        {
+          "action": "notify",
+          "kind": "attention",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "blocked_manual_action",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "blocked_manual_action"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "attention"
+        },
+        {
+          "action": "notify",
+          "kind": "attention",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "round10_attention_precedes_failed",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 4,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 5,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 6,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 7,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 8,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 9,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 10,
+          "outcome": "login_failed"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "attention"
+        },
+        {
+          "action": "notify",
+          "kind": "attention",
+          "result": "unknown"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "allowed_retry_network",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "allowed_retry_points_unverified",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "points_unverified"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "allowed_retry_unknown",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "unknown"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "all_retry_types_then_already_terminal",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "points_unverified"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "unknown"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 4,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "two_retries_then_new_success",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "points_unverified"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "success"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "failed_creation_finalizes",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "failed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "not_completed_then_one_claim",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": false,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "legal_delayed_balance_reread",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": false,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1300,
+          "reward": 500
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "wake_may_finalize_without_another_browser",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    }
+  ],
+  "invalid_cases": [
+    {
+      "id": "attention_outcome_must_handoff",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "blocked_manual_action"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "ordinary_success_must_close",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "last_completed_round_needs_own_report",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        }
+      ]
+    },
+    {
+      "id": "query_attention_must_handoff",
+      "intent": "query-only",
+      "events": [
+        {
+          "action": "browser",
+          "outcome": "blocked_manual_action"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "manual_last_round_cannot_borrow_prior_report",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "report",
+          "kind": "manual"
+        },
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        }
+      ]
+    },
+    {
+      "id": "claim_requires_route_before_action",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "checkin_card",
+          "direct_visible": true,
+          "route": "direct"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "query_must_not_notify",
+      "intent": "query-only",
+      "request": "今天签到了吗？还剩多少积分？",
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "observe",
+          "completed": false,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "attention"
+        },
+        {
+          "action": "notify",
+          "kind": "attention",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "query_must_not_delete",
+      "intent": "query-only",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "round": 2,
+      "cron": true,
+      "request": "先只查余额，不要签到或发消息。",
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "round11_forbidden",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 4,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 5,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 6,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 7,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 8,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 9,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 10,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 11,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "failed"
+        },
+        {
+          "action": "notify",
+          "kind": "failed",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "reminder_before_browser_cleanup",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "third_residual_delete_forbidden",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "failed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "unknown"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "residual"
+        },
+        {
+          "action": "delete",
+          "stage": "residual",
+          "result": "failed"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "residual"
+        },
+        {
+          "action": "delete",
+          "stage": "residual",
+          "result": "failed"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "terminal_wake_must_not_notify",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 4,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 5,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 6,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 7,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 8,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 9,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 10,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "failed"
+        },
+        {
+          "action": "notify",
+          "kind": "failed",
+          "result": "failed"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "failed"
+        },
+        {
+          "action": "notify",
+          "kind": "failed",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "runtime_missing_no_browser",
+      "intent": "query-only",
+      "runtime_ready": false,
+      "events": [
+        {
+          "action": "browser"
+        },
+        {
+          "action": "report",
+          "kind": "query"
+        }
+      ]
+    },
+    {
+      "id": "duplicate_create_after_ambiguous_response",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "unknown"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "existing_reminder_cleanup_cannot_be_skipped",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "failed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "new_day_cannot_reset_round",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "success_without_delta_verification",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "attention_does_not_also_send_final",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 4,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 5,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 6,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 7,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 8,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 9,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 10,
+          "outcome": "login_failed"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "attention"
+        },
+        {
+          "action": "notify",
+          "kind": "attention",
+          "result": "unknown"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "reserve_notification",
+          "kind": "failed"
+        },
+        {
+          "action": "notify",
+          "kind": "failed",
+          "result": "ok"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "report",
+          "kind": "terminal"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_success_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_success_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "success"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_already_completed_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_already_completed_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_blocked_manual_action_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "blocked_manual_action"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_blocked_manual_action_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "blocked_manual_action"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_browser_cleanup_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "browser_cleanup"
+        },
+        {
+          "action": "cleanup",
+          "result": "failed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_browser_cleanup_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "browser_cleanup"
+        },
+        {
+          "action": "cleanup",
+          "result": "failed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_runtime_unavailable_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "runtime_unavailable"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_runtime_unavailable_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "runtime_unavailable"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_needs_configuration_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "needs_configuration"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_needs_configuration_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "needs_configuration"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_retry_unavailable_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "retry_unavailable"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_retry_unavailable_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "retry_unavailable"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_unrecognized_result_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "unrecognized_result"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_unrecognized_result_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "unrecognized_result"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_site_unreachable_create",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "site_unreachable"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "nonretryable_site_unreachable_reuse",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "site_unreachable"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "failed_creation_then_browser",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "failed"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "failed_creation_without_terminal",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "failed"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "unknown_creation_then_browser",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "unknown"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "unknown_creation_without_terminal",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "unknown"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "next_round_without_reminder_or_wake",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "confirmed_reminder_without_wake",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "wake_cannot_authorize_two_rounds",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "points_unverified"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reuse"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "browser",
+          "round": 3,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "handoff_cannot_retry_even_with_retryable_label",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "network"
+        },
+        {
+          "action": "cleanup",
+          "result": "handed_off"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "success_evidence_cannot_be_overwritten",
+      "intent": "execute",
+      "scheduled": true,
+      "authorized": true,
+      "target_present": true,
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "observe",
+          "completed": false,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "reserve_create"
+        },
+        {
+          "action": "create",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        },
+        {
+          "action": "wake"
+        },
+        {
+          "action": "browser",
+          "round": 2,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "mark_terminal"
+        },
+        {
+          "action": "reserve_delete",
+          "stage": "terminal"
+        },
+        {
+          "action": "delete",
+          "stage": "terminal",
+          "result": "ok"
+        },
+        {
+          "action": "report",
+          "kind": "scheduled"
+        }
+      ]
+    },
+    {
+      "id": "completed_before_claim",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "completed_latch_cannot_be_cleared",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "success"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "observe",
+          "completed": false,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    },
+    {
+      "id": "already_result_requires_zero_claims",
+      "intent": "execute",
+      "events": [
+        {
+          "action": "browser",
+          "round": 1,
+          "outcome": "already_completed"
+        },
+        {
+          "action": "claim"
+        },
+        {
+          "action": "observe",
+          "completed": true,
+          "fresh_balance": true,
+          "balance": 1200,
+          "unit": "points"
+        },
+        {
+          "action": "verify_points",
+          "before": 800,
+          "after": 1200,
+          "reward": 400
+        },
+        {
+          "action": "cleanup",
+          "result": "closed"
+        },
+        {
+          "action": "report",
+          "kind": "manual"
+        }
+      ]
+    }
+  ]
+}

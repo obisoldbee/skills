@@ -1,0 +1,4 @@
+# Replace reserved example domain. Do not enable access logging of scoped paths.
+bridge.example {
+    reverse_proxy 127.0.0.1:8787
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clash Direct Rules"
+  short_description: "核对和维护直连规则、私有版本清单与恢复候选"
+  default_prompt: "Use $clash-direct-rules to reconcile the current private rule binding, inspect routing evidence, and complete the authorized maintenance or recovery."

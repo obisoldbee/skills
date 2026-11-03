@@ -1,0 +1,7 @@
+interface:
+  display_name: "墨刀原型电脑操作"
+  short_description: "通过 Ego 或 Computer Use 编辑墨刀原生页面与备注，核对内容和保存"
+  brand_color: "#315CF5"
+  default_prompt: "使用 $modao-prototype-computer-use，在指定墨刀文件中分阶段制作页面与必要备注。默认由当前聊天 Astra-xhigh 子智能体整理推理、GPT-6.1 Terra-xhigh 子智能体操作 UI，再 handoff GPT-6.1 Terra-ultra 以 ego-browser 独立质检，修复并重检后继续推进。复用原生组件，检查内容、布局、保存及所需预览；原型完整性与考点评分分开判断。"
+policy:
+  allow_implicit_invocation: true

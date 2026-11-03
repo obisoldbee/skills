@@ -1,0 +1,17 @@
+# Adapt only for an authorized new deployment; preserve existing service settings.
+[Unit]
+Description=Dot Grok message bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ob-bridge
+Group=ob-bridge
+WorkingDirectory=/opt/ob-bridge
+EnvironmentFile=/etc/ob-bridge.env
+ExecStart=/usr/bin/python3 /opt/ob-bridge/bridge.py
+Restart=on-failure
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

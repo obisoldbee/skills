@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dot 与 Grok 协作桥"
+  short_description: "配置和维护 Dot 与 Grok Bot 的消息桥、任务委派及真实验收"
+  default_prompt: "使用 $dot-grok-bridge 配置或排查协作桥，沿用已授权任务并验证实际交付。"
