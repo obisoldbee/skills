@@ -25,7 +25,7 @@ Validate the route attempt with `scripts/validate_dispatch_route.py` before sele
 
 ## Visible-task exclusivity
 
-- For any supported model initial dispatch, call the live tool whose leaf name is `create_thread`.
+- For a supported model's visible initial dispatch, call the live tool whose leaf name is `create_thread`.
 - Never call `spawn_agent`, `collaboration.spawn_agent`, or another hidden-subagent API for a `visible_thread` route. Never treat `subAgentActivity`, `/root/<agent>`, `agentPath`, or `agentThreadId` as task creation evidence.
 - Do not apply a hidden-subagent concurrency-slot limit to visible tasks. Use only the live visible-task capacity and the user's cap.
 - Put the exact planned tool name in the route attempt before calling it and retain the route validator's `attempt_sha256`. After the call, put the exact actual tool name, actual route-sensitive arguments, and attempt hash in a normalized receipt, then run `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT`.
@@ -33,15 +33,25 @@ Validate the route attempt with `scripts/validate_dispatch_route.py` before sele
 
 Visible-task authority and field authority are separate. Resolve applicable earlier selections first. When neither axis has been selected for this responsibility, merely invoking `$project-handoff`, triggering it implicitly, or saying “创建任务” authorizes no model/reasoning override: validate `requested_route=platform-default`, then omit both `model` and `thinking`. A short continuation does not erase an existing selection. A raw explicit value controls only its axis and is retained in `requested_model` or `requested_reasoning`; the documented model-only names Astra/GPT6 resolve to `gpt-6-astra` without selecting reasoning; an explicit alias binds both documented axes; explicit `auto` authorizes classification only on the named axis.
 
+An executor alias selects model and effort independently of surface. Terra resolves to GPT-6.1 Terra; general computer-operation auto uses Terra-ultra, known fixed-step browser auto uses Terra-medium, and writing may explicitly select Terra-ultra. For explicit subagents or ordinary internal collaboration, use the host's native tool contract under [executor surface](model-routing.md#executor-surface). This reference's visible guards and receipts apply when visible work is selected.
+
 ## Resolve authorization in context
 
 Before asking for permission, read the user's current and earlier direct instructions for this exact operation and scope. If the user already requested a new visible task, or directly confirmed an explicitly described creation action, retain that instruction as the authority reference and proceed under the live tool contract. No fixed phrase or repeated use of “新建” is required. A bare Skill name or a workflow written by an agent does not independently satisfy a host requirement for an explicit new-task request.
 
 For example, after an agent proposes “create a Luna webpage task for this review”, the user's “do that” can explicitly confirm that creation. A request to explain the Skill selects explanation only. A request to continue an existing worker keeps that worker and its verified route. Assess the actual surrounding exchange; these examples do not grant standing permission for other projects or unlimited tasks.
 
+A direct conditional instruction such as “reuse a suitable existing chat; if none exists, create one” explicitly requests creation when that condition holds. Apply this decision in order:
+
+1. If the user requests a new chat for this lane, create it with the selected route.
+2. Otherwise, inspect the current lane binding and relevant project tasks. Reuse a suitable authorized task with the required model/effort, execution capability and scope, without a conflicting assignment.
+3. If none is suitable and the user supplied the conditional creation instruction, record that instruction and the reason reuse is unsuitable, then create the task. Do not ask the user to approve the fulfilled condition again.
+
+Keep the instruction reference and scope in the dispatch/handoff record so the recipient can recover the original user instruction. Search the relevant bindings and candidates, not every historical chat. A missing local owner field alone does not establish that no suitable task exists. Preserve the requested roles, visible route, follow-up and quality checks while choosing reuse or creation; do not remove those responsibilities to avoid dispatch. If the user supplied neither an applicable creation request nor conditional creation instruction, apply the missing-prerequisite handling below.
+
 For a relayed instruction, read the referenced original human instruction before relying on the sender's authorization claim. Preserve verified authority across context compaction and worker changes within its original scope. A missing owner record or route field calls for evidence recovery first, not a new approval question. Keep creation, messaging, model/effort selection and publication scopes distinct; forward dispatch does not automatically authorize a reverse message.
 
-When a prerequisite really is absent, first check suitable existing authorized tasks and complete independent preparation. Identify whether the gap is a direct user instruction, a usable owner, scheduling capability, or an actual tool rejection. Ask only about the unresolved blocking action and cite the applicable live tool requirement. Route validators check declared parameters and receipts; they neither infer human intent nor require the user to repeat an already verified instruction.
+When a prerequisite really is absent, first determine whether separate visible-task dispatch is required by the user at all. Ordinary authorized research may use a supported in-task executor and native parent return without creating a chat or sending cross-chat messages; a Skill's preferred orchestration must not manufacture that prerequisite. Preserve any already selected visible surface and model/effort. For genuinely required dispatch, check suitable existing authorized tasks and complete independent preparation. Identify the exact missing user instruction, usable owner, scheduling capability or actual tool rejection; ask only about an unresolved action that really blocks the requested result, citing the live tool requirement. Route validators do not require repeated user approval.
 
 ## `create_thread`
 
@@ -156,7 +166,7 @@ Required creation-receipt fields:
 actual_tool: codex_app__create_thread
 status: created_confirmed | created_unconfirmed | queued | failed
 surface: visible_thread
-requested_route: astra-high | astra-max | astra-ultra | sol-max | sol-medium | terra-max | luna-max | <supported visible route>
+requested_route: astra-high | astra-xhigh | astra-max | astra-ultra | sol-max | sol-medium | terra-max | terra-ultra | terra-medium | terra-xhigh | luna-max | <supported visible route>
 dispatch_attempt_sha256: <64 lowercase hex from the route validator>
 actual_create_thread_arguments: <exact arguments actually passed; may be {}>
 task_kind: codex

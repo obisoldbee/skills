@@ -47,7 +47,7 @@ Keep ordinary review in the chat. Preserve body evidence already obtained if a l
 
 1. Create one case per source with `scripts/intake_case.py` inside the authorized `output_root`.
 2. Capture the page using the route above. Save case-local HTML and relevant media, then run `scripts/capture_pipeline.py`.
-3. When claims depend on images, preserve the body/media distinction and complete the inventory in [media-routing.md](references/media-routing.md).
+3. For every captured body image or canvas occurrence, complete the case-bound inventory in [media-routing.md](references/media-routing.md), including duplicate, decorative and unavailable items. Add OCR or visual interpretation when a substantive claim depends on that media; preserve its result separately from the page text.
 4. Bind the case with `scripts/assess_capture_evidence.py`. Create page-purpose notes or action cards when requested.
 5. For a batch, use `scripts/plan_batch.py` to create or resume the plan, then capture each planned case through the selected route.
 

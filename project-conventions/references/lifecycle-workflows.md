@@ -8,13 +8,16 @@ Use the decision table and shared guards below to select the requested lifecycle
 |---|---|---|
 | “从零初始化这个目标，并把最新版 Skill 和目录配好” | Full initialization | Exact target, approved repository, deterministic local wrapper/control files, optional exact consumers |
 | “先 clone，到这里停止” | Bootstrap-only | Exact checkout and its validation |
-| “更新这个 Skill / 拉取最新版” | Update-only | One resolved checkout and one named package |
+| “拉取这个 Skill 的上游最新版” | Update-only | One resolved checkout and one named package |
 | “本机全量同步 Skills / 更新 GitHub 并让本机 Agent 使用 / 同步共享 Skill 根” | Device refresh | Plan first; one existing checkout and missing public allowlisted links in existing Agent roots |
 | “迁移旧目录到新结构” | Governance maintenance | Exact old/new paths and affected current mappings |
+| “只读核对映射 / 更新项目指引” | Governance maintenance | Inspect or edit the named paths as requested |
 
 Execute the stages named in the current request. Reuse an explicit end-to-end authorization for its named target, repository, migration inputs and consumers.
 
-脚本模式 `adopt-existing` 指“旧项目治理接入”，它必须由用户针对每一个已有项目根目录单独明确授权。它只补齐 `AGENTS.md` 路由、项目本地准入助手和最小管理记录，不移动源码，不建立或移动 `Git` 仓库，不上传、发布、安装 `Skill` 或建立 `Agent` 消费者链接。必须先运行 `dry-run` 再运行 `apply`，冲突即停，失败回滚。无关修复不会因为旧项目缺少 `.project-conventions/` 而自动变成接入任务，也不得仅因此阻断原任务。完整合同见 `project-root-initialization.md`。
+Updating instructions or Skill content follows source maintenance. Fetching upstream selects Update-only. For an ambiguous “update”, inspect the named target and context first; clarify the missing target only when the choice would change network or write scope. A read-only audit returns findings or its requested independent report; it does not enter an apply stage.
+
+脚本模式 `adopt-existing` 指“旧项目治理接入”，它必须由用户针对每一个已有项目根目录单独明确授权。它只补齐 `AGENTS.md` 路由、项目本地协作说明和兼容助手、最小管理记录。默认采用 `worktree-first`。先运行 `dry-run`，核对计划后在已有授权内运行 `apply`；冲突即停，失败回滚。完整范围和保留原材料的步骤见 `project-root-initialization.md`。普通修复直接遵循目标现有规则。
 
 ## Full initialization: shared Skills collection
 
@@ -229,14 +232,14 @@ Do not apply the shared exception merely because two projects use the same hosti
 
 ## Stop and report
 
-Every lifecycle report includes:
+Report the facts needed to assess the selected operation. A short read-only answer may state its findings and evidence directly. For filesystem changes include:
 
 - selected lifecycle;
 - exact paths and roles;
 - observed Git and link facts;
 - writes actually executed;
 - validators and their result;
-- state labels: source, Git-backed, projected, linked, discovered, executed;
-- stop boundary and unresolved blockers.
+- the resulting state and its evidence, such as a verified source path or direct consumer link;
+- unresolved blockers and the next action, when present.
 
 Never report “installed” from a clone, “discovered” from a link, or “executed” from a passing static validator.

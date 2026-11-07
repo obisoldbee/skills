@@ -1,4 +1,4 @@
-"""Persistent maintenance transitions, delivery ambiguity and fixed rich-text layout."""
+"""Persistent maintenance transitions, delivery ambiguity and minimal user notices."""
 import json
 from pathlib import Path
 import tempfile
@@ -29,7 +29,8 @@ class HealthTests(unittest.TestCase):
                 results=[self.run_phase(s,service=service) for s in states]
                 self.assertEqual([r.get('transition') for r in results],[None,'entered',None,None,None,'recovered',None])
                 self.assertEqual(len(self.calls),2)
-                self.assertIn('｜维护中',self.calls[0][1][0]); self.assertIn('｜维护结束',self.calls[1][1][0])
+                self.assertEqual(self.calls[0][1],(NAMES[service]+'正在维护。',[]))
+                self.assertEqual(self.calls[1][1],(NAMES[service]+'已恢复。',[]))
 
     def test_initial_maintenance_alerts_without_previous_success(self):
         self.assertEqual(self.run_phase('maintenance')['transition'],'entered')
@@ -86,13 +87,13 @@ class HealthTests(unittest.TestCase):
 
     def test_recovery_combines_actionable_business_result(self):
         self.run_phase('maintenance')
-        extra=('有 3 条邀请',[('待处理','3 条'),('页面','已关闭'),('时间','now')])
+        extra=('方舟众测有 3 条待处理邀请。',[('页面','关闭未确认（空间 123）'),('原因','诊断详情')])
         self.run_phase('available',extra=extra)
-        post=post_payload(self.calls[-1][1])['zh_cn']
-        labels=[row[0]['text'] for row in post['content']]
-        self.assertEqual(labels.count('页面：'),1)
-        self.assertIn('任务结果：',labels); self.assertIn('待处理：',labels)
-        self.assertTrue(all(len(row)==2 for row in post['content']))
+        self.assertEqual(len(self.calls),2)
+        self.assertEqual(post_payload(self.calls[-1][1]),{'zh_cn': {'title': '',
+            'content': [[{'tag':'text','text':'方舟众测有 3 条待处理邀请。'}]]}})
+        self.assertNotIn('空间',str(self.calls[-1][1]))
+        self.assertNotIn('诊断详情',str(self.calls[-1][1]))
 
     def test_confirmation_requires_evidence(self):
         with self.assertRaises(ValueError):

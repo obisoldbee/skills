@@ -131,6 +131,8 @@ class ProbeTests(unittest.TestCase):
                 result = json.loads(output.getvalue())
                 self.assertFalse(result['desktop_ui_verified'])
                 self.assertFalse(result['inference_tested'])
+                self.assertFalse(result['config_context_verified'])
+                self.assertEqual('default_app_server_no_profile_overrides', result['launch_context'])
 
 
 if __name__ == '__main__':

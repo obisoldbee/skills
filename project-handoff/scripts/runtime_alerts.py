@@ -23,8 +23,8 @@ def encoded(value):
 
 
 def emit_json(value):
-    # Escape the wire output for redirected Windows consoles; retain encoded()
-    # for storage and fingerprints so existing notification keys stay stable.
+    # Keep the JSON wire ASCII-safe on redirected Windows pipes. Storage and
+    # fingerprints must keep using encoded() so existing dedup keys stay valid.
     print(json.dumps(value, ensure_ascii=True, sort_keys=True))
 
 
@@ -97,6 +97,12 @@ def connect(directory):
     return db
 
 
+def connect_readonly(directory):
+    # A pickup must not create an empty queue or need chmod/schema permissions.
+    path = directory.resolve() / 'alerts.sqlite3'
+    return sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=3)
+
+
 def record(db, key, condition, payload):
     """Serialize change detection and enqueue. Repeated ticks do not re-notify."""
     fingerprint = hashlib.sha256(encoded(condition).encode()).hexdigest()
@@ -150,13 +156,16 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     hook = sub.add_parser('hook')
     hook.add_argument('--registry', required=True, type=Path)
-    sub.add_parser('pending')
+    pending = sub.add_parser('pending')
+    pending.add_argument('--route-only', action='store_true',
+                         help='only compact route alerts; leave other pending events untouched')
     ack = sub.add_parser('ack')
     ack.add_argument('--id', type=int, required=True)
     ack.add_argument('--receipt', required=True, help='actual destination message/receipt reference')
     args = parser.parse_args()
     try:
-        with connect(args.state_dir) as db:
+        with (connect_readonly(args.state_dir) if args.command == 'pending'
+              else connect(args.state_dir)) as db:
             if args.command == 'hook':
                 raw = sys.stdin.buffer.read(MAX_BYTES + 1)
                 if len(raw) > MAX_BYTES:
@@ -167,8 +176,18 @@ def main():
                 # No decision:block, exit 2 or model continuation for notification.
                 emit_json({'systemMessage': '执行异常已记录到本地待通知队列；尚未证明 dots 送达。'} if alert else {})
             elif args.command == 'pending':
-                emit_json([dict(json.loads(payload), alert_id=aid)
-                           for aid, payload in db.execute('SELECT id,payload FROM alerts WHERE receipt IS NULL ORDER BY id')])
+                rows = []
+                for aid, payload in db.execute('SELECT id,payload FROM alerts WHERE receipt IS NULL ORDER BY id'):
+                    item = json.loads(payload)
+                    if args.route_only:
+                        if item.get('kind') not in ('route_mismatch', 'route_unverified'):
+                            continue
+                        fields = ('session_id', 'turn_id', 'kind', 'expected', 'actual',
+                                  'mismatched_axes', 'unknown_axes', 'observed_at',
+                                  'delivery', 'next_action')
+                        item = {field: item[field] for field in fields if field in item}
+                    rows.append(dict(item, alert_id=aid))
+                emit_json(rows)
             else:
                 if not args.receipt.strip():
                     raise ValueError('delivery receipt must not be empty')

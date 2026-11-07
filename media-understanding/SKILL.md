@@ -76,6 +76,14 @@ description: 用于原生无法可靠读取的附件、专项 OCR、音视频理
    - MiMo：`mimo-v2.5-image|audio|video` 三条合同分别保留为 `disabled`，当前不得调用，也不得作为自动 fallback。
 6. MiniMax profile 的媒体合同见 [minimax-shared-api.md](references/minimax-shared-api.md)。只有需要结构化保存时读取 [result-contract.md](references/result-contract.md)；只有用户要求比赛/回归时读取 [benchmark-and-reporting.md](references/benchmark-and-reporting.md)。
 
+## 需要浏览器或电脑操作时
+
+先区分媒体理解与界面操作。图片描述、OCR、音视频理解沿上面的原生或 provider 路线执行。任务已经包含浏览器操作，且目标、步骤与结果核对方式明确时，固定流程默认交给 `gpt-6.1-terra` / `medium`；开放式电脑操作默认 Terra / `ultra`。这里的 Terra 指 GPT-6.1 Terra，使用前核对宿主实际支持的模型与强度。用户指定、专用工作流已选角色及现有任务的执行者设置优先。
+
+委派时给出精确素材、已授权页面动作、输出位置和完成条件，读取该浏览器的技能与公开 API，收回实际操作和结果证据。模型与执行面分开选择，当前任务内部协作或已授权聊天按实际需要使用。任务只是理解截图时，继续原媒体读取路线。
+
+浏览器执行者的 Terra 设置不改动 MiniMax、Agnes 等 provider 的模型、凭据或调用状态。结果仍按各路线的合同核验。
+
 ## 凭据隔离
 
 本仓库不保存任何 `.env`、key、token 或 cookie。默认本地槽位为：
@@ -104,7 +112,7 @@ description: 用于原生无法可靠读取的附件、专项 OCR、音视频理
 ## 停止规则
 
 - 除上述 MiniMax 单图默认外，输入、外发授权、provider、route id 或成本边界不清楚：停在调用前。
-- route check 为 `missing_credentials`、`missing_executor`、`unsafe_credential_permissions`、`needs_explicit_binding` 或 `disabled`：报告该状态并停止。
+- route check 只有 `configured_not_called` 才进入执行；`configuration_mismatch`、`missing_credentials`、`missing_executor`、`unsafe_credential_permissions`、`needs_explicit_binding` 或 `disabled` 均停在调用前，报告实际缺项。
 - 默认或指定 provider 失败：保存/报告失败；没有用户对另一个 provider 的当前授权，不跨 provider fallback。
 - `accepted` 或 `acceptance_unknown`：报告同一 operation 的证据并停在人工核对；不得靠重试、恢复或换 provider 掩盖可能已经产生的调用。
 - MiMo route check 的 `readiness` 始终为 `disabled`，同时保留 `runtime_state=not_run/unverified_capability` 和以 `local_route_not_ready:` 开头的 `stop_reason`，直到对应媒体 route 的全部 re-enable gate 有当前证据；不要推断为服务宕机、无余额或 key 无效。

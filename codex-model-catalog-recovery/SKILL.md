@@ -51,3 +51,12 @@ description: Diagnose and recover missing or stale models in the Codex desktop m
 - **实际调用成功**：按用户要求执行模型调用后，报告本次请求的实际结果。
 
 回复说明原因、做了什么、当前达到哪层、还有什么未验证。历史案例仅作分支依据，见 [案例与回归场景](references/cases.md)，不把其中版本、路径或权限假设当作当前事实。
+
+## Probe configuration boundary
+
+The probe launches a default app-server with the supplied binary, CODEX_HOME and cwd; it does
+not reproduce desktop profile selection or launch-time configuration overrides. Its output
+therefore records `config_context_verified: false`. Compare the actual desktop effective
+configuration before claiming identical configuration or diagnosing a desktop/CLI mismatch.
+A model present in this probe is catalog evidence for this launch only, not desktop visibility
+or successful inference. Do not copy secrets into diagnostics to establish that comparison.

@@ -72,9 +72,9 @@ ZIP 内为 `files/<原相对路径>` 的原字节及 SOURCE_MANIFEST.json；外�
 
 route helper 会重新读回实际文件，不接受仅自报一个 hash；`source_id=packet:<archive_sha256>`，
 `source_binding` 精确包含 `archive_sha256`、`manifest_sha256`。绝对本地路径与验证回执另存，
-不把它们当作 Web 可访问 URL。若运行主机不同，Luna 先核验其可读的同一包字节。
+不把它们当作 Web 可访问 URL。若运行主机不同，Web IO 先核验其可读的同一包字节。
 
-Luna 使用已验证浏览器能力上传 source.zip，可附清单便于查阅；UI 核对文件名、上传完成，
+Web IO 使用已验证浏览器能力上传 source.zip，可附清单便于查阅；UI 核对文件名、上传完成，
 发送后核对本轮消息附件。保存 `source_upload` 回执：archive_sha256、manifest_sha256、
 archive_name、upload_complete=true、evidence_ref；证据必须来自真实上传与读回，不得从本地 PASS 推导。
 未知发送/上传状态先核对原消息和草稿，不能重复上传/提交。请网页 reviewer 先列实际可读原件、

@@ -44,6 +44,9 @@ PLAN_ID = re.compile(r"^[0-9a-f]{64}$")
 CONTROLLER_SESSION = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 CONTROLLER_TOKEN = re.compile(r"^[0-9a-f]{48}$")
 CONTROLLER_TOKEN_ENV = "OTHERS_MANAGER_CONTROLLER_TOKEN"
+GITHUB_AUTH_ENV = "OTHERS_MANAGER_GITHUB_AUTH"
+_github_token: str | None = None
+_github_auth_checked = False
 PROJECT_ACCESS_STDIN_BRIDGE = (
     "import runpy,sys\n"
     "helper,session=sys.argv[1:3]\n"
@@ -1408,13 +1411,46 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def github_json(path: str) -> dict[str, Any]:
+    global _github_token, _github_auth_checked
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": USER_AGENT}
+    auth_mode = os.environ.get(GITHUB_AUTH_ENV, "auto")
+    if auth_mode in {"auto", "gh"}:
+        if not _github_auth_checked:
+            gh = shutil.which("gh")
+            if not gh and auth_mode == "gh":
+                raise ManagerError("GitHub CLI is unavailable for authenticated requests")
+            if gh:
+                try:
+                    result = subprocess.run([gh, "auth", "token", "--hostname", "github.com"],
+                                            capture_output=True, text=True, timeout=15, check=True)
+                    token = result.stdout.strip()
+                    if not token or any(c.isspace() for c in token):
+                        raise ValueError("invalid token")
+                    _github_token = token
+                except (OSError, subprocess.SubprocessError, ValueError) as exc:
+                    if auth_mode == "gh":
+                        raise ManagerError("GitHub CLI authentication is unavailable") from exc
+            _github_auth_checked = True
+        if _github_token:
+            headers["Authorization"] = "Bearer " + _github_token
+        elif auth_mode == "gh":
+            raise ManagerError("GitHub CLI authentication is unavailable")
+    elif auth_mode != "anonymous":
+        raise ManagerError("Unsupported GitHub authentication mode")
     request = urllib.request.Request(
         f"{GITHUB_API}{path}",
-        headers={"Accept": "application/vnd.github+json", "User-Agent": USER_AGENT},
+        headers=headers,
         method="GET",
     )
     try:
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        class GitHubRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                parsed = urllib.parse.urlsplit(newurl)
+                if parsed.scheme != "https" or parsed.netloc != "api.github.com":
+                    return None
+                return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), GitHubRedirect())
         with opener.open(request, timeout=30) as response:
             value = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:

@@ -16,6 +16,8 @@ For `ls-remote`, `clone`, and `fetch`, the controller may use one consistent pro
 
 The validated value is passed as an explicit `http.proxy` Git configuration entry. Proxy environment variables themselves are not copied into the minimal Git subprocess environment. Non-network inventory and local validation do not consume the proxy setting. This allows a user-controlled local network proxy without admitting arbitrary environment-driven Git configuration or credentials.
 
+GitHub API reads use an existing GitHub CLI login by default. The manager reads the login once per process, uses it only for GitHub API requests, and keeps it out of reports and Git subprocesses. If GitHub CLI or its login is unavailable, the default falls back to anonymous requests. Set `OTHERS_MANAGER_GITHUB_AUTH=gh` on both planning and apply to require a login, or `anonymous` to opt out. API redirects are restricted to HTTPS on api.github.com.
+
 ## Ownership model
 
 The pool is a non-Git directory. Every real first-level repository child owns its own `.git`, upstream, branch, worktree, and license. Pool governance and public Skill publication are controller responsibilities, not worker responsibilities.

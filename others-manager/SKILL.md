@@ -18,7 +18,7 @@ Source classification and execution eligibility are separate:
 | Allowed devices | macOS or Linux hosts |
 | Required network | `any` |
 | External dependencies | Python 3, Git, an exact non-Git checkout pool, the matching valid `others-manager` wrapper for apply operations, and ordinary GitHub reachability for clone or update operations; a credential-free loopback HTTP proxy is accepted when consistently supplied through standard proxy environment variables |
-| Credential provider | none for supported public-GitHub operations |
+| Credential provider | existing GitHub CLI login when available; anonymous public API reads otherwise |
 | Verification | Run the package validator; validate the matching wrapper before apply. Use `inventory` for local readback. For network operations, verify GitHub identity and read back the operation and cleanup receipts. |
 | Stop rule | Stop on Windows before any pool, plan, receipt, lock, or Git operation. For `apply-clone/apply-update`, also stop on a missing or invalid wrapper capability; local inventory, planning and package maintenance require no writer capability. Stop the affected operation on mismatched pool topology, unavailable required tooling or unknown repository identity, and require GitHub verification for network operations. Do not install tools, collect credentials, weaken the apply gates, or substitute another pool. |
 
@@ -46,7 +46,7 @@ Read [operations.md](references/operations.md) before any mutating run. When del
 - Update only by verified `fetch` plus `merge --ff-only`. Never use pull, reset, rebase, stash, clean, force, or push.
 - Clone public, enabled, non-archived GitHub repositories even when GitHub cannot verify a license. Record `license.status=unverified` and an advisory instead of treating that uncertainty as a clone or update blocker. Stage inside an owned hidden directory, validate, then rename atomically.
 - Before installing, executing, adapting, adopting, redistributing, publishing, or using a repository commercially, surface its license status and terms. If the license is unverified or the intended use is not clearly permitted, stop that use decision for review; do not retroactively block local cloning or ordinary fast-forward maintenance.
-- Never install dependencies, initialize submodules, execute cloned code, create worktrees, publish, or alter credentials.
+- Never install dependencies, initialize submodules, execute cloned code, create worktrees, publish, or alter credentials. GitHub API reads use an existing GitHub CLI login by default; do not record its token. Set `OTHERS_MANAGER_GITHUB_AUTH=gh` to require the login, or `anonymous` to opt out.
 - Network Git may use only one consistent `http://` loopback proxy with an explicit port and no credentials, path, query, or fragment. Remote, credential-bearing, malformed, or conflicting proxy values fail closed; proxy variables are never copied into the Git subprocess environment.
 - Never let a delegated worker edit pool-level `AGENTS.md`, `README.md`, reports, scripts, controller files, collection indexes, wrappers, or the public Skill repository.
 - Delegated Luna workers may create one plan in the system temporary root, but they have no child-repository write authority. Apply is always a controller action.

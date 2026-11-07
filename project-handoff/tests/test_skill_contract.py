@@ -16,6 +16,7 @@ WORKSPACE_ROOT = SKILL_ROOT
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
 from validate_dispatch_route import resolve_request_case, validate_route, validate_attempt, resolve_family
+from validate_orchestration_plan import validate_plan
 
 
 class ProjectHandoffContractTests(unittest.TestCase):
@@ -23,15 +24,17 @@ class ProjectHandoffContractTests(unittest.TestCase):
         return {'source': 'fixture task capability', 'host_id': 'fixture-host',
                 'observed_at': '2026-09-30T00:00:00Z',
                 'models': [{'model': m, 'hidden': False,
-                            'reasoning_efforts': ['low', 'medium', 'high', 'max', 'ultra']}
+                            'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']}
                            for m in models]}
 
     def test_role_defaults_preserve_independent_axes(self):
         roles = {'top_difficulty': ('gpt-6-astra', 'ultra'),
                  'orchestration': ('gpt-6-astra', 'high'),
                  'writing': ('gpt-6.1-sol', 'max'),
-                 'computer_operation': ('gpt-6.1-sol', 'medium'),
-                 'browser_operation': ('gpt-6-luna', 'max'),
+                 'development': ('gpt-6.1-sol', 'max'),
+                 'astra_planned_execution': ('gpt-6.1-sol', 'max'),
+                 'computer_operation': ('gpt-6.1-terra', 'ultra'),
+                 'browser_operation': ('gpt-6.1-terra', 'medium'),
                  'mechanical': ('gpt-6-luna', 'max')}
         for kind, (model, effort) in roles.items():
             with self.subTest(kind=kind):
@@ -39,8 +42,78 @@ class ProjectHandoffContractTests(unittest.TestCase):
                 self.assertEqual(route['create_thread_arguments'], {'model': model, 'thinking': effort})
                 route = resolve_request_case('创建任务，模型自动选。', {'task_kind': kind})
                 self.assertEqual(route['create_thread_arguments'], {'model': model})
+                route = resolve_request_case('创建任务，推理自动选。', {'task_kind': kind})
+                self.assertEqual(route['create_thread_arguments'], {'thinking': effort})
+                route = resolve_request_case('创建任务，模型自动选，推理用 high。', {'task_kind': kind})
+                self.assertEqual(route['create_thread_arguments'], {'model': model, 'thinking': 'high'})
         self.assertEqual(resolve_request_case('用 astra-high 创建任务')['reasoning'], 'high')
         self.assertEqual(resolve_request_case('用 sol-medium 创建任务')['model'], 'gpt-6.1-sol')
+
+    def test_terra_aliases_model_only_and_destination_catalog(self):
+        for effort in ('medium', 'xhigh', 'max', 'ultra'):
+            actual = resolve_request_case(f'用 TERRA-{effort.upper()} 创建任务。')
+            self.assertEqual(actual['create_thread_arguments'], {'model': 'gpt-6.1-terra', 'thinking': effort})
+        for request in ('用 Terra 创建任务。', '创建任务，模型用 Terra。'):
+            actual = resolve_request_case(request)
+            self.assertEqual(actual['create_thread_arguments'], {'model': 'gpt-6.1-terra'})
+            self.assertEqual(actual['omitted_create_thread_fields'], ['thinking'])
+        cat = self.catalog('gpt-5.6-terra', 'gpt-6.1-terra', 'gpt-6.2-terra')
+        self.assertEqual(resolve_request_case('用 terra-ultra 创建任务', {'model_catalog': cat})['model'], 'gpt-6.2-terra')
+        exact = resolve_request_case('创建任务，模型用 gpt-5.6-terra，推理用 max。', {'model_catalog': cat})
+        self.assertEqual(exact['model'], 'gpt-5.6-terra')
+        with self.assertRaisesRegex(ValueError, 'model_catalog_stale'):
+            resolve_family('terra', self.catalog('gpt-5.6-terra'))
+        cat['models'][-1]['reasoning_efforts'] = ['medium']
+        with self.assertRaisesRegex(ValueError, 'unsupported_reasoning'):
+            resolve_request_case('用 terra-ultra 创建任务', {'model_catalog': cat})
+
+    def test_modao_selected_surfaces_keep_alias_pair_without_visible_receipt(self):
+        for alias, model in (('astra-xhigh', 'gpt-6-astra'), ('terra-xhigh', 'gpt-6.1-terra')):
+            route = resolve_request_case(f'用 {alias} 创建子智能体。')
+            self.assertEqual((route['model'], route['reasoning'], route['surface']), (model, 'xhigh', 'internal_agent'))
+            self.assertEqual(route['create_thread_arguments'], {})
+            attempt = {'operation': 'initial_dispatch', 'action': 'create_visible_task',
+                       'tool': 'collaboration.spawn_agent', 'failure_class': 'none',
+                       'route_changed': False, 'explicit_user_route_change': False, 'route': route}
+            self.assertFalse(validate_attempt(attempt)['valid'])
+            attempt['tool'] = 'codex_app__create_thread'
+            self.assertTrue(any('visible_dispatch_required' in e for e in validate_attempt(attempt)['errors']))
+        qa = resolve_request_case('用 terra-ultra 创建可见任务。')
+        self.assertEqual(qa['create_thread_arguments'], {'model': 'gpt-6.1-terra', 'thinking': 'ultra'})
+        visible_attempt = {'operation': 'initial_dispatch', 'action': 'create_visible_task',
+                           'tool': 'codex_app__create_thread', 'failure_class': 'none',
+                           'route_changed': False, 'explicit_user_route_change': False, 'route': qa}
+        self.assertTrue(validate_attempt(visible_attempt)['valid'])
+        visible_attempt['tool'] = 'collaboration.spawn_agent'
+        self.assertFalse(validate_attempt(visible_attempt)['valid'])
+        with self.assertRaisesRegex(ValueError, 'surface conflicts'):
+            resolve_request_case('用 terra-ultra 创建可见任务。', {'surface': 'internal_agent'})
+        plan = {'run_id': 'modao', 'integration_owner': 'controller', 'lanes': []}
+        for lane_id, alias, surface in (('thinking', 'astra-xhigh', 'internal_agent'),
+                                        ('ui', 'terra-xhigh', 'internal_agent'),
+                                        ('qa', 'terra-ultra', 'visible_thread')):
+            route = resolve_request_case(f'用 {alias} 创建任务。', {'surface': surface})
+            plan['lanes'].append({'id': lane_id, 'goal': lane_id, 'depends_on': [],
+                                  'read_paths': [], 'write_paths': [], 'mutable_resources': [],
+                                  'expected_outputs': [lane_id + '-response'], 'validation': 'review response', 'route': route})
+        self.assertTrue(validate_plan(plan)['valid'])
+
+    def test_operation_followups_preserve_pre_terra_policy_routes(self):
+        for route in (
+            {'requested_route': 'terra-max', 'model': 'gpt-5.6-terra', 'reasoning': 'max',
+             'model_basis': 'explicit_skill_route', 'reasoning_basis': 'explicit_skill_route'},
+            {'requested_route': 'auto', 'task_kind': 'computer_operation', 'model': 'gpt-6.1-sol', 'reasoning': 'medium',
+             'model_basis': 'explicit_auto', 'reasoning_basis': 'explicit_auto'},
+            {'requested_route': 'auto', 'task_kind': 'browser_operation', 'model': 'gpt-6-luna', 'reasoning': 'max',
+             'model_basis': 'explicit_auto', 'reasoning_basis': 'explicit_auto'},
+        ):
+            attempt = {'operation': 'followup', 'action': 'send_followup',
+                       'tool': 'codex_app__send_message_to_thread', 'failure_class': 'none',
+                       'route_changed': False, 'explicit_user_route_change': False,
+                       'route': dict(route, surface='visible_thread')}
+            self.assertTrue(validate_attempt(attempt)['valid'], route)
+            attempt.update(operation='initial_dispatch', action='create_visible_task', tool='codex_app__create_thread')
+            self.assertFalse(validate_attempt(attempt)['valid'], route)
 
     def test_family_resolution_numeric_newest_and_pins(self):
         # Synthetic future releases test sorting, not actual model availability.
@@ -119,7 +192,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertTrue(any("capability evidence" in e for e in validate_route(route)[1]))
 
     def test_gpt6_model_effort_matrix_and_removed_executor(self):
-        for model in ("gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"):
+        for model in ("gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna"):
             for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
                 route = {"requested_route": model, "requested_model": model,
                          "model": model, "model_basis": "explicit_user",
@@ -172,7 +245,7 @@ class ProjectHandoffContractTests(unittest.TestCase):
         self.assertIn("Spark execution has been removed", text)
         self.assertIn("classify the failed stage", text)
         self.assertIn("create_thread", text)
-        self.assertIn("spawn_agent", text)
+        self.assertIn("references/model-routing.md#executor-surface", text)
         self.assertIn("scripts/validate_visible_task_receipt.py", text)
         self.assertIn("platform_default", text)
         self.assertIn("silent_default_override", text)

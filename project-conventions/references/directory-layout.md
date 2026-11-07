@@ -1,6 +1,6 @@
 # Directory Layout — Full Specification
 
-This document provides the complete, authoritative specification for the project workspace directory layout. Refer to it when initializing a new project, migrating a non-conforming project, or resolving edge cases about where a file should go.
+Use this layout for an explicitly requested initialization or directory migration. Existing projects retain their current rules and mapped paths during ordinary work. Refer to the relevant section for an output-placement question; the examples supply layout choices within the current task's scope.
 
 ## Project Types
 
@@ -21,6 +21,7 @@ Three project types, each with different required directories:
 | `conversation/` | Required | Required | Required |
 | `memory/` project continuity | Required | Required | Required |
 | `docs/specs/`, `docs/plans/` | Required | Optional | Required |
+| `docs/tasks/` task bundles | On demand | On demand | On demand |
 | Versioned records (`vNNN/RECORD.md`) | Not typical | On demand for repeated submissions/versions | Optional |
 | Review naming (second-precision) | Required | Optional (date-precision OK for single-user) | Required |
 | `design/` | Optional | Optional | Optional |
@@ -50,6 +51,8 @@ project-root/
 │   │   └── artifacts/       # On demand. Review attachments (.diff, screenshots, logs)
 │   ├── research/            # Research / competitive analysis
 │   ├── reports/             # On demand. Implementation reports, status reports, issue logs
+│   ├── tasks/               # On demand. One bundle per investigation, acceptance, recheck or training task
+│   │   └── README.md        # Navigation created with the first actual task
 │   ├── decisions/           # On demand. Decision records (ADR-style), pre-execution confirmations
 │   ├── archive/             # On demand. Historical variants, superseded docs (never delete)
 │   └── migrations/          # On demand. Directory restructuring records
@@ -183,6 +186,14 @@ project-root/
   - Example: `2026-07-19-memory-pressure-report.md`
 - **Maintained by**: Engineer or QA agent.
 
+#### `docs/tasks/` (On demand)
+- **Holds**: Related reports, evidence and attachments for one investigation, acceptance, recheck or training task in the owning Project Root.
+- **Naming**: `YYYY-MM-DD-type-topic-HHMMSS/`, using the task's declared timezone; append a short task ID on a collision and create exclusively.
+- **Entry**: Read `docs/tasks/README.md` when present. Resume, retry and add evidence in the existing task directory; create a new bundle only for an independent task.
+- **Creation**: Create the index and needed task files with an actual task. A short task can have just a README. Initialization does not prebuild an empty task tree.
+- **Boundary**: Standalone documents keep their current categories. Source, reusable scripts and build environments stay at their mapped source/runtime paths. Existing materials stay in place until an exact migration is authorized.
+- **Details and entry template**: [Task materials](task-artifacts.md).
+
 #### `docs/decisions/` (On demand)
 - **Holds**: Decision records (ADR-style), pre-execution confirmations, rulings on design choices.
 - **Naming**: `YYYY-MM-DD-<topic>-decision.md`
@@ -295,11 +306,12 @@ Use unique task records during concurrent work. One integrator rereads and merge
 
 **When to write**:
 - After completing substantive work (building, fixing, refactoring, generating a deliverable).
-- When the user shares a project convention or preference.
+- When the user authorizes retaining a project convention or decision for later work.
 
 **When to skip**:
 - Trivial exchanges (greetings, simple lookups, short Q&A).
 - Response-only or explicitly no-write requests, repeated unchanged status, and work whose lifecycle forbids records (such as update-only).
+- Work whose write scope excludes project records. Reuse an existing task report when it already supplies the needed continuity.
 
 **What goes in daily log**:
 - What was done today

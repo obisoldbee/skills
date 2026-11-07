@@ -112,33 +112,42 @@ class RuntimeAlertsTests(unittest.TestCase):
 
 
     def test_utf8_input_and_ascii_json_work_with_legacy_pipe_encodings(self):
-        self.contract['selection_ref'] = '测试原始路由'
+        self.contract['selection_ref'] = 'TEST 原始选择'
+        self.path = self.root / 'TEST-本轮.jsonl'
+        self.event['transcript_path'] = str(self.path)
         self.write_turn(effort='low')
         registry = self.root / 'registry.json'
         registry.write_text(json.dumps(self.registry, ensure_ascii=False), encoding='utf-8')
         for encoding in ('cp1252', 'ascii'):
             with self.subTest(encoding=encoding):
                 state = self.root / ('state-' + encoding)
-                base = [sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'), '--state-dir', str(state)]
+                base = [sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'),
+                        '--state-dir', str(state)]
+                env = dict(os.environ, PYTHONIOENCODING=encoding)
 
                 def run(args, data=None):
-                    result = subprocess.run(base + args, input=data, capture_output=True,
-                                            env=dict(os.environ, PYTHONIOENCODING=encoding))
-                    self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
+                    result = subprocess.run(base + args, input=data,
+                                            capture_output=True, env=env)
+                    self.assertEqual(result.returncode, 0,
+                                     result.stderr.decode('utf-8', 'replace'))
                     return json.loads(result.stdout.decode('ascii'))
 
-                event = json.dumps(self.event, ensure_ascii=False).encode('utf-8')
-                self.assertNotIn('decision', run(['hook', '--registry', str(registry)], event))
+                data = json.dumps(self.event, ensure_ascii=False).encode('utf-8')
+                self.assertNotIn('decision', run(['hook', '--registry', str(registry)], data))
                 pending = run(['pending'])
                 self.assertEqual(pending[0]['actual']['reasoning'], 'low')
                 self.assertEqual(pending[0]['selection_ref'], self.contract['selection_ref'])
-                with closing(alerts.connect(state)) as db:
-                    expected = 'session:' + hashlib.sha256(alerts.encoded(self.contract).encode()).hexdigest() + ':route'
-                    self.assertEqual(db.execute('SELECT key FROM states').fetchone()[0], expected)
-                run(['hook', '--registry', str(registry)], event)
+                self.assertIn('核对本轮路由', pending[0]['next_action'])
+                # Output escaping must not change any already persisted dedup key.
+                canonical = json.dumps(self.contract, ensure_ascii=False, sort_keys=True)
+                key = 'session:' + hashlib.sha256(canonical.encode()).hexdigest() + ':route'
+                with closing(alerts.connect_readonly(state)) as db:
+                    self.assertEqual(db.execute('SELECT key FROM states').fetchone()[0], key)
+                run(['hook', '--registry', str(registry)], data)
                 self.assertEqual(len(run(['pending'])), 1)
-                result = run(['ack', '--id', str(pending[0]['alert_id']), '--receipt', '测试回执'])
-                self.assertEqual(result['receipt'], '测试回执')
+                receipt = 'TEST 回执（仅单元测试）'
+                result = run(['ack', '--id', str(pending[0]['alert_id']), '--receipt', receipt])
+                self.assertEqual(result['receipt'], receipt)
                 self.assertFalse(result['receipt_verified_by_helper'])
                 self.assertEqual(run(['pending']), [])
 
@@ -146,13 +155,43 @@ class RuntimeAlertsTests(unittest.TestCase):
         registry = self.root / 'registry.json'
         registry.write_text(json.dumps(self.registry), encoding='utf-8')
         result = subprocess.run([sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'),
-                                 '--state-dir', str(self.root/'state'), 'hook', '--registry', str(registry)],
-                                input=b'{', capture_output=True,
+                                 '--state-dir', str(self.root/'state'), 'hook',
+                                 '--registry', str(registry)], input=b'{', capture_output=True,
                                 env=dict(os.environ, PYTHONIOENCODING='cp1252'))
         self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
         output = json.loads(result.stdout.decode('ascii'))
         self.assertIn('检测器未完成检查', output['systemMessage'])
         self.assertNotIn('decision', output)
+
+    def test_pending_is_readonly_and_missing_queue_is_not_created(self):
+        self.write_turn(effort='low')
+        alerts.observe(self.event, self.registry, self.db)
+        path = self.root / 'state' / 'alerts.sqlite3'
+        before = (path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_mode)
+        base = [sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'), '--state-dir']
+        result = subprocess.run(base + [str(path.parent), 'pending'], capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)), 1)
+        self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_mode), before)
+        missing = self.root / 'missing-state'
+        result = subprocess.run(base + [str(missing), 'pending'], capture_output=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('error', json.loads(result.stdout))
+        self.assertFalse(missing.exists())
+
+    def test_route_only_pickup_leaves_permission_events_pending(self):
+        alerts.observe(dict(self.event, hook_event_name='PermissionRequest', tool_name='Bash'),
+                       self.registry, self.db)
+        self.write_turn(effort='low')
+        alerts.observe(self.event, self.registry, self.db)
+        result = subprocess.run([sys.executable, '-B', str(SCRIPTS/'runtime_alerts.py'),
+                                 '--state-dir', str(self.root/'state'), 'pending', '--route-only'],
+                                capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pending = json.loads(result.stdout)
+        self.assertEqual([p['kind'] for p in pending], ['route_mismatch'])
+        self.assertNotIn('selection_ref', pending[0])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM alerts WHERE receipt IS NULL').fetchone()[0], 2)
 
 
 if __name__ == '__main__':

@@ -505,6 +505,9 @@ class WorktreePolicyTests(unittest.TestCase):
         self.assertEqual(result["status"], "migrated")
         self.assertEqual(database.read_bytes(), before)
         self.assertFalse(self.command(self.root, "status")["legacy_registry_consulted"])
+        access_readme = self.root / ".project-conventions/ACCESS.md"
+        self.assertIn("(../AGENTS.md#task-materials)", access_readme.read_text())
+        self.assertIn("## Task materials", (self.root / "AGENTS.md").read_text())
         self.assertEqual(database.read_bytes(), before)
         self.assertEqual(migration.migrate(self.root, apply=True)["status"], "already_current")
 

@@ -4,7 +4,8 @@ description: >-
   Create or consume portable project handoffs (完整交接/阶段交接), coordinate
   explicitly requested visible Codex tasks (新对话/可见任务派发/编排派发), or
   use named dispatch routes astra-max/astra-ultra (gpt6-max/gpt6-ultra),
-  astra-high, sol-max/sol-medium/luna-max, or explicitly selected sol-ultra/terra-max routes.
+  astra-high/astra-xhigh, sol-max/sol-medium/luna-max, or explicitly selected
+  sol-ultra/terra-max/terra-ultra/terra-medium/terra-xhigh routes.
   Ordinary continuation, 任务分解, or 并行 Agent within the current task alone
   does not select this handoff workflow.
 ---
@@ -12,6 +13,8 @@ description: >-
 # Project Handoff
 
 Create a portable handoff, dispatch a requested visible task, or coordinate dependent tasks through result review and integration. Read the target project's instructions, current files, accepted decisions, requested deliverables, write scope and selected model/effort before choosing the outcome below.
+
+Resolve this entry's real parent directory as `<skill-root>`. All `scripts/` and `references/` paths below are relative to that directory; run helpers from their absolute paths when working in another project. Keep the target project and output paths bound to the current request.
 
 Execution dispatch includes follow-up, result collection and Controller quality review, including for one worker. Use `dispatch_only` when the user explicitly leaves follow-up to themselves. Executors can develop, research, operate a computer or observe a scheduled process. Assign bounded mechanical observation to an explicitly selected observer, and keep unchanged checks quiet.
 
@@ -27,16 +30,16 @@ For this Skill's selected visible-task execution route, apply this gate before v
 2. Validate that attempt with `scripts/validate_dispatch_route.py` and retain its `attempt_sha256`. For a multi-lane run, also put `requested_route` and `surface` in every plan route and run `scripts/validate_orchestration_plan.py`.
 3. Proceed only on `valid: true`. For visible creation, copy only the validator's `create_thread_arguments`; never fill a field listed in `omitted_create_thread_fields`. After creation, record the actual arguments and attempt hash in the normalized receipt, then require `scripts/validate_visible_task_receipt.py RECEIPT --dispatch-attempt ATTEMPT` to return `valid: true` before recording task creation.
 4. Do not treat a worker prompt, a tool schema, a planned action, or prose review as proof of the tool actually called.
-5. Before accepting a selected formal execution, compare the retained selection with actual runtime/session/readback model, effort and surface through `scripts/validate_execution_binding.py`. Keep the original applicable selection as `--previous` across simplification or role merging. Read the actual execution pair from runtime/session evidence. Ordinary helpers remain allowed under their own scope; unselected axes stay omitted. For recurring execution, model drift, or exception notifications, read [runtime verification and alerts](references/runtime-alerts.md): verify each actual turn, retain pending notifications until receipted, and never treat heartbeat inheritance as a model lock.
+5. Before accepting a selected formal execution, establish that the original choice still covers this executor and unfinished responsibility, then compare it with actual runtime/session/readback model, effort and surface through `scripts/validate_execution_binding.py`. Keep that applicable selection as `--previous` across simplification or role merging; a completed delivery's choice is history, not a permanent Controller lock. Read the actual execution pair from runtime/session evidence. Ordinary helpers remain allowed under their own scope; unselected axes stay omitted. For recurring execution, model drift, or exception notifications, read [runtime verification and alerts](references/runtime-alerts.md): verify each actual turn, retain pending notifications until receipted, and never treat heartbeat inheritance as a model lock.
 
 Hard invariants:
 
 - Invoking this Skill, triggering it implicitly, or saying only “创建任务” does not select an executor axis. Record each unselected axis as `platform_default` with a null value and omit the corresponding `model` or `thinking` field from `create_thread`. Never classify an omitted axis. A value attached to `platform_default` is `silent_default_override` and must stop dispatch.
-- A raw user-supplied model or reasoning value controls only that axis and must be preserved as `requested_model` or `requested_reasoning`; exact IDs stay pinned. Model-only family names `Astra`/`Sol`/`Luna` resolve by the verified destination catalog; `GPT6` remains the pinned Astra generation alias. An explicitly selected alias such as `astra-ultra` binds both axes as `explicit_skill_route`. An explicit `auto` authorizes classification only for the requested axis and records `explicit_auto`.
-- `astra-ultra`/`gpt6-ultra`, `astra-high`, `astra-max`/`gpt6-max`, `sol-ultra`, `sol-max`, `sol-medium`, `terra-max`, and `luna-max` are `visible_thread` routes. Initial dispatch must call a live task tool whose leaf name is `create_thread`. Never call `spawn_agent`, `collaboration.spawn_agent`, another subagent API, or report `subAgentActivity`/`agentPath`/`agentThreadId` as a visible task. Hidden-subagent slot limits do not cap visible-task creation.
-- Automatic role defaults: Astra ultra for the hardest reasoning, Astra high for orchestration, Sol max for writing/development, Sol medium for computer operation, Luna max for simple browser operation, mechanical audits and file lookup. Record verified `task_kind`; a review/audit label alone never selects Luna. These are routing preferences, not measured strength or pricing claims.
+- A raw user-supplied model or reasoning value controls only that axis and must be preserved as `requested_model` or `requested_reasoning`; exact IDs stay pinned. Model-only family names `Astra`/`Sol`/`Terra`/`Luna` resolve by the verified destination catalog; `GPT6` remains the pinned Astra generation alias. An explicitly selected alias such as `terra-ultra` binds both axes as `explicit_skill_route`. An explicit `auto` authorizes classification only for the requested axis and records `explicit_auto`.
+- Model aliases select a model/effort pair. Preserve the requested surface independently. For requested `visible_thread` work, initial dispatch uses the live `create_thread` tool and its real receipt; subagent IDs/activity cannot satisfy it. For explicitly requested subagents or ordinary internal collaboration, use the host's internal tools and native result return. Read [surface selection](references/model-routing.md#executor-surface) for validation and capability checks. Hidden-subagent slot limits do not cap visible-task creation.
+- For an explicitly automatic axis, use the role table under [Select each route](#select-each-route). Record verified `task_kind`; classify a review by its actual reasoning work.
 - Spark execution has been removed. Reject retired Spark aliases/model IDs and do not revive the deleted CLI executor or silently replace an explicit Spark request with Luna.
-- The 2026-09-30 baseline is Astra=`gpt-6-astra`, Sol=`gpt-6.1-sol`, Luna=`gpt-6-luna`. Unversioned family aliases prefer the newest visible numbered release actually supported by the destination task service, using `model_catalog` evidence as described in `references/model-routing.md`. Never invent a release or silently fall back when the requested effort fails. Follow-ups preserve the existing task's verified route, including historical GPT-6/GPT-5.6 tasks, instead of reapplying today's alias.
+- The 2026-10-27 baseline is Astra=`gpt-6-astra`, Sol=`gpt-6.1-sol`, Terra=`gpt-6.1-terra`, Luna=`gpt-6-luna`. Unversioned family aliases prefer the newest visible numbered release actually supported by the destination executor, using `model_catalog` evidence as described in `references/model-routing.md`. Never invent a release or silently fall back when the requested effort fails. Follow-ups preserve the existing task's verified route, including historical GPT-6/GPT-5.6 tasks, instead of reapplying today's alias.
 - For `unsupported_parameter`, “could not validate reasoning effort” or generic `invalid_request`, retain the exact error and classify the failed stage. Check the destination model/effort pair for capability-validation errors; for `already has an active writer`, recover the bound thread write endpoint. Preserve the requested model and `thinking` during diagnosis, then retry only under the route's supported recovery rule.
 - The synchronization retry allowance applies only to reading an already identified task or retrying title metadata after a classified visibility/readback/title delay. It never authorizes a new task, a model/reasoning change, or a retry of an unsupported parameter, invalid request, permission, authentication, quota, or provider/model failure.
 
@@ -98,7 +101,7 @@ For two or more lanes, or any gated phase transfer:
 4. Decide independence before selecting concurrency. Dispatch all ready conflict-free lanes in the same wave; keep dependent waves serial.
 5. Declare same-file, read/write, service, worktree, lockfile, and generated-output conflicts. Narrow scopes or serialize them; an integration owner does not make concurrent conflicting writes safe.
 6. Route model and reasoning per lane, preserving explicit user choices.
-7. Validate every route attempt with `scripts/validate_dispatch_route.py`, then validate a durable JSON plan with `scripts/validate_orchestration_plan.py`; after creation, validate every normalized visible-task receipt with `scripts/validate_visible_task_receipt.py`. Record the actual tool call in its receipt after plan validation.
+7. Validate visible dispatch attempts with `scripts/validate_dispatch_route.py` and a durable JSON plan with `scripts/validate_orchestration_plan.py`. After visible creation, validate its normalized receipt with `scripts/validate_visible_task_receipt.py`. Explicit internal lanes follow the host collaboration contract and retain native execution/return evidence; apply the visible guards only to visible lanes in a mixed plan.
 
 Do not split a task merely to use more Agents. Keep tightly coupled work in one lane when decomposition would increase integration risk or duplicate context.
 
@@ -112,12 +115,13 @@ For explicit model `auto`, use this policy:
 |---|---|
 | Hardest reasoning, architecture trade-off, or demanding integration (`top_difficulty`) | Astra / `ultra` |
 | Decomposition, scheduling and integration coordination (`orchestration`) | Astra / `high` |
-| Writing, development, or executing an accepted plan (`writing`, `astra_planned_execution`) | Sol / `max` |
-| Desktop computer operation (`computer_operation`) | Sol / `medium` |
-| Simple browser operation (`browser_operation`), mechanical audit/file lookup/script execution or specified status observation (`mechanical`) | Luna / `max` |
+| Writing (`writing`), development (`development`), or executing an accepted plan (`astra_planned_execution`) | Sol / `max` |
+| General computer operation (`computer_operation`) | Terra / `ultra` |
+| Known fixed-step simple browser operation (`browser_operation`) | Terra / `medium` |
+| Mechanical audit/file lookup/script execution or specified status observation (`mechanical`) | Luna / `max` |
 | Anything else or insufficient scope evidence | Obtain an explicit route; do not guess |
 
-Resolve the family to the destination's current model ID before validation. Role effort applies only when reasoning was selected as `auto`; preserve explicit effort and omit unselected axes. A reasoning-only auto request without a role retains `max` and never selects a model. Terra and older exact IDs remain human-selected alternatives. Bare family names select only the model. Tool selection does not lower a task's reasoning needs: a judgmental browser review must be classified by its substantive work.
+Resolve the family to the destination's current model ID before validation. Role effort applies only when reasoning was selected as `auto`; preserve explicit effort and omit unselected axes. A reasoning-only auto request without a role retains `max` and never selects a model. Writing can explicitly select `terra-ultra`; development and accepted Sol execution plans retain their selected routes. Bare family names select only the model. Classify browser research/review by its substantive reasoning work; an unfamiliar UI procedure uses general computer operation.
 
 ## Build the handoff envelope
 

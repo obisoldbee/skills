@@ -25,10 +25,8 @@ def default_config():
     return Path(os.environ.get('XDG_CONFIG_HOME', Path.home()/'.config'))/'skill-automations/lark-bot.json'
 
 def post_payload(notice):
-    title, rows = notice
-    return {'zh_cn': {'title': title, 'content': [[
-        {'tag':'text','text':str(k)+'：','style':['bold']},
-        {'tag':'text','text':str(v)}] for k,v in rows]}}
+    text, _ = notice
+    return {'zh_cn': {'title': '', 'content': [[{'tag':'text','text':text}]]}}
 
 def send_notice(config_path, chat_id, key, notice):
     """Use an explicitly configured bot profile, not a host-injected user identity."""
@@ -92,17 +90,12 @@ def locked(directory):
         connection.close()
 
 def transition_notice(service, event, page, detail, extra=None):
-    entered = event['kind'] == 'entered'
-    title = NAMES[service] + ('｜维护中' if entered else '｜维护结束')
-    rows = [('时间',event['time']+'（北京）'),
-            ('状态','已确认服务维护，本轮暂停业务' if entered else '已确认服务恢复'),
-            ('页面',page)]
-    if detail: rows.append(('本轮',' '.join(detail.split())[:160]))
-    rows.append(('后续','持续维护不重复提醒；恢复时通知' if entered else '已恢复原任务流程'))
-    if extra:
-        rows.append(('任务结果',extra[0]))
-        rows.extend((k,v) for k,v in extra[1] if k not in ('时间','页面','后续'))
-    return title, rows
+    # Evidence, timestamps and page diagnostics stay in the caller's records.
+    # On recovery an actionable business notice replaces the recovery sentence.
+    if event['kind'] != 'entered' and extra:
+        return extra[0], []
+    suffix = '正在维护。' if event['kind'] == 'entered' else '已恢复。'
+    return NAMES[service] + suffix, []
 
 def observe(directory, service, phase, sender, *, page, evidence='', detail='', extra=None):
     """Serialize observation and delivery; suppress unchanged states across processes/days."""

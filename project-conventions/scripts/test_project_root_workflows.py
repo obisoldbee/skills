@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -117,6 +118,73 @@ class ProjectRootWorkflowTests(unittest.TestCase):
                 self.assertEqual(validated.returncode, 0, validated.stderr)
                 self.assertEqual(json.loads(validated.stdout)["status"], "valid")
                 self.assertFalse((root / ".git").exists())
+
+    def test_task_materials_are_discoverable_without_empty_task_trees(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            for policy in ("worktree-first", "legacy-claims"):
+                for project_type in ("code", "document", "hybrid"):
+                    with self.subTest(policy=policy, project_type=project_type):
+                        root = Path(raw) / f"{policy}-{project_type}"
+                        self.initialize(
+                            root, project_type,
+                            extra=["--coordination-policy", policy],
+                        )
+                        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+                        self.assertTrue("docs/tasks/README.md" in agents, "task routing missing from generated AGENTS")
+                        self.assertIn("YYYY-MM-DD-type-topic-HHMMSS", agents)
+                        self.assertIn("Resume, retry and add evidence in the existing task directory", agents)
+                        self.assertIn("AGENTS.md#task-materials", (root / "README.md").read_text())
+                        if policy == "worktree-first":
+                            access_readme = root / ".project-conventions/ACCESS.md"
+                            local_links = [
+                                link for link in re.findall(r"\]\(([^)]+)\)", access_readme.read_text())
+                                if "://" not in link
+                            ]
+                            self.assertTrue(local_links, "generated policy has no task routing link")
+                            for link in local_links:
+                                destination = access_readme.parent / link.split("#", 1)[0]
+                                self.assertTrue(destination.is_file(), f"broken generated policy link: {link}")
+                        if project_type == "document":
+                            self.assertIn("docs/tasks/", (root / "INDEX.md").read_text())
+                        self.assertFalse((root / "docs/tasks").exists())
+                        repeated = self.initialize(
+                            root, project_type,
+                            extra=["--coordination-policy", policy],
+                        )
+                        self.assertEqual(repeated["status"], "already_initialized")
+                        validated = self.run_command([sys.executable, "-B", str(VALIDATOR), str(root)])
+                        self.assertEqual(validated.returncode, 0, validated.stderr)
+
+    def test_adoption_preserves_task_indexes_evidence_and_legacy_locations(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw) / "adopt-tasks"
+            files = {
+                "AGENTS.md": b"# Local rules\n\n- Keep historical task paths.\n",
+                "README.md": b"# Existing navigation\n",
+                "docs/tasks/README.md": b"# Tasks\n\n[Legacy](../../legacy-acceptance/README.md)\n",
+                "legacy-acceptance/README.md": b"# Existing acceptance\n",
+                "legacy-acceptance/evidence/raw.bin": bytes(range(256)),
+                "docs/tasks/2026-10-23-复核-示例-120000/README.md": b"# Resume this task\n",
+                "docs/tasks/2026-10-23-复核-示例-120000/evidence/original.bin": b"original\x00evidence",
+            }
+            for relative, content in files.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+            result = self.initialize(root, mode="adopt-existing", extra=["--coordination-policy", "worktree-first"])
+            self.assertEqual(result["moved"], [])
+            for relative, content in files.items():
+                actual = (root / relative).read_bytes()
+                if relative == "AGENTS.md":
+                    self.assertTrue(actual.startswith(content))
+                    self.assertTrue(b"docs/tasks/README.md" in actual, "task routing missing from adopted AGENTS")
+                else:
+                    self.assertEqual(actual, content, relative)
+            self.assertEqual(
+                {path.relative_to(root / "docs/tasks").as_posix() for path in (root / "docs/tasks").rglob("*")},
+                {"README.md", "2026-10-23-复核-示例-120000", "2026-10-23-复核-示例-120000/README.md", "2026-10-23-复核-示例-120000/evidence", "2026-10-23-复核-示例-120000/evidence/original.bin"},
+            )
+            self.assertEqual(self.initialize(root, mode="adopt-existing", extra=["--coordination-policy", "worktree-first"])["status"], "already_initialized")
 
     def test_nested_records_directory_is_created_and_validated(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

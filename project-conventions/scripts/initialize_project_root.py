@@ -139,6 +139,15 @@ def validate_existing_path_components(target: Path, relative: str | None, label:
             break
 
 
+def render_task_materials_rules() -> str:
+    return """## Task materials
+
+- Unless this project declares another location, keep multi-file investigation, acceptance, recheck and training bundles in `docs/tasks/YYYY-MM-DD-type-topic-HHMMSS/`, using the task's declared timezone. Read `docs/tasks/README.md` when present and locate the existing task first.
+- Resume, retry and add evidence in the existing task directory. Reserve a new task directory exclusively; append a short task ID on collision. Create its README and only needed reports, evidence and attachments. Create `docs/tasks/README.md` with the first task; one integrator maintains its links. Short tasks may use one README; create no empty task tree in advance.
+- Keep standalone specs, plans, research, reviews and reports in their existing categories. Source, reusable scripts and build environments stay in the mapped source/runtime location, normally `src/`; one-off evidence scripts may accompany evidence. Preserve original inputs and historical paths; moves require separate migration authority.
+"""
+
+
 def render_access_block(project_profile: str, skill_name: str | None, coordination_policy: str = "worktree-first") -> str:
     skill_rules = (
         f"""
@@ -162,6 +171,8 @@ def render_access_block(project_profile: str, skill_name: str | None, coordinati
 - Do not run `enter/check/finish/recover` or request claim cleanup for ordinary work. Legacy SQLite claims are historical metadata, not admission authority under this policy. Preserve the old database; inspect actual processes when a runtime resource conflicts.
 - Record meaningful work in a unique task record; the integrator updates canonical logs and indexes. Do not hold a project-wide claim for records or number allocation.
 - Verify Git root/common-directory mappings before using a copied directory; preserve its existing content and runtime metadata.
+
+{render_task_materials_rules()}
 {skill_rules.rstrip()}
 {MANAGED_END}"""
     return f"""{MANAGED_START}
@@ -179,6 +190,8 @@ def render_access_block(project_profile: str, skill_name: str | None, coordinati
 - For a bounded foreground command, prefer `run --actor <label> --write-dir <output> -- <command>`; declare every write path and keep child processes in the foreground. It releases on normal completion, command failure and start failure. Do not hold an entire-project writer across a whole conversation.
 - Never auto-clear another claim. `recover` requires explicit user authorization, a reason, a dry-run, and then `--apply`.
 - This managed block adopts the helper for this Project Root: if it is missing or fails, remain read-only. Keep unrelated legacy projects on their current rules.
+
+{render_task_materials_rules()}
 {skill_rules.rstrip()}
 {MANAGED_END}"""
 
@@ -226,6 +239,7 @@ def render_agents(
 |---|---|
 | `README.md` | Human overview |
 {index_row}| `docs/` | Formal project documents |
+| `docs/tasks/` (on demand) | Task bundles; read `docs/tasks/README.md` when present |
 | `conversation/` | Decisions and collaboration history |
 | `memory/` | Project-owned continuity |
 {src_row}| `.project-conventions/` | Worktree-first collaboration entry; legacy runtime stays local and ignored |
@@ -270,15 +284,22 @@ This is an initialized {project_type.title()} Project Root.
 | `AGENTS.md` | Mandatory Agent entry and routing rules |
 | `.project-conventions/ACCESS.md` | Worktree-first collaboration policy and legacy compatibility |
 | `docs/` | Formal documents |
+| `docs/tasks/` (on demand) | Related task reports, evidence and attachments |
 | `conversation/` | Decision and collaboration records |
 | `memory/` | Project continuity |
 {skill_row}
+
+For task naming, continuation and preservation rules, see [Task materials](AGENTS.md#task-materials). Create the task index and a bundle only when an actual task needs them.
 """
 
 
 def render_access_readme(coordination_policy: str = "worktree-first") -> str:
     if coordination_policy == "worktree-first":
-        return (Path(__file__).resolve().parents[1] / "references" / "worktree-collaboration.md").read_text(encoding="utf-8")
+        workflow = (Path(__file__).resolve().parents[1] / "references" / "worktree-collaboration.md").read_text(encoding="utf-8")
+        # ACCESS.md is copied into the project without the Skill's references.
+        return workflow.replace(
+            "(task-artifacts.md)", "(../AGENTS.md#task-materials)",
+        )
     return """# Project Access — Protocol 2
 
 This directory is project-owned coordination infrastructure, not a Harness directory.
@@ -330,6 +351,7 @@ def render_index(project_name: str, records_dir: str | None) -> str:
 | Path | Purpose |
 |---|---|
 | `docs/` | Current formal documents |
+| `docs/tasks/` (on demand) | Task bundles; follow `AGENTS.md` Task materials |
 {records_row}| `conversation/` | Decisions and working history |
 | `memory/` | Project continuity |
 """

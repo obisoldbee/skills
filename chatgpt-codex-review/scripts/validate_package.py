@@ -18,7 +18,8 @@ REQUIRED = {
     "scripts/validate_package.py", "scripts/local_packet.py", "tests/test_local_packet.py", "tests/test_review_cycle.py",
     "scripts/validate_browser_binding.py", "tests/test_execution_contracts.py",
     "tests/test_source_and_artifacts.py",
-    "tests/test_scheduler.py",
+    "tests/test_scheduler.py", "tests/test_current_task_inline.py",
+    "tests/test_web_executor_routes.py",
     "references/execution-incidents-2026-10-07.md",
 }
 

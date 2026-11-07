@@ -60,6 +60,10 @@ Publication class and runtime eligibility are independent. Environment-bound Ski
 
 The shared Skills initializer creates a complete `skills/` control project, four independent projections of the public repository-root management entries, and a stable member wrapper. It never projects the whole checkout as `skills/src/skills` and never copies repository-root files into the control project. Control exports point directly to true Git packages so Agent consumers never form a link chain.
 
+## Task materials
+
+Multi-file investigation, acceptance, recheck and training materials default to the owning Project Root's `docs/tasks/`. Read its task index before creating a new bundle; continuation, retries and added evidence reuse the same directory. [Task material rules and templates](references/task-artifacts.md) define naming, navigation and preservation. Initializers include brief routing in AGENTS/README without prebuilding empty task trees; existing projects and historical bundles change only within their own maintenance/migration authority.
+
 ## Validate
 
 The deterministic Python tools support Python 3.11 and newer. CI exercises the Windows initializer junction fallback on Python 3.11 and the native junction API on the latest Python. This is separate from consumer creation: the repository Windows link script supports scoped `-Agent`/`-Target` apply with the tested NT directory-handle helper; combined `-SyncDevice -Apply` is unavailable. Validate Windows consumer installation through the scoped consumer tests.

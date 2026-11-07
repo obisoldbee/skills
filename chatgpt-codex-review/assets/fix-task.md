@@ -34,4 +34,4 @@ Controller/协调入口：{{CONTROLLER_REF}}
 ```
 
 worktree 尚未分配时，Controller 先按宿主规则创建/复用并回读真实路径，不能把示意路径作为实际工作区。源码/日志不要写进主任务与其他 worker 共用的相同物理文件。
-Sol 不操作网页、下载文件或 Controller 的 state/events；Luna 负责把新版本送回同一网页对话。
+Sol 不操作网页、下载文件或 Controller 的 state/events；Web IO 负责把新版本送回同一网页对话。

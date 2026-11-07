@@ -43,6 +43,7 @@ REQUIRED_FILES = {
     "references/projects-workspace.md",
     "references/review-naming.md",
     "references/shared-repository.md",
+    "references/task-artifacts.md",
     "references/versioned-records.md",
 }
 REQUIRED_DIRECTORIES = {"agents", "references", "scripts"}

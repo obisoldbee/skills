@@ -47,7 +47,7 @@ Under worktree-first, concurrent Agents create unique task records without clobb
 ### Modification 1: [what was changed]
 - **Original (agent proposal)**: [the original]
 - **Changed to**: [the user's version]
-- **Reason**: [the user's stated reason, or inferred rationale]
+- **Reason**: [the user's stated reason; write unknown when none was stated]
 
 ### Modification 2: [what was changed]
 - **Original**: [the original]
@@ -58,7 +58,7 @@ Under worktree-first, concurrent Agents create unique task records without clobb
 
 ## Rationale
 
-[The "why" behind the user's modifications. This section is the most valuable part — it captures decision-making context that would otherwise be lost. Address:]
+[Record the user's stated rationale and its source. Label an Agent interpretation as inferred and keep it separate from the user's reasons. Omit unanswered items rather than filling gaps. Address what the available evidence supports:]
 
 - Why did the user reject or modify the agent's proposal?
 - What constraint, preference, or insight did the user have that the agent didn't?
@@ -85,6 +85,8 @@ Under worktree-first, concurrent Agents create unique task records without clobb
 ## Worked Example
 
 Below is a condensed example based on a real decision (brand naming for the OB Dim project).
+
+Its names, numbers, model choices and actions illustrate record structure. Fill a new record from that task's actual evidence.
 
 ```markdown
 # 05-Brand and Naming

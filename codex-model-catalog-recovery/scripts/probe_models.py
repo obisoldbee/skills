@@ -160,6 +160,8 @@ def main():
                       'codex_home': str(home), 'cwd': str(cwd),
                       'expected_model': args.expect, 'expected_visible': visible,
                       'desktop_ui_verified': False, 'inference_tested': False,
+                      'config_context_verified': False,
+                      'launch_context': 'default_app_server_no_profile_overrides',
                       'models': models}, ensure_ascii=False, indent=2))
     return 0 if visible else 3
 

@@ -15,7 +15,7 @@ ROUTE_BASES = {
     "explicit_auto",
     "platform_default",
 }
-SURFACES = {"visible_thread"}
+SURFACES = {"visible_thread", "internal_agent"}
 OPERATIONS = {"initial_dispatch", "followup", "sync_retry", "failure_report"}
 ACTIONS = {
     "create_visible_task",
@@ -53,45 +53,55 @@ FAILURE_CLASSES = {
 
 ASTRA_MODEL = "gpt-6-astra"
 SOL_MODEL = "gpt-6.1-sol"
+TERRA_MODEL = "gpt-6.1-terra"
 LUNA_MODEL = "gpt-6-luna"
-MODEL_NAMES = {"astra": ASTRA_MODEL, "gpt6": ASTRA_MODEL, "sol": SOL_MODEL, "luna": LUNA_MODEL}
+MODEL_NAMES = {"astra": ASTRA_MODEL, "gpt6": ASTRA_MODEL, "sol": SOL_MODEL,
+               "terra": TERRA_MODEL, "luna": LUNA_MODEL}
 ROLE_ROUTES = {
     "top_difficulty": ("astra", "ultra"),
     "orchestration": ("astra", "high"),
     "writing": ("sol", "max"),
+    "development": ("sol", "max"),
     "astra_planned_execution": ("sol", "max"),
-    "computer_operation": ("sol", "medium"),
+    "computer_operation": ("terra", "ultra"),
     "mechanical": ("luna", "max"),
-    "browser_operation": ("luna", "max"),
+    "browser_operation": ("terra", "medium"),
 }
-FAMILY_BASELINES = {"astra": ASTRA_MODEL, "sol": SOL_MODEL, "luna": LUNA_MODEL}
-AUTO_MODELS = {ASTRA_MODEL, SOL_MODEL, LUNA_MODEL}
+FAMILY_BASELINES = {"astra": ASTRA_MODEL, "sol": SOL_MODEL, "terra": TERRA_MODEL, "luna": LUNA_MODEL}
+AUTO_MODELS = set(FAMILY_BASELINES.values())
 # Tombstones prevent old prompts from reviving a removed executor. No fallback.
 RETIRED_ROUTES = {"spark", "spark-xhigh", "gpt-5.3-codex-spark"}
 KNOWN_EFFORTS = {
     ASTRA_MODEL: {"low", "medium", "high", "xhigh", "max", "ultra"},
     SOL_MODEL: {"low", "medium", "high", "xhigh", "max", "ultra"},
+    TERRA_MODEL: {"low", "medium", "high", "xhigh", "max", "ultra"},
     LUNA_MODEL: {"low", "medium", "high", "xhigh", "max"},
     "gpt-6-sol": {"low", "medium", "high", "xhigh", "max", "ultra"},
 }
 ALIASES = {
-    "astra-high": (ASTRA_MODEL, "high", "visible_thread"),
-    "sol-medium": (SOL_MODEL, "medium", "visible_thread"),
-    "astra-ultra": (ASTRA_MODEL, "ultra", "visible_thread"),
-    "gpt6-ultra": (ASTRA_MODEL, "ultra", "visible_thread"),
-    "astra-max": (ASTRA_MODEL, "max", "visible_thread"),
-    "gpt6-max": (ASTRA_MODEL, "max", "visible_thread"),
-    "sol-ultra": (SOL_MODEL, "ultra", "visible_thread"),
-    "sol-max": (SOL_MODEL, "max", "visible_thread"),
-    "terra-max": ("gpt-5.6-terra", "max", "visible_thread"),
-    "luna-max": (LUNA_MODEL, "max", "visible_thread"),
+    "astra-high": (ASTRA_MODEL, "high"),
+    "astra-xhigh": (ASTRA_MODEL, "xhigh"),
+    "sol-medium": (SOL_MODEL, "medium"),
+    "astra-ultra": (ASTRA_MODEL, "ultra"),
+    "gpt6-ultra": (ASTRA_MODEL, "ultra"),
+    "astra-max": (ASTRA_MODEL, "max"),
+    "gpt6-max": (ASTRA_MODEL, "max"),
+    "sol-ultra": (SOL_MODEL, "ultra"),
+    "sol-max": (SOL_MODEL, "max"),
+    "terra-medium": (TERRA_MODEL, "medium"),
+    "terra-xhigh": (TERRA_MODEL, "xhigh"),
+    "terra-ultra": (TERRA_MODEL, "ultra"),
+    "terra-max": (TERRA_MODEL, "max"),
+    "luna-max": (LUNA_MODEL, "max"),
 }
 LEGACY_ALIASES = {
-    "sol-ultra": ("gpt-5.6-sol", "ultra", "visible_thread"),
-    "sol-max": ("gpt-5.6-sol", "max", "visible_thread"),
-    "luna-max": ("gpt-5.6-luna", "max", "visible_thread"),
+    "sol-ultra": ("gpt-5.6-sol", "ultra"),
+    "sol-max": ("gpt-5.6-sol", "max"),
+    "terra-max": ("gpt-5.6-terra", "max"),
+    "luna-max": ("gpt-5.6-luna", "max"),
 }
-LEGACY_AUTO_MODELS = {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-sol"}
+LEGACY_AUTO_MODELS = {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-sol",
+                      SOL_MODEL, LUNA_MODEL}
 MISSING = object()
 REASONING_TIERS = ("low", "medium", "high", "xhigh", "max", "ultra")
 
@@ -370,19 +380,19 @@ def validate_route(route, field="route", allow_legacy_continuation=False):
             )
 
     expected = ALIASES.get(requested_route)
-    actual = (model, reasoning, surface)
+    actual = (model, reasoning)
     alias_family = requested_route.split('-')[0]
     if expected and alias_family in FAMILY_BASELINES:
         selected = (model if allow_legacy_continuation and family_version(model or '', alias_family)
                     else family_model(alias_family))
-        expected = (selected, expected[1], expected[2])
+        expected = (selected, expected[1])
     if allow_legacy_continuation and actual == LEGACY_ALIASES.get(requested_route):
         expected = actual
     if expected and actual != expected:
         add_error(
             errors,
             f"{field} alias {requested_route} requires model={expected[0]}, "
-            f"reasoning={expected[1]}, surface={expected[2]}",
+            f"reasoning={expected[1]}",
         )
 
     if expected and (
@@ -403,8 +413,6 @@ def validate_route(route, field="route", allow_legacy_continuation=False):
         )
 
     if requested_route == "platform-default":
-        if surface != "visible_thread":
-            add_error(errors, f"{field} platform-default requires surface=visible_thread")
         if model_basis != "platform_default" or reasoning_basis != "platform_default":
             add_error(
                 errors,
@@ -532,8 +540,18 @@ def resolve_request_case(request, context=None):
     context = context if isinstance(context, dict) else {}
     text = request.strip()
     lowered = text.lower()
+    # Bounded fixture grammar: the executor pair and requested surface are separate.
+    internal = bool(re.search(r"子智能体|subagent|内部\s*agent", lowered))
+    visible = bool(re.search(r"可见(?:任务|聊天)|新对话|visible\s+(?:task|chat)", lowered))
+    if internal and visible:
+        raise ValueError("conflicting surfaces require a resolved lane")
+    surface = context.get('surface', 'internal_agent' if internal else 'visible_thread')
+    if surface not in SURFACES or (visible and surface != 'visible_thread') or (internal and surface != 'internal_agent'):
+        raise ValueError("surface conflicts with the requested executor surface")
 
     if (
+        surface == 'visible_thread'
+        and
         context.get("recipient_create_thread") is False
         and context.get("recipient_cli") is False
     ):
@@ -561,7 +579,7 @@ def resolve_request_case(request, context=None):
         alias = alias_match.group(1)
         if alias in RETIRED_ROUTES:
             raise ValueError("retired_route: Spark execution has been removed")
-        model, reasoning, surface = ALIASES[alias]
+        model, reasoning = ALIASES[alias]
         family = alias.split('-')[0]
         if family in FAMILY_BASELINES:
             model = resolve_family(family, context.get('model_catalog'))
@@ -578,10 +596,10 @@ def resolve_request_case(request, context=None):
         )
 
     model_matches = list(re.finditer(
-        r"模型用\s*(gpt-[a-z0-9.-]+|(?:astra|sol|luna|gpt6)(?![a-z0-9.-]))",
+        r"模型用\s*(gpt-[a-z0-9.-]+|(?:astra|sol|terra|luna|gpt6)(?![a-z0-9.-]))",
         lowered,
     ))
-    model_name_pattern = r"(astra|sol|luna|gpt6)(?![a-z0-9.-])"
+    model_name_pattern = r"(astra|sol|terra|luna|gpt6)(?![a-z0-9.-])"
     name_match = re.search(
         r"(?:用|使用)\s*" + model_name_pattern + r"\s*(?:创建|派发|dispatch|create)",
         lowered,
@@ -625,7 +643,7 @@ def resolve_request_case(request, context=None):
             if context.get("task_kind") != "top_difficulty" and context.get("lane_difficulty") != "high":
                 raise ValueError("needs_explicit_route: verify top-difficulty design before an automatic Astra/Sol pipeline")
             return {
-                "surface": "visible_thread_pipeline",
+                "surface": surface + "_pipeline",
                 "requested_route": "auto",
                 "model_basis": "explicit_auto",
                 "reasoning_basis": "explicit_auto",
@@ -667,7 +685,6 @@ def resolve_request_case(request, context=None):
             else ROLE_ROUTES.get(kind, (None, 'max'))[1] if reasoning_auto
             else None
         )
-        surface = "visible_thread"
         route = {
             "requested_route": "auto" if model_auto or reasoning_auto
             else requested_model if model_match else "reasoning-only",
@@ -688,13 +705,15 @@ def resolve_request_case(request, context=None):
 
         return _decision_from_route(route)
 
-    if any(marker in text for marker in ("创建一个新任务", "创建任务", "创建一个任务")):
+    if any(marker in text for marker in ("创建一个新任务", "创建任务", "创建一个任务")) or (
+        internal and re.search(r"创建|派发|create|dispatch", lowered)
+    ):
         return _decision_from_route(
             {
                 "requested_route": "platform-default",
                 "model": None,
                 "reasoning": None,
-                "surface": "visible_thread",
+                "surface": surface,
                 "model_basis": "platform_default",
                 "reasoning_basis": "platform_default",
             }
@@ -818,6 +837,8 @@ def validate_attempt(attempt):
             and not route_changed
         ),
     )
+    if route.get('surface') != 'visible_thread':
+        add_error(route_errors, 'visible_dispatch_required: this attempt guard is for visible_thread; internal collaboration uses the host contract')
     for error in route_errors:
         add_error(errors, error)
 

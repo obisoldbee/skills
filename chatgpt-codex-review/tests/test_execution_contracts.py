@@ -12,6 +12,7 @@ import unittest
 from test_review_cycle import (HELPER, ROOT, apply, event, followup, observation, preparation,
                                receipt, state, submission, with_required)
 from test_scheduler import authorized, collected, delivery, notification_check, scheduled, recovery
+from test_source_and_artifacts import FILES
 
 SPEC = importlib.util.spec_from_file_location("browser_binding", ROOT / "scripts/validate_browser_binding.py")
 BROWSER = importlib.util.module_from_spec(SPEC)
@@ -712,6 +713,217 @@ class WebReviewRegressionTests(unittest.TestCase):
         self.assertEqual(old["delivery_status"], "delivered")
         self.assertEqual(old["controller_event"], original)
         self.assertFalse(reconciled["activate_controller"])
+
+
+class MarkdownReportCollectionTests(unittest.TestCase):
+    BODY = "# Review report\n\n## Findings\nFull analysis.\n\n## Sources\nhttps://example.com/source\n\n## Limitations\nUnverified items recorded.\n\nReport complete.\n"
+
+    def current(self, directory):
+        current = authorized(state())
+        current.update(execution_scope="review_only", submitted_user_message_id="user-message", artifact_root=directory)
+        current["controller_notification_authorization"]["policy"].update(max_deliveries=1, triggers=["review_completed"])
+        current["artifact_contract"] = {"required": [{"name": "review-report.md", "kind": "utf8"}], "optional": []}
+        current["contract_digest"] = HELPER.contract_digest(current["artifact_contract"])
+        current["prepared_request"].update(contract_digest=current["contract_digest"], execution_scope="review_only",
+                                           requirements_ref="source/original-request.md")
+        path = Path(directory) / "review-report.md"
+        path.write_text(self.BODY, encoding="utf-8")
+        binding = {key: current[key] for key in ("run_id", "round", "source_id", "request_token", "consumer_host", "artifact_root")}
+        current["artifact_receipt"] = FILES.verify({"binding": binding, "artifact_contract": current["artifact_contract"],
+                                                    "files": {"review-report.md": str(path)}})
+        return current
+
+    def proof(self, current):
+        receipt = current["artifact_receipt"]
+        return {"complete": True, "requirements_ref": current["prepared_request"]["requirements_ref"],
+                "body_sha256": "c" * 64, "evidence_ref": "coverage/requested-report.json",
+                "report_artifact": {"binding": HELPER.observer_binding(current), "name": "review-report.md",
+                    "sha256": receipt["files"]["review-report.md"]["sha256"],
+                    "receipt_sha256": HELPER.notification_digest(receipt),
+                    "download_ref": "runtime/report-download.json", "readback_ref": "coverage/report-readback.json",
+                    "coverage_complete": True, "required_sections": ["## Findings", "## Sources", "## Limitations"],
+                    "ending_verified": True, "references_verified": True}}
+
+    def full(self, current, proof=None, **fields):
+        proof = self.proof(current) if proof is None else proof
+        fields = {"response_interrupted": True, "full_body_saved": False, **fields, "requested_output_collection": proof}
+        first = HELPER.decide(current, scheduled(current, **fields))
+        return HELPER.decide(current, scheduled(current, 10, **fields), first["observer_updates"])
+
+    def test_verified_required_markdown_notifies_with_original_partial_ui_facts_and_normal_qa(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            full = self.full(current)
+            self.assertEqual(full["action"], "notify_controller")
+            original = copy.deepcopy(full["controller_event"])
+            self.assertTrue(original["response_interrupted"])
+            self.assertFalse(original["full_body_saved"])
+            self.assertFalse(original["prior_observation"]["full_body_saved"])
+            self.assertEqual(full["observer_updates"]["notifications"][0]["attempts"], 1)
+            self.assertNotIn("review", current)
+            current = apply(current, HELPER.decide(current, original, full["observer_updates"]))
+            self.assertEqual(current["phase"], "review_ready")
+            self.assertFalse(current["last_completion"]["full_body_saved"])
+            self.assertTrue(current["last_completion"]["response_interrupted"])
+            qa = HELPER.decide(current, event(current, "assessment", review_message_id="message-1", coverage_complete=True,
+                                             confirmed_findings=0, unresolved_claims=0), full["observer_updates"])
+            self.assertEqual(qa["action"], "run_local_checks")
+            self.assertFalse(qa["terminal"])
+            self.assertEqual(full["controller_event"], original)
+
+    def test_file_can_complete_before_the_partial_summary_finishes_streaming(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            full = self.full(current, generation="generating", completion_controls=False)
+            self.assertEqual(full["action"], "notify_controller")
+            self.assertEqual(full["controller_event"]["generation"], "generating")
+            self.assertFalse(full["controller_event"]["completion_controls"])
+
+    def test_verified_report_returns_inline_without_message_authority_or_schedule(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            current.update(followup_mode="inline", followup=None, web_io_binding=None,
+                controller_notification_authorization=None,
+                inline_policy={"basis": "current_task", "task_instruction_ref": "authority/request.md",
+                               "native_return_ref": "runtime/parent-return.json", "turn_id": "active-turn"},
+                inline_observer_binding={"surface": "internal_agent", "agent_id": "/root/luna-report",
+                    "execution_ref": "runtime/luna.json", "turn_id": "active-turn", "model": "gpt-6-luna", "reasoning": "max",
+                    "model_readback_ref": "runtime/pair.json", "reasoning_readback_ref": "runtime/pair.json",
+                    "runtime_pair_verified": True, "verified_at": "2026-01-01T00:00:00+00:00",
+                    "deadline_at": "2026-01-01T00:10:00+00:00"})
+            fields = {"response_interrupted": True, "full_body_saved": False, "requested_output_collection": self.proof(current),
+                      "type": "inline_observation", "inline_execution_ref": "runtime/luna.json", "inline_turn_id": "active-turn"}
+            first = HELPER.decide(current, {**observation(current), **fields})
+            full = HELPER.decide(current, {**observation(current, 10), **fields}, first["observer_updates"])
+            self.assertEqual(full["action"], "return_to_controller")
+            self.assertEqual(full["schedule_action"], "none")
+            self.assertEqual(full["observer_updates"]["notifications"][0]["attempts"], 0)
+
+    def test_report_stability_does_not_require_the_streaming_summary_to_stop_changing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            proof = self.proof(current)
+            first = HELPER.decide(current, scheduled(current, response_interrupted=True, full_body_saved=False,
+                generation="generating", requested_output_collection=proof))
+            later = {**proof, "body_sha256": "d" * 64}
+            full = HELPER.decide(current, scheduled(current, 10, response_interrupted=True, full_body_saved=False,
+                generation="generating", body_sha256="d" * 64, body_chars=250, requested_output_collection=later), first["observer_updates"])
+            self.assertEqual(full["action"], "notify_controller")
+            self.assertEqual(full["controller_event"]["body_sha256"], "d" * 64)
+            self.assertEqual(full["controller_event"]["prior_observation"]["body_sha256"], "c" * 64)
+
+    def test_changing_summary_never_creates_another_notification_after_file_collection_or_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            full = self.full(current)
+            ledger = full["observer_updates"]
+            original = copy.deepcopy(ledger["notifications"])
+            changed_proof = {**self.proof(current), "body_sha256": "d" * 64}
+            changed = scheduled(current, 20, body_sha256="d" * 64, body_chars=300, generation="generating",
+                                full_body_saved=False, response_interrupted=True, requested_output_collection=changed_proof)
+            pending = HELPER.decide(current, changed, ledger)
+            self.assertFalse(pending["activate_controller"])
+            self.assertFalse(pending["observe_webpage"])
+            self.assertEqual(pending["observer_updates"]["notifications"], original)
+            current = apply(current, HELPER.decide(current, full["controller_event"], ledger))
+            received = HELPER.decide(current, {**changed, "observed_at": "2026-01-01T00:00:30+00:00"}, ledger)
+            self.assertFalse(received["activate_controller"])
+            self.assertFalse(received["observe_webpage"])
+            self.assertEqual(len(received["observer_updates"]["notifications"]), 1)
+            self.assertEqual(received["observer_updates"]["notifications"][0]["key"], full["notification_key"])
+            self.assertEqual(received["observer_updates"]["notifications"][0]["attempts"], 1)
+
+    def test_filename_receipt_or_unverified_coverage_cannot_establish_file_completion(self):
+        changes = ({"sha256": "d" * 64}, {"receipt_sha256": "d" * 64}, {"readback_ref": ""}, {"download_ref": ""},
+                   {"coverage_complete": False}, {"ending_verified": False}, {"references_verified": False},
+                   {"required_sections": ["## Missing section"]}, {"required_sections": []}, {"name": "optional.md"})
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            for change in changes:
+                with self.subTest(change=change):
+                    proof = self.proof(current)
+                    proof["report_artifact"].update(change)
+                    full = self.full(current, proof)
+                    self.assertFalse(full["activate_controller"])
+                    self.assertFalse(full["observer_updates"].get("text_complete", False))
+            for key, value in (("run_id", "other-run"), ("round", 0), ("source_id", "git:" + "b" * 40),
+                               ("contract_digest", "d" * 64), ("artifact_root", str(Path(directory).parent)),
+                               ("conversation_url", "https://chatgpt.com/c/another-request"),
+                               ("submitted_user_message_id", "another-user")):
+                with self.subTest(key=key):
+                    proof = self.proof(current)
+                    proof["report_artifact"]["binding"][key] = value
+                    self.assertFalse(self.full(current, proof)["activate_controller"])
+
+    def test_fresh_format_verification_alone_does_not_make_empty_or_missing_section_report_complete(self):
+        for body in ("", "   \n", self.BODY.replace("## Limitations\nUnverified items recorded.\n", "")):
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as directory:
+                current = self.current(directory)
+                path = Path(directory) / "review-report.md"
+                path.write_text(body, encoding="utf-8")
+                current["artifact_receipt"] = FILES.verify({"binding": current["artifact_receipt"]["binding"],
+                    "artifact_contract": current["artifact_contract"], "files": {"review-report.md": str(path)}})
+                self.assertEqual(current["artifact_receipt"]["files"]["review-report.md"]["status"], "verified")
+                full = self.full(current)
+                self.assertFalse(full["activate_controller"])
+                self.assertFalse(full["observer_updates"].get("text_complete", False))
+            no_file = {key: value for key, value in self.proof(current).items() if key != "report_artifact"}
+            self.assertFalse(self.full(current, no_file)["activate_controller"])
+
+    def test_real_missing_empty_changed_or_outside_file_and_old_receipt_remain_incomplete(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
+            for failure in ("missing", "empty", "changed", "outside", "old_receipt", "optional"):
+                with self.subTest(failure=failure):
+                    current = self.current(directory)
+                    proof = self.proof(current)
+                    path = Path(directory) / "review-report.md"
+                    if failure == "missing":
+                        path.unlink()
+                    elif failure == "empty":
+                        path.write_text("", encoding="utf-8")
+                    elif failure == "changed":
+                        path.write_text(self.BODY.replace("## Limitations\nUnverified items recorded.\n", ""), encoding="utf-8")
+                    elif failure == "outside":
+                        other = Path(outside) / "review-report.md"
+                        other.write_text(self.BODY, encoding="utf-8")
+                        current["artifact_receipt"]["files"]["review-report.md"]["path"] = str(other)
+                        proof["report_artifact"]["receipt_sha256"] = HELPER.notification_digest(current["artifact_receipt"])
+                    elif failure == "old_receipt":
+                        current["artifact_receipt"]["binding"]["round"] = 0
+                        proof["report_artifact"]["receipt_sha256"] = HELPER.notification_digest(current["artifact_receipt"])
+                    else:
+                        current["artifact_contract"] = {"required": [], "optional": [{"name": "review-report.md", "kind": "utf8"}]}
+                        current["contract_digest"] = HELPER.contract_digest(current["artifact_contract"])
+                        current["artifact_receipt"]["contract_digest"] = current["contract_digest"]
+                        proof["report_artifact"].update(binding=HELPER.observer_binding(current),
+                            receipt_sha256=HELPER.notification_digest(current["artifact_receipt"]))
+                    self.assertFalse(self.full(current, proof)["activate_controller"])
+
+    def test_late_file_proof_unlocks_only_original_saved_receipt_without_rewriting_ui(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            first = HELPER.decide(current, scheduled(current, response_interrupted=True))
+            full = HELPER.decide(current, scheduled(current, 10, response_interrupted=True), first["observer_updates"])
+            original = copy.deepcopy(full["controller_event"])
+            item = full["observer_updates"]["notifications"][0]
+            late = HELPER.decide(current, notification_check(current, 20, notification_key=item["key"],
+                notification_receipt_sha256=item["receipt_sha256"], requested_output_collection=self.proof(current)), full["observer_updates"])
+            self.assertEqual(late["action"], "notify_controller")
+            self.assertEqual(late["controller_event"], original)
+            self.assertTrue(late["controller_event"]["response_interrupted"])
+            self.assertFalse(late["observe_webpage"])
+
+    def test_file_changed_after_collection_blocks_only_file_based_complete_assessment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = self.current(directory)
+            full = self.full(current)
+            current = apply(current, HELPER.decide(current, full["controller_event"], full["observer_updates"]))
+            (Path(directory) / "review-report.md").unlink()
+            qa = HELPER.decide(current, event(current, "assessment", review_message_id="message-1", coverage_complete=True,
+                                             confirmed_findings=0, unresolved_claims=0), full["observer_updates"])
+            self.assertEqual(qa["action"], "obtain_required_artifacts")
+            self.assertFalse(qa["terminal"])
+            self.assertNotIn("review", qa["state_updates"])
 
 
 if __name__ == "__main__":

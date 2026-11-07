@@ -1,4 +1,4 @@
-"""Browser IDs survive CLI, health notifications and UTF-8 reports without live I/O."""
+"""Browser IDs survive CLI and local reports; user notices omit internal details."""
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
@@ -62,7 +62,8 @@ class BrowserIdentityTests(unittest.TestCase):
             with self.subTest(identity=identity), tempfile.TemporaryDirectory() as directory:
                 results = []
                 with patch.object(service_health, "send_notice", return_value={
-                        "status": "sent", "message_id": "om_fixture_only"}) as sender:
+                        "status": "sent", "message_id": "om_fixture_only"}) as sender, \
+                        patch.object(service_health, "observe", wraps=service_health.observe) as observed:
                     for phase in ("maintenance", "maintenance", "unknown", "available", "available"):
                         argv = ["service_health.py", "--phase", phase, "--page", "closed",
                                 "--space-id", str(identity), "--evidence", "离线维护状态证据",
@@ -76,9 +77,10 @@ class BrowserIdentityTests(unittest.TestCase):
                                      ["entered", None, None, "recovered", None])
                     self.assertEqual(sender.call_count, 2)
                     label = "空间 9" if type(identity) is int else "页面 " + identity
-                    for call in sender.call_args_list:
-                        rows = dict(call.args[3][1])
-                        self.assertEqual(rows["页面"], "已关闭（" + label + "）")
+                    for call in observed.call_args_list:
+                        self.assertEqual(call.kwargs["page"], "已关闭（" + label + "）")
+                    self.assertEqual([call.args[3] for call in sender.call_args_list],
+                                     [("WorkBuddy正在维护。", []), ("WorkBuddy已恢复。", [])])
                     state = json.loads((Path(directory) / "state.json").read_text())
                     self.assertEqual((state["version"], state["phase"], state["pending"]),
                                      (1, "available", None))

@@ -83,6 +83,22 @@ class ExecutionBindingTests(unittest.TestCase):
         merged["user_route_change"].update(author_is_human=True, user_instruction_ref="authority/direct-change.json")
         self.assertTrue(validate_binding(merged, actual, original)["valid"])
 
+    def test_terra_ui_subagent_and_visible_qa_verify_the_selected_pair_and_surface(self):
+        for scope, effort, surface, tool, identity in (
+            ('ui-operation', 'xhigh', 'internal_agent', 'collaboration.spawn_agent', '/root/ui'),
+            ('independent-qa', 'ultra', 'visible_thread', 'codex_app__read_thread', 'visible-qa-thread'),
+        ):
+            selected = dict(self.selection(), scope_id=scope, model='gpt-6.1-terra',
+                            reasoning=effort, surface=surface)
+            actual = dict(self.actual(), scope_id=scope, model='gpt-6.1-terra', reasoning=effort,
+                          surface=surface, actual_tool=tool, execution_id=identity)
+            self.assertTrue(validate_binding(selected, actual)['execution_verified'])
+            actual['reasoning'] = 'medium'
+            self.assertFalse(validate_binding(selected, actual)['valid'])
+            actual['reasoning'] = effort
+            actual['model'] = 'gpt-5.6-terra'
+            self.assertFalse(validate_binding(selected, actual)['valid'])
+
 
 if __name__ == "__main__":
     unittest.main()

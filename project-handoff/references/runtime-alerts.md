@@ -13,6 +13,33 @@ change effort. Do not attribute both to the same cause without execution logs.
 
 ## Verify the actual turn
 
+First resolve whether the retained choice still applies to this responsibility.
+Record the original instruction, named executor, task/run and completion condition
+in the existing selection record. A choice for one worker does not select the
+Controller. Permission to use a model for “this delivery” ends when that delivery
+and its required review are complete; the manager title alone does not make it a
+permanent model lock. A new run ID or a compaction does not end unfinished work.
+
+For a new direct user request in the current chat, use its current host-selected
+Controller settings when no continuing instruction pins that role. Preserve any
+separately selected worker or observer routes. An observed model difference alone
+does not prove an unauthorized switch or a deliberate user change. Resolve the
+instruction's scope before classifying it as a mismatch; the validator checks the
+supplied selection, not that selection's continuing applicability. Keep completed
+selections as history instead of feeding them into a new scope as `--previous`.
+
+If an earlier permission question or pause was based solely on an inapplicable
+selection, correct the local incident after checking the original instruction and
+closure evidence. Resume the authorized work and any still-needed, authorized
+observer. The unanswered question is not a new human restriction. Keep the old
+record and the correction; actual user stops and tool denials retain their gates.
+
+| Verified context | Action |
+|---|---|
+| Prior delivery was accepted and closed; user now asks this chat to coordinate selected Sol workers | Continue with the current Controller settings; verify the workers against their selection |
+| Same unfinished review or recurring Luna-max observer now runs at low effort | Suspend that execution, retain results and restore the selected route |
+| User explicitly pins the Controller across future tasks | Preserve that continuing choice; a conflicting actual turn requires route recovery |
+
 1. Retain the applicable human/Skill selection, scope, session and each selected
    axis independently. Never derive the expected pair from already drifted
    settings, a task title, or the latest observed value. Unselected axes remain
@@ -29,11 +56,15 @@ change effort. Do not attribute both to the same cause without execution logs.
    `route_unverified`; a conflicting observed field is `route_mismatch`.
    Continue bounded metadata diagnosis and independent authorized work. Do not
    restart or block the whole project for a missing optional display field.
-4. A confirmed mismatch suspends only the affected formal execution/recurrence,
+4. A confirmed mismatch against a still-applicable choice suspends only that
+   route-dependent execution/recurrence,
    preserving artifacts and collection responsibility. Record the actual
    automation pause readback where supported. Notify once through an authorized
    route. Diagnose scheduler/default/catalog versus an explicit user change;
    do not rewrite app databases or silently substitute another executor.
+   State which remaining action actually requires the mismatched route. Continue
+   independent authorized work and healthy observers; an old Controller choice
+   is not a new approval gate for already-authorized merge, install or review.
 5. Resume under the retained route after fresh actual execution evidence, or an
    explicit human route change recorded with its source. A new prompt, unchanged
    ACTIVE timer, or manually relabeled receipt does not clear the incident.
@@ -49,7 +80,10 @@ asking a question. Other blockers must be reported by the responsible executor.
 
 When installing the detector, bind its registry and state-directory paths in the
 local dispatch record; add each selected recurring session before dispatch and
-update it only for a verified scope/route change. It does not automatically
+update it only for a verified scope/route change. Retire a completed scope's
+registry selection while preserving its evidence and pending alerts; enroll a new
+scope from its own applicable instructions. A session ID alone does not extend a
+temporary selection across every later task. It does not automatically
 cover every chat. Explain alerts in the user's language.
 
 Create a local registry outside the public package. Enroll only known sessions

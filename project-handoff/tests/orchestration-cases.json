@@ -22,7 +22,7 @@
           "validation": "test -s reports/inventory.md",
           "route": {
             "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6.1-terra",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -114,7 +114,7 @@
           "validation": "python3 -m unittest",
           "route": {
             "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6.1-terra",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -163,7 +163,7 @@
             "surface": "visible_thread",
             "model_basis": "explicit_auto",
             "reasoning_basis": "explicit_auto",
-            "task_kind": "writing"
+            "task_kind": "development"
           }
         },
         {
@@ -188,7 +188,7 @@
             "surface": "visible_thread",
             "model_basis": "explicit_auto",
             "reasoning_basis": "explicit_auto",
-            "task_kind": "writing"
+            "task_kind": "development"
           }
         }
       ]
@@ -223,7 +223,7 @@
           "validation": "test -s reports/api-test.md",
           "route": {
             "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6.1-terra",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -249,7 +249,7 @@
           "validation": "test -s reports/migration-test.md",
           "route": {
             "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6.1-terra",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -284,7 +284,7 @@
           "validation": "Run the project tests",
           "route": {
             "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6.1-terra",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -306,7 +306,7 @@
           "validation": "Run the project tests",
           "route": {
             "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6.1-terra",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -369,7 +369,7 @@
           "validation": "python3 -m unittest tests.test_feature",
           "route": {
             "requested_route": "terra-max",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6.1-terra",
             "reasoning": "max",
             "surface": "visible_thread",
             "model_basis": "explicit_skill_route",
@@ -513,7 +513,7 @@
             "surface": "visible_thread",
             "model_basis": "explicit_auto",
             "reasoning_basis": "explicit_auto",
-            "task_kind": "writing"
+            "task_kind": "development"
           }
         }
       ]

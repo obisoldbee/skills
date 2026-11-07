@@ -45,7 +45,7 @@ Apply these rules to material, expert, and synthesis audits:
 
 ## Runtime operation evidence
 
-Every author, auditor, topic integrator, and source collector must write one package-confined `runtime-operation-receipt/v1` file described by `artifact-contract.md`. The receipt binds one completed artifact path/hash, role, context, operation ID, start/end time, and successful result state.
+The originating runtime must record one package-confined `runtime-operation-receipt/v1` file for every author, auditor, topic integrator, and source collector, using the actual dispatch result and completed-result readback described by `artifact-contract.md`. The receipt binds one completed artifact path/hash, role, context, operation ID, start/end time, and successful result state.
 
 For Codex, the package-local receipt must preserve both:
 
@@ -123,6 +123,7 @@ Independently review the frozen research source set from the perspective contrac
 
 Constraints:
 - Read the assigned bundled Skill from its relative path; do not simulate the persona from memory.
+- Use its frozen models and expression as a perspective. Treat biography, self-reports and historical medical claims as attributed source material; support research conclusions with the frozen publication corpus and live rule. The Research QA handoff and declared write set govern this attempt, including receipt ownership below.
 - Read the live Akashic rule yourself and calculate its SHA-256. Stop on mismatch with the baseline.
 - Cite only frozen source IDs. Respect abstract-only limits and local-rule fields.
 - Review every ID in the delivered reviewable-source roster and write the exact coverage JSON; a selective subset is not a completed lane.
@@ -135,7 +136,7 @@ Output format:
 - Candidate Markdown with fixed sections for claims, cited evidence, conflicts/limits, counterexamples, non-evidence opinion, and unresolved questions.
 - Coverage JSON listing the exact sorted reviewable source IDs.
 - JSON receipt conforming to artifact-contract.md.
-- Runtime operation receipt for the completed candidate artifact; Codex uses confirmed `create_thread` plus result readback.
+- The originating runtime separately saves the operation receipt from actual dispatch and result readback; it is not an expert-authored output. Codex requires confirmed `create_thread` plus result readback.
 - Output language: {{output_language}}.
 
 Success criteria:

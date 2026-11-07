@@ -28,7 +28,7 @@ It is not:
 
 Each direct or nested child project remains an independent **Project Root** with its own conventions and optional Git history.
 
-The workspace root only routes. After selecting a child Project Root or `_project-catalog/`, every Agent uses that target's project-local access helper before substantive work; the workspace itself does not grant a writer slot.
+The workspace root only routes. After selecting a child Project Root or `_project-catalog/`, read that target's current AGENTS.md. Under worktree-first, read directly, use independent report files, and isolate concurrent tracked-file edits in linked worktrees. A target retaining a legacy runtime dependency follows its own declared entry; an absent helper does not block unrelated work. See [worktree collaboration](worktree-collaboration.md).
 
 The Projects Workspace manages only the current computer. Another computer may contain fewer or different projects and repeats the same local initialization independently.
 
@@ -306,7 +306,7 @@ Do not treat `watchers_count` as actual subscriptions.
 
 1. Inspect the root and confirm Projects Workspace mode.
 2. Propose the minimal overlay and exact files.
-3. Create only after user approval.
+3. Create the conflict-free overlay within the user's existing initialization scope; ask only when the proposed target or files extend it.
 4. Run inspection.
 5. Let the user confirm which existing directories are projects and their four categories.
 6. Populate local indexes.

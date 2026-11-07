@@ -33,7 +33,7 @@ Lowercase identifier from the vocabulary below. If a review is jointly conducted
 | `takeover` | Project handover / takeover | When a new agent or person takes over a project |
 | `user` | Human user's manual review | When the user personally reviews something |
 
-If the reviewer doesn't fit any of the above, propose a new value and document it here. Use a single lowercase word.
+If the reviewer doesn't fit these examples, use a clear single lowercase role in the report metadata and filename. Follow any existing project vocabulary.
 
 ### `<scope>` — What Was Reviewed
 
@@ -48,7 +48,7 @@ Lowercase identifier from the vocabulary below.
 | `spec` | Spec document review | Review of a PRD or spec |
 | `full` | Comprehensive end-to-end review | Full project review covering multiple aspects |
 
-If the scope doesn't fit any of the above, propose a new value and document it here. Use a single lowercase word.
+If the scope doesn't fit these examples, use a clear single lowercase scope in the report metadata and filename. Follow any existing project vocabulary.
 
 ### `HHMMSS` — Review Start Time
 
@@ -136,13 +136,13 @@ The exact content format is left to the reviewing agent's discretion or domain-s
 
 ## Migration of Existing Review Files
 
-When encountering review files that don't conform to this naming convention:
+Preserve existing review names during ordinary work. When the user requests a naming migration:
 
 1. **Do not rename unilaterally** — other documents may reference the old name.
 2. **Propose a migration** listing each file and its target name.
-3. **Get user confirmation** before renaming.
+3. **Use the authorized exact map**; ask only if the proposed paths or collision handling change it.
 4. **Update references** in other documents (README, conversation files, etc.).
-5. **Record the migration** in `conversation/` and `memory/`.
+5. **Record the mapping and verification** in the existing task or migration record; add other records only when they provide useful continuity within scope.
 
 ### Common Migration Mappings
 

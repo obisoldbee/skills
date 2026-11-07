@@ -11,6 +11,7 @@ import sys
 from urllib.parse import urlsplit
 
 from validate_browser_binding import validate_binding as validate_browser_driver
+from verify_artifacts import verify_one
 
 
 PHASES = {
@@ -23,6 +24,7 @@ SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 ARTIFACT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 GITHUB_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 LUNA_MODEL = re.compile(r"gpt-(\d+(?:\.\d+)*)-luna\Z")
+TERRA_MODEL = re.compile(r"gpt-(\d+(?:\.\d+)*)-terra\Z")
 SCOPES = {"repair_loop", "review_only", "materials_only"}
 BROWSER_FAULTS = {"space_missing", "space_closed", "browser_crash", "connection_failed"}
 HUMAN_BROWSER_GATES = {"auth", "user_control", "permission_denied"}
@@ -200,11 +202,26 @@ def prepared_request(state):
             and SHA256.fullmatch(prepared["sha256"]) is not None)
 
 
-def luna_pair(binding):
+def web_executor_pair(binding):
+    # New routine browser work uses Terra medium. Existing Luna owners retain
+    # their selected pair; owner and per-turn readbacks are validated separately.
+    terra = TERRA_MODEL.fullmatch(str(binding.get("model", "")))
+    if terra is not None and tuple(map(int, terra[1].split("."))) >= (6, 1):
+        if binding.get("reasoning") == "medium":
+            return True
+        if (binding.get("reasoning") == "ultra"
+                and binding.get("task_kind") == "computer_operation"
+                and binding.get("route_basis") in {"explicit_skill_route", "explicit_auto"}
+                and nonempty(binding.get("route_selection_ref"))):
+            return True
     match = LUNA_MODEL.fullmatch(str(binding.get("model", "")))
     if match is not None and int(match[1].split(".")[0]) >= 6 and binding.get("reasoning") == "max":
         return True
     if binding.get("route_basis") == "explicit_user" and nonempty(binding.get("user_override_ref")):
+        return True
+    # Handoff aliases and a selected specialized workflow retain their exact
+    # pair. The caller verifies this selection source and the runtime readback.
+    if binding.get("route_basis") == "explicit_skill_route" and nonempty(binding.get("route_selection_ref")):
         return True
     # Reuse a verified historical visible task without selecting an older model
     # for new creation or allowing an internal agent's prompt to impersonate it.
@@ -235,7 +252,7 @@ def web_io_binding(state, binding=None):
             or binding.get("runtime_pair_verified") is not True):
         return False
     # Exact user choices stay pinned. A role name or forwarded prompt is not an override.
-    if not luna_pair(binding):
+    if not web_executor_pair(binding):
         return False
     try:
         timestamp(binding.get("verified_at"))
@@ -308,12 +325,26 @@ def current_followup(state, event, *, fresh_view=False):
     return view
 
 
+def current_task_inline(state):
+    policy = state.get("inline_policy") or {}
+    return (isinstance(policy, dict) and policy.get("basis") == "current_task"
+            and state.get("durable_followup_requested") is not True
+            and state.get("visible_task_requested") is not True
+            and state.get("web_io_binding") is None and state.get("followup") is None)
+
+
 def inline_policy_valid(state):
     policy = state.get("inline_policy") or {}
     if not isinstance(policy, dict):
         return False
     if policy.get("basis") == "explicit_user":
         return nonempty(policy.get("user_instruction_ref"))
+    if policy.get("basis") == "current_task":
+        return (current_task_inline(state)
+                and nonempty(policy.get("task_instruction_ref"))
+                and nonempty(policy.get("native_return_ref"))
+                and nonempty(policy.get("turn_id"))
+                and policy["turn_id"] == (state.get("inline_observer_binding") or {}).get("turn_id"))
     return (policy.get("basis") == "capture_existing_reply"
             and policy.get("complete_reply_observed") is True
             and nonempty(policy.get("reply_readback_ref"))
@@ -323,7 +354,7 @@ def inline_policy_valid(state):
 
 def observer_gap_action(state):
     if state.get("followup_mode", "durable") == "inline":
-        return "ensure_inline_luna" if inline_policy_valid(state) else "ensure_durable_followup"
+        return "ensure_inline_luna" if inline_policy_valid(state) or current_task_inline(state) else "ensure_durable_followup"
     return "ensure_followup" if web_io_binding(state) else "ensure_luna_owner"
 
 
@@ -331,7 +362,9 @@ def inline_execution(state, event):
     binding = state.get("inline_observer_binding") or {}
     if (not inline_policy_valid(state)
             or binding.get("surface") not in {"internal_agent", "current_turn"}
-            or binding.get("runtime_pair_verified") is not True or not luna_pair(binding)
+            or (current_task_inline(state) and binding.get("surface") == "internal_agent"
+                and not nonempty(binding.get("agent_id")))
+            or binding.get("runtime_pair_verified") is not True or not web_executor_pair(binding)
             or any(not nonempty(binding.get(key)) for key in (
                 "execution_ref", "turn_id", "model", "reasoning", "model_readback_ref", "reasoning_readback_ref"))
             or event.get("inline_execution_ref") != binding.get("execution_ref")
@@ -368,16 +401,16 @@ def observer_readback_updates(view):
 
 def ensure_followup(state, reason, **updates):
     if state.get("followup_mode", "durable") == "inline":
-        if not inline_policy_valid(state):
-            return result(state, "ensure_durable_followup", "A new review defaults to durable Luna follow-up; "
+        if not inline_policy_valid(state) and not current_task_inline(state):
+            return result(state, "ensure_durable_followup", "This inline policy is invalid or conflicts with the selected persistent or visible execution; "
                           "establish a verified owner and ACTIVE schedule, preserving the original request and ledger. " + reason,
                           **updates)
-        return result(state, "ensure_inline_luna", "Bind a verified Luna execution in this turn; "
+        return result(state, "ensure_inline_luna", "Bind the selected Web IO executor in this turn with actual model/effort evidence; "
                       "before ending an incomplete capture, run followup_check instead of dropping collection. " + reason,
                       **updates)
     if not web_io_binding(state):
         return result(state, "ensure_luna_owner",
-                      "Reuse a verified ready Luna visible thread with model/effort readback; "
+                      "Reuse a verified ready Web IO visible thread with its selected model/effort readback; "
                       "new visible-task creation needs a direct user request. " + reason, **updates)
     return result(state, "ensure_followup", reason, **updates)
 
@@ -416,16 +449,22 @@ def followup_checkpoint(state, event, ledger=None):
         answer["controller_event"] = item.get("controller_event")
         return answer
     if state.get("followup_mode", "durable") == "inline":
+        if current_task_inline(state):
+            if inline_execution(state, event) is None:
+                return ensure_followup(state, "Verify the current task instruction, native return, original turn and actual Web IO execution; continue collection in the active turn.")
+            if checkpoint == "before_submit":
+                return result(state, "verify_before_submit", "The current task has a verified Web IO execution and native return in this active turn.")
+            return result(state, "continue_inline_collection", "Collection remains open. Continue actual Web IO collection and Controller receipt in this active turn; preserve the original request, ledger and used budgets. This check grants no background execution or completed delivery.")
         if checkpoint == "before_submit" and inline_policy_valid(state) and (state.get("inline_policy") or {}).get("basis") == "explicit_user":
             if inline_execution(state, event):
-                return result(state, "verify_before_submit", "The user's explicit current-turn scope has a verified Luna execution.")
+                return result(state, "verify_before_submit", "The user's explicit current-turn scope has a verified Web IO execution.")
             return ensure_followup(state, "Verify the actual inline execution before this user-limited submission.")
         if inline_policy_valid(state) and (state.get("inline_policy") or {}).get("basis") == "explicit_user":
             return result(state, "report_inline_checkpoint", "Respect the user's current-turn limit; preserve the incomplete result and report that no background follow-up exists.")
-        return result(state, "ensure_durable_followup", "Collection remains open. Establish durable Luna follow-up before leaving; preserve the sent message, source, queued results and used recovery budgets. Missing owner or scheduling authority is a concrete open prerequisite, not successful collection.")
+        return result(state, "ensure_durable_followup", "Collection remains open. Establish durable Web IO follow-up before leaving; preserve the sent message, source, queued results and used recovery budgets. Missing owner or scheduling authority is a concrete open prerequisite, not successful collection.")
     view = current_followup(state, event, fresh_view=True)
     if view is None:
-        answer = ensure_followup(state, "Before leaving unfinished web work, verify the same Luna heartbeat is ACTIVE with a fresh view.")
+        answer = ensure_followup(state, "Before leaving unfinished web work, verify the same Web IO heartbeat is ACTIVE with a fresh view.")
         answer["schedule_action"] = "establish_durable"
         return answer
     wakeup = state.get("controller_result_return") or {}
@@ -434,9 +473,9 @@ def followup_checkpoint(state, event, ledger=None):
                      and wakeup.get("destination_thread_id") == state.get("controller_thread_id")
                      and wakeup.get("destination_host") == state.get("controller_host"))
     if not notification_authorized(state, ledger) and not native_return:
-        answer = result(state, "ensure_result_return", "Bind an authorized Luna notification with remaining trigger/delivery authority or an actually verified Controller wakeup before leaving; a shared file and a promise to read later are not a return route.", followup=view)
+        answer = result(state, "ensure_result_return", "Bind an authorized Web IO notification with remaining trigger/delivery authority or an actually verified Controller wakeup before leaving; a shared file and a promise to read later are not a return route.", followup=view)
     else:
-        answer = result(state, "followup_ready", "Fresh ACTIVE Luna follow-up covers the outstanding collection; Controller resumes for actionable evidence.", followup=view)
+        answer = result(state, "followup_ready", "Fresh ACTIVE Web IO follow-up covers the outstanding collection; Controller resumes for actionable evidence.", followup=view)
         if checkpoint == "before_submit" and state["phase"] == "ready_to_submit" and prepared_request(state):
             answer["state_updates"]["pre_submission_followup"] = {
                 "binding": observer_binding(state), "observer_identity": observer_identity(state),
@@ -598,7 +637,7 @@ def next_round(state, event, next_source):
         require("next_source_binding" in event, "new source needs next_source_binding")
     source_binding = event.get("next_source_binding", state["source_binding"])
     source_hash = source_binding_digest(state["source_route"], next_source, source_binding)
-    return result(state, "prepare_review_request", "Astra must freeze this round's review request before Luna submits.",
+    return result(state, "prepare_review_request", "Astra must freeze this round's review request before Web IO submits.",
                   phase="ready_to_submit", round=state["round"] + 1,
                   source_id=next_source, request_token=token, candidate_source_id=None,
                   source_binding=source_binding, source_binding_digest=source_hash,
@@ -880,7 +919,9 @@ def observe(state, event, observer_record=None):
     if error in {"auth", "user_control", "permission_denied", "quota", "provider"}:
         return result(state, "request_browser_input", "Hand off the browser; assess independent work before blocking the run.",
                       **pending)
-    if generation == "generating":
+    collection_proof = selected_output_collection_proof(state, observer_record, event)
+    report = verified_report_artifact(state, observer_record, event, collection_proof)
+    if generation == "generating" and report is None:
         return result(state, "wait", "Normal generation is not a refresh trigger.", **pending)
     if error == "transient":
         count = state.get("refresh_count", 0)
@@ -904,23 +945,29 @@ def observe(state, event, observer_record=None):
         return result(state, "reconcile_submission", "Missing or unknown is not permission to resend.",
                       last_completion=None, **reset)
     complete = (
-        event.get("after_request") is True and generation == "idle"
-        and event.get("completion_controls") is True
+        event.get("after_request") is True
         and nonempty(event.get("assistant_message_id"))
         and type(event.get("body_chars")) is int and event["body_chars"] > 0
         and isinstance(event.get("body_sha256"), str)
         and SHA256.fullmatch(event["body_sha256"]) is not None
         and nonempty(event.get("raw_reply_path"))
-        and event.get("full_body_saved") is True
+        and (report is not None or (generation == "idle" and event.get("completion_controls") is True
+                                    and event.get("full_body_saved") is True))
     )
     if not complete:
         return result(state, "wait", "A full, current, completed response is not yet established.",
                       last_completion=None, **reset)
     current = {k: event[k] for k in ("assistant_message_id", "body_sha256", "body_chars", "observed_at")}
+    if report is not None:
+        current.update(report_artifact_sha256=report["sha256"], requested_output_collection=collection_proof,
+                       full_body_saved=event.get("full_body_saved"), response_interrupted=event.get("response_interrupted"))
     previous = state.get("last_completion") or {}
     if previous:
         require(now >= timestamp(previous.get("observed_at")), "observation timestamps moved backwards")
     stable = all(previous.get(k) == current[k] for k in ("assistant_message_id", "body_sha256", "body_chars"))
+    if report is not None:
+        stable = (previous.get("assistant_message_id") == current["assistant_message_id"]
+                  and previous.get("report_artifact_sha256") == report["sha256"])
     if stable:
         delta = (now - timestamp(previous.get("observed_at"))).total_seconds()
         if delta >= 10:
@@ -960,11 +1007,8 @@ def notification_trigger(item):
     return "material_blocker" if payload.get("ui_error", "none") != "none" else "stable_reply"
 
 
-def requested_output_collected(state, ledger, payload):
-    """Declared output collection, separate from later Controller QA/acceptance."""
-    reply = payload if payload.get("type") == "observation" else (ledger or {}).get("completion_observation") or {}
-    if not isinstance(reply, dict):
-        return False
+def selected_output_collection_proof(state, ledger, reply):
+    """Select the existing receipt-bound coverage proof without rewriting it."""
     proof = reply.get("requested_output_collection") or {}
     # Completeness evidence can arrive after capture. Keep the original payload
     # immutable and accept only an append-only proof for that exact receipt.
@@ -987,6 +1031,61 @@ def requested_output_collected(state, ledger, payload):
                 current = [item["proof"] for item in candidates if timestamp(item["observed_at"]) == latest]
                 proof = current[-1] if (all(item.get("complete") is current[0].get("complete") for item in current)
                                        and not any(item.get("interrupted") is True for item in current)) else {}
+    return proof
+
+
+def verified_report_artifact(state, ledger, reply, proof):
+    """Narrow Markdown delivery proof; re-read only the current required artifact."""
+    if (not output_collection_proof_matches(state, reply, proof) or proof.get("complete") is not True
+            or proof.get("interrupted") is True or not captured_artifacts_ready(state, ledger)):
+        return None
+    report = proof.get("report_artifact")
+    if (not isinstance(report, dict) or report.get("binding") != observer_binding(state)
+            or any(not nonempty(report.get(key)) for key in ("download_ref", "readback_ref"))
+            or any(report.get(key) is not True for key in ("coverage_complete", "ending_verified", "references_verified"))):
+        return None
+    sections = report.get("required_sections")
+    if not isinstance(sections, list) or not sections or any(not nonempty(item) for item in sections):
+        return None
+    item = next((item for item in state["artifact_contract"]["required"]
+                 if item["name"] == report.get("name") and item["kind"] == "utf8"), None)
+    latest = current_artifact_observation(state, ledger)
+    receipt = state.get("artifact_receipt") if latest is None else (latest or {}).get("payload", {}).get("receipt")
+    if (item is None or not receipt_bound(state, receipt)
+            or report.get("receipt_sha256") != notification_digest(receipt)):
+        return None
+    saved = receipt["files"][item["name"]]
+    if (saved.get("status") != "verified" or saved.get("kind") != "utf8"
+            or not SHA256.fullmatch(str(report.get("sha256", ""))) or saved.get("sha256") != report["sha256"]
+            or type(saved.get("size")) is not int or saved["size"] <= 0
+            or not nonempty(saved.get("path")) or Path(saved["path"]).suffix.lower() != ".md"):
+        return None
+    try:
+        root = Path(state["artifact_root"])
+        if root.is_symlink() or not root.is_dir():
+            return None
+        actual = verify_one(item, saved["path"], root.resolve(strict=True))
+        if any(actual.get(key) != saved.get(key) for key in ("status", "path", "kind", "size", "sha256")):
+            return None
+        data = Path(actual["path"]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != report["sha256"]:
+            return None
+        body = data.decode("utf-8")
+        headings = {line.rstrip() for line in body.splitlines() if re.match(r"^#{1,6}[^\S\n]+\S", line)}
+        if not body.strip() or not set(sections) <= headings:
+            return None
+    except (OSError, UnicodeError, ValueError):
+        return None
+    return actual
+
+
+def requested_output_collected(state, ledger, payload):
+    """Declared output collection, separate from later Controller QA/acceptance."""
+    reply = payload if payload.get("type") == "observation" else (ledger or {}).get("completion_observation") or {}
+    if not isinstance(reply, dict):
+        return False
+    proof = selected_output_collection_proof(state, ledger, reply)
+    report = verified_report_artifact(state, ledger, reply, proof)
     prior = reply.get("prior_observation") or (payload.get("prior_observation") if payload.get("type") == "observation" else None) or {}
     if not prior and ledger:
         completed = next((item.get("controller_event") for item in reversed(ledger.get("notifications", []))
@@ -999,11 +1098,19 @@ def requested_output_collected(state, ledger, payload):
             or not nonempty(requirements) or not isinstance(proof, dict) or proof.get("complete") is not True
             or proof.get("requirements_ref") != requirements or not nonempty(proof.get("evidence_ref"))
             or proof.get("body_sha256") != reply.get("body_sha256") or not SHA256.fullmatch(str(reply.get("body_sha256", "")))
-            or reply.get("response_interrupted") is True or proof.get("interrupted") is True
+            or proof.get("interrupted") is True
+            or (report is None and ("report_artifact" in proof or reply.get("response_interrupted") is True
+                                    or prior.get("response_interrupted") is True))
             or not captured_artifacts_ready(state, ledger)
             or not bound(prior, state, token=True)):
         return False
     for observed in (reply, prior):
+        if report is not None:
+            if (observed.get("ui_error") != "none" or observed.get("after_request") is not True
+                    or observed.get("assistant_message_id") != reply.get("assistant_message_id")
+                    or observed.get("request_user_message_id") != state["submitted_user_message_id"]):
+                return False
+            continue
         if (observed.get("full_body_saved") is not True or observed.get("generation") != "idle"
                 or observed.get("ui_error") != "none" or observed.get("completion_controls") is not True
                 or not nonempty(observed.get("raw_reply_path")) or observed.get("after_request") is not True
@@ -1192,7 +1299,7 @@ def saved_result(state, ledger):
 
 
 def scheduled_observation(state, event, saved):
-    """Luna's independent ledger; never return updates for Controller state/events."""
+    """Web IO's independent ledger; never return updates for Controller state/events."""
     binding = observer_binding(state)
     gate = active_browser_gate(state, saved)
     ledger = dict(saved or {})
@@ -1207,7 +1314,7 @@ def scheduled_observation(state, event, saved):
     require(ledger.get("validator") == "luna-observer/v1"
             and isinstance(ledger.get("notifications"), list)
             and all(isinstance(item, dict) and nonempty(item.get("key"))
-                    for item in ledger["notifications"]), "invalid Luna observer record")
+                    for item in ledger["notifications"]), "invalid Web IO observer record")
     owner = observer_identity(state)
     turn = (state.get("inline_observer_binding") or {}).get("turn_id")
     changed = ledger.get("observer_identity", observer_identity(ledger["binding"])) != owner or ledger.get("inline_turn_id", turn) != turn
@@ -1374,7 +1481,7 @@ def scheduled_observation(state, event, saved):
                           schedule_action="pause_if_active")
         if not gate and submission_observer(state, event) is None:
             action = observer_gap_action(state)
-            return answer(action, "Preserve the unreceived result; restore the actual Luna receipt checker, never a Controller heartbeat.")
+            return answer(action, "Preserve the unreceived result; restore the actual Web IO receipt checker, never a Controller heartbeat.")
         key = event.get("notification_key", outstanding["key"])
         pending = next((item for item in ledger["notifications"] if item["key"] == key), None)
         require(pending is not None, "unknown notification checkpoint")
@@ -1439,13 +1546,13 @@ def scheduled_observation(state, event, saved):
     if (kind not in {"scheduled_artifacts", "inline_artifacts"} or state["phase"] == "completed") and not web_capture_required(state, ledger):
         if state.get("awaiting_send") is True and state["phase"] in {"ready_to_submit", "submitting"}:
             if submission_observer(state, event) is not None:
-                return answer("keep_quiet", "The same observer is armed for the imminent send; Luna must reconcile before sending.")
+                return answer("keep_quiet", "The same observer is armed for the imminent send; Web IO must reconcile before sending.")
         return answer("finish_inline_capture" if inline else "pause_followup",
                       "No current webpage wait or required capture remains; finish inline capture or pause the same heartbeat and read back.",
                       schedule_action="none" if inline else "pause_if_active")
     if not gate and submission_observer(state, event) is None:
         action = observer_gap_action(state)
-        return answer(action, "Durable polling needs a verified Luna visible owner and fresh ACTIVE readback; "
+        return answer(action, "Durable polling needs a verified Web IO visible owner and fresh ACTIVE readback; "
                       "preserve the existing message. Bounded in-turn observation is not a durable schedule.")
 
     schedule_action = "keep_active"
@@ -1652,8 +1759,8 @@ def _decide(state, event, observer_record=None):
                                controller_host=event["controller_host"], state_path=event["state_path"])
     if kind == "bind_web_io":
         binding = event.get("web_io_binding")
-        require(web_io_binding(state, binding), "bind_web_io needs a verified ready visible Luna owner and actual model/effort readback")
-        return ensure_followup({**state, "web_io_binding": binding}, "View the heartbeat targeted to this existing Luna owner.",
+        require(web_io_binding(state, binding), "bind_web_io needs a verified ready visible Web IO owner and actual model/effort readback")
+        return ensure_followup({**state, "web_io_binding": binding}, "View the heartbeat targeted to this existing Web IO owner.",
                                web_io_binding=binding)
     if kind == "followup_readback":
         receipt = event.get("followup")
@@ -1676,7 +1783,7 @@ def _decide(state, event, observer_record=None):
         if receipt["status"] != "ACTIVE" and web_capture_required(state, observer_record):
             return ensure_followup(state, "Heartbeat is paused; reactivate and view it before continuing.",
                                    followup=receipt)
-        return result(state, "record_followup", "The host view confirms this run's Luna heartbeat state.",
+        return result(state, "record_followup", "The host view confirms this run's Web IO heartbeat state.",
                       followup=receipt, awaiting_send=(receipt["status"] == "ACTIVE"
                           and state["phase"] in {"ready_to_submit", "submitting"} and prepared_request(state)))
     if kind == "followup_closed":
@@ -1789,7 +1896,7 @@ def _decide(state, event, observer_record=None):
             require(event.get("request_present") is True, "sent needs user-message readback")
             require(nonempty(event.get("user_message_id")) and event.get("ui_model_verified") is True
                     and SHA256.fullmatch(str(event.get("prompt_sha256", ""))),
-                    "sent needs Luna UI model, prompt hash and user-message readback")
+                    "sent needs Web IO UI model, prompt hash and user-message readback")
             require(conversation_url(event_url), "sent needs actual conversation URL readback")
             require(prepared_request(state) and event["prompt_sha256"] == state["prepared_request"]["sha256"],
                     "sent prompt does not match Astra's frozen review request")
@@ -1953,6 +2060,11 @@ def _decide(state, event, observer_record=None):
         require(type(event.get("coverage_complete")) is bool, "declare full review coverage")
         if not event["coverage_complete"]:
             return next_round(state, event, state["source_id"])
+        collected = state.get("last_completion") or {}
+        if collected.get("report_artifact_sha256"):
+            report = verified_report_artifact(state, observer_record, collected, collected.get("requested_output_collection"))
+            if report is None or report["sha256"] != collected["report_artifact_sha256"]:
+                return result(state, "obtain_required_artifacts", "The file-based review needs its current complete verified Markdown report; preserve the original partial UI observation.")
         if state["source_route"] == "local_packet":
             require(event.get("source_readback_id") == state["source_id"]
                     and nonempty(event.get("source_readback_ref")),
@@ -2093,7 +2205,7 @@ def decide(state, event, observer_record=None):
         answer["schedule_action"] = "none" if state.get("followup_mode", "durable") == "inline" else "keep_active"
         if event["type"] == "followup_closed" or answer["action"] in {"complete", "disable_followup"}:
             answer["action"] = "ensure_followup" if event["type"] == "followup_closed" else "await_controller_receipt"
-            answer["reason"] = "Controller receipt remains open; read the saved result before closing this run's Luna follow-up."
+            answer["reason"] = "Controller receipt remains open; read the saved result before closing this run's Web IO follow-up."
             answer["terminal"] = False
             if candidate["phase"] == "completed":
                 answer["state_updates"]["phase"] = state["phase"]
@@ -2119,7 +2231,7 @@ def decide(state, event, observer_record=None):
         answer["schedule_action"] = "none" if candidate.get("followup_mode") == "inline" else "pause_if_active"
         if "observer_updates" not in answer:
             answer["state_updates"]["browser_gate"] = gate
-        if answer["action"] in {"ensure_followup", "ensure_durable_followup", "watch", "wait",
+        if answer["action"] in {"ensure_followup", "ensure_durable_followup", "watch", "wait", "continue_inline_collection",
                 "verify_before_submit", "submit_once", "reconcile_submission", "followup_ready",
                 "ensure_inline_luna", "ensure_luna_owner", "obtain_required_artifacts",
                 "reload_same_conversation", "capture_required_artifacts", "recover_browser_context",
@@ -2135,7 +2247,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", required=True, type=Path)
     parser.add_argument("--event", required=True, type=Path)
-    parser.add_argument("--observer-record", type=Path, help="Luna-owned ledger input; output contains observer_updates only")
+    parser.add_argument("--observer-record", type=Path, help="Web IO-owned ledger input; output contains observer_updates only")
     args = parser.parse_args()
     try:
         answer = decide(json.loads(args.state.read_text(encoding="utf-8")),

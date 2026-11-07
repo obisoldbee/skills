@@ -1,6 +1,6 @@
 # AGENTS.md Template & Example
 
-This document provides a ready-to-use template for `AGENTS.md` and a worked example based on the OB Dim project.
+This document provides a template for `AGENTS.md`. Fill it from the named project's current facts and Source Mapping. Keep task- or Skill-specific model selections in their owning task or package rather than general governance templates.
 
 ## Design Philosophy
 
@@ -33,6 +33,12 @@ Template edits apply to future initialization. Update existing managed blocks an
 - Code changes use a task branch and linked worktree per concurrent writer. Preserve dirty inputs in the original workspace; a worktree starts from a committed base. Integrate exact validated commits through one editor.
 - Do not run enter/check/finish/recover for ordinary work or block on historical claims. Shared build outputs/services require actual isolation.
 - Use task-specific records; the integrator updates shared logs/indexes. Reload the policy after an authorized migration.
+
+## Task materials
+
+- Unless project rules declare another location, use `docs/tasks/YYYY-MM-DD-type-topic-HHMMSS/` for multi-file investigation, acceptance, recheck and training materials, using the declared timezone. Read `docs/tasks/README.md` when present and locate the existing task first.
+- Resume, retry and add evidence in the existing task directory. Exclusively create a unique directory only for a new task; append a short task ID on collision. Create the index and needed README, report, evidence or attachments with the first task; one integrator maintains navigation. Short tasks may use one README; do not prebuild an empty task tree.
+- Standalone specs, plans, research, code reviews and reports retain their categories. Source, reusable scripts and build environments stay in mapped source/runtime paths. Preserve original materials and link historical bundles in place; moves require separate authority.
 <!-- project-conventions:access:end -->
 
 ## Directory Index
@@ -45,6 +51,7 @@ Template edits apply to future initialization. Update existing managed blocks an
 | `docs/plans/` | Implementation plans | — |
 | `docs/reviews/` | Review documents (`YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`) | skill: references/review-naming.md |
 | `docs/research/` | Research documents | — |
+| `docs/tasks/` (on demand) | Related task reports, evidence and attachments | skill: references/task-artifacts.md; read its README when present |
 | `src/` | Source code | — |
 | `release/` | Build artifacts (on demand) | — |
 | `memory/` | Agent-maintained project memory | — |
@@ -63,7 +70,7 @@ Template edits apply to future initialization. Update existing managed blocks an
 ## Quick Reminders
 
 - Ordinary worktree-first work does not depend on helper admission. Diagnose actual file/Git conflicts at their resource; do not block on a historical claim
-- Explicit repository/Skill update? Use update-only: fast-forward and validate the requested project or named package, then stop without restructuring, records, or link work
+- Fetch upstream latest? Use update-only, validate the requested package and report commits. Editing instructions or Skill content follows source maintenance
 - Significant decision or direction change? Create a unique task record; the integrator assigns canonical sequence numbers
 - New review file? Name it `YYYY-MM-DD-<reviewer>-<scope>-HHMMSS.md`, scan `docs/reviews/` for collisions first
 - Record meaningful work in separate task files; one integrator updates canonical logs/indexes and allocates sequence numbers. Response-only tasks create no project records

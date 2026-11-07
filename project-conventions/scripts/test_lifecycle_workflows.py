@@ -510,6 +510,14 @@ class LifecycleWorkflowTests(unittest.TestCase):
             self.assertEqual(self.git(checkout, "status", "--porcelain=v1"), "")
 
             control = collection / "skills"
+            for project in (control, wrapper):
+                self.assertIn("docs/tasks/README.md", (project / "AGENTS.md").read_text())
+                self.assertIn("AGENTS.md#task-materials", (project / "README.md").read_text())
+                access_readme = project / ".project-conventions/ACCESS.md"
+                for link in re.findall(r"\]\(([^)]+)\)", access_readme.read_text()):
+                    if "://" not in link:
+                        self.assertTrue((access_readme.parent / link.split("#", 1)[0]).is_file(), link)
+                self.assertFalse((project / "docs/tasks").exists())
             self.assertEqual(
                 {path.name for path in (control / "src").iterdir()},
                 {"AGENTS.md", "README.md", "config", "scripts"},

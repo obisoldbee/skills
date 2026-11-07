@@ -30,10 +30,10 @@ description: 核查现有 WireGuard 服务器，保留服务器和各设备密�
 
 1. 请求涉及服务器核查或修复时，按 [服务器核查与修复](references/server.md) 读取实际运行与持久配置，记录时间与结果。只读核查不要读取服务端私钥或执行重启。
 2. 请求涉及文件生成时，按 [生成输入合同](references/generation.md) 准备私密 JSON manifest，再执行下面的生成与验证步骤。原始配置只读；IPv6 选择统一为 `ipv4-only`。该生成器不处理双栈方案。
-3. 需要生成文件时运行下面的生成器。它在写入前验证所有目标，目标映射缺项、重复地址/私钥、混用服务器或规则数量不符时停止。它不调用网络，不修改服务器，不生成密钥。
+3. 将当前 `SKILL.md` 的真实所在目录绑定为 `<skill-root>`，需要生成文件时运行下面的生成器。它在写入前验证所有目标，目标映射缺项、重复地址/私钥、混用服务器或规则数量不符时停止。它不调用网络，不修改服务器，不生成密钥。
 
 ```sh
-python3 scripts/build_clients.py --manifest /absolute/private/input-manifest.json
+python3 -B "<skill-root>/scripts/build_clients.py" --manifest /absolute/private/input-manifest.json
 ```
 
 4. 涉及文件交付或应用时，按 [各客户端操作](references/clients.md) 补充本次实际导入说明。Android 使用独立原密钥，CMFA 自己管理 VPN，不加入桌面 `tun`、网卡名或进程例外。

@@ -14,7 +14,9 @@ Background:
 - Dependencies: <lane ids and exact verified gates, or none>
 - Controller / integration owner: <task or lane responsible for routing and integration>
 - Controller context: <verified model/reasoning or unknown>
-- Selected route: <requested route; per-axis requested/effective values; model_basis + reasoning_basis; exact create_thread fields to pass/omit; dispatch attempt SHA-256>
+- Selected route: <requested alias or raw axes; per-axis requested/effective values; model_basis + reasoning_basis>
+- Executor surface: <visible_thread or internal_agent, selected independently from model/effort; original user selection reference>
+- Dispatch binding: <visible: exact create_thread fields to pass/omit and attempt SHA-256; internal: native host tool, inheritance/override contract and agent identity>
 - Project scale: <normal, large, or super-large plus observable evidence>
 - Verified current state: <facts verified this turn>
 - Volatile facts: <facts marked 需复核>
@@ -75,6 +77,7 @@ Progress state:
 - Explain the intent behind material prohibitions when it affects trade-offs.
 - Cite paths, commands, record ids, or source anchors for evidence-based claims.
 - Allow `BLOCKED` or `NEEDS_CONTEXT` instead of guessing.
+- Aliases select model and effort. General computer-operation auto uses Terra-ultra; known fixed-step browser auto uses Terra-medium. Writing can explicitly select Terra-ultra; development and accepted Sol plans preserve their selected routes. Pass only selected axes and use the requested surface's host tools. Internal evidence uses the native agent return; visible work requires the actual create_thread receipt.
 - Normal execution includes Controller collection and quality review. The worker returns its result in its own thread or agreed output location; reverse messages are optional. “Do not message the Controller” never cancels the Controller's obligation to pull the result.
 - An executor's self-checks and `result_ready` reply are inputs to review, including research, operations, and scheduled observations. Do not label an unreviewed result accepted. A recurring observer's single check does not close its monitoring obligation.
 - Include the observation fields only when monitoring is part of the task. Give the selected Luna-max executor bounded checks and a compact result format, not the Controller's full reasoning workload. Unchanged ticks remain quiet; the Controller receives evidence for decisions and quality review. Verify the schedule's real model/effort rather than assigning a persona in its prompt.

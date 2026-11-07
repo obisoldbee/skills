@@ -91,8 +91,8 @@ macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命�
 ## 未登录通知
 
 1. 页面明确显示 WorkBuddy 登录界面或要求重新登录时，记 `auth_required`；只有卡片缺失、空白或网络错误不能判定未登录。停止领取和派出，按当前所选浏览器规则交接登录页面；记录交接是否成功，不替用户登录、不收集凭据。
-2. 非只读任务必须检查调用者提供的 `lark_chat_id` 与机器人发送授权，读取当前可用的 `lark-im`、`lark-shared` 及其发送和输出契约参考。参数、CLI 或授权缺失时报告 `notification_status:needs_configuration`，保留登录阻塞结果。交接失败不免除通知，消息如实说明需手动打开登录页面。
-3. 使用 `lark-cli im +messages-send --as bot --chat-id <lark_chat_id> --text <通知正文> --idempotency-key <幂等键>` 发送一次。正文为简短中文：日期、WorkBuddy 未登录、本轮领取/派出是否已执行（按实际证据）、请在本轮浏览器页面登录后回复继续；可附已核验的任务空间标识及固定成长中心链接。不得包含账号、凭据、Cookie 或登录重定向查询串。幂等键用 `buddy-<service_day>-auth-required`，不超过 50 字符；参数安全传递，不能把页面文本拼成可执行 shell 代码。
+2. 非只读任务必须检查调用者提供的 `lark_chat_id` 与机器人发送授权，读取当前可用的 `lark-im`、`lark-shared` 及其发送和输出契约参考。参数、CLI 或授权缺失时报告 `notification_status:needs_configuration`，保留登录阻塞结果。交接失败不免除通知，交接状态只保留在本地记录。
+3. 使用 `lark-cli im +messages-send --as bot --chat-id <lark_chat_id> --text "WorkBuddy 打卡异常。" --idempotency-key <幂等键>` 发送一次。正文只有这句话；日期、登录原因、动作状态、空间标识、链接和后续操作留在调用者记录，不发给用户。幂等键用 `buddy-<service_day>-auth-required`，不超过 50 字符；参数安全传递，不能把页面文本拼成可执行 shell 代码。
 4. 调用前在本轮上下文记已尝试；相同运行续接时不重复发送。CLI 的幂等窗口只有一小时，不能当作全天去重账本。退出码为 0、JSON `ok:true` 且 `data.message_id` 存在才记 `notification_status:sent` 并保留消息 ID；明确失败记 `failed`，结果不明记 `unknown`。不得仅凭命令已执行声称通知成功，不自动重发、不切换用户身份、不修改 CLI 的 strict mode、认证或环境配置。
 5. 通知结果不改变业务结果：保留 `auth_required`、真实 dispatch 字段及 `next_action:browser_handoff`，不自动重试。用户明确登录完成并要求继续时，按所选浏览器规则续接原任务，从最新页面恢复第 2 步；保留此前派出尝试和终止边界，不把人工续接当作新一轮派出许可。只读查询仅报告需登录，不发送通知。
 

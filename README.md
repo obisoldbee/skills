@@ -11,8 +11,8 @@
 | Skill / 包 | 用途 |
 |---|---|
 | [project-conventions](project-conventions/) | 统一项目目录与治理入口；默认使用独立 Git worktree 协作，支持旧项目策略迁移 |
-| [project-handoff](project-handoff/) | 任务交接、多 Agent 调度与执行回执；按角色选择 Astra / Sol / Luna，并从目标能力清单解析同系列新版 |
-| [chatgpt-codex-review](chatgpt-codex-review/) | 联动网页 ChatGPT 深度研究与持续复审；Luna max 收发、下载及定时观察，有新结果才交 Astra high 编排和 Sol max 开发 |
+| [project-handoff](project-handoff/) | 任务交接、多 Agent 调度与执行回执；按角色选择 Astra / Sol / Terra / Luna，并从目标能力清单解析同系列新版 |
+| [chatgpt-codex-review](chatgpt-codex-review/) | 联动网页 ChatGPT 深度研究与持续复审；由已选网页执行者收发、下载及定时观察，有新结果才交 Astra high 编排和 Sol max 开发 |
 | [codex-model-catalog-recovery](codex-model-catalog-recovery/) | 排查 Codex 模型列表缺失：配置优先，核对桌面核心与 CLI，提供备份、回滚和恢复验收 |
 | [document-workspace](document-workspace/) | 基于文件的文档组织、工作区治理与资料管理 |
 | [web-bookmark-intelligence](web-bookmark-intelligence/) | 网页与书签内容采集、整理和研究输入处理 |
@@ -25,6 +25,12 @@
 | [cdr-processing](cdr-processing/) | CDR 容器检查、预览提取、SVG/PDF/PNG 试转换与保真验收；分层 PSD 条件方案 |
 | [wechat-sticker](wechat-sticker/) | 微信表情专辑、单品及特效素材的规划、生成与交付验收 |
 | [others-manager](others-manager/) | 第三方开源仓库的获取、来源核对和本地维护 |
+| [daily-ai-credits](daily-ai-credits/) | 在桌面应用中检查并领取用户指定的积分或额度 |
+| [clash-direct-rules](clash-direct-rules/) | 核对并维护 Clash 直连规则 |
+| [dot-grok-bridge](dot-grok-bridge/) | Dot 与 Grok Bot 的协作桥接 |
+| [ikuuu-daily-checkin](ikuuu-daily-checkin/) | Ikuuu 签到与余额核验 |
+| [minimax-agent-daily-checkin](minimax-agent-daily-checkin/) | MiniMax Agent 签到与结果核验 |
+| [modao-prototype-computer-use](modao-prototype-computer-use/) | 墨刀原型制作、标注与质检 |
 
 ### 如何开始
 

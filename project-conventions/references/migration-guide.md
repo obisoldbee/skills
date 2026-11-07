@@ -229,13 +229,13 @@ For each match:
 1. Read the file to understand context.
 2. Replace the old path with the new path.
 3. Do NOT alter surrounding text or narrative — only the path string changes.
-4. For historical files (`conversation/`, `memory/`): update path references to keep navigation valid, but never rewrite the historical narrative.
+4. Preserve historical files (`conversation/`, `memory/`) at their existing contents. Record old-to-new paths in the current migration entry so future readers can resolve historical links.
 
 ## Phase 5: Create Migration Artifacts
 
 ### 5.1 Migration Record
 
-Create `docs/migrations/YYYY-MM-DD-directory-migration.md` containing:
+Use the existing task bundle when it owns this migration, or create `docs/migrations/YYYY-MM-DD-directory-migration.md`. One record contains:
 
 - **Background**: why the migration was needed
 - **Before/After directory tree**: visual comparison
@@ -246,15 +246,15 @@ Create `docs/migrations/YYYY-MM-DD-directory-migration.md` containing:
 
 ### 5.2 Conversation Record
 
-Create `conversation/NN-workspace-reorganization.md` (next available number) capturing:
+When a significant decision needs its own authorized record, use `conversation/NN-workspace-reorganization.md` (next available number), otherwise keep this context in the migration entry:
 - What the agent proposed
 - What the user changed/confirmed
 - Why certain decisions were made (e.g., which plan variants to archive vs. keep)
 
 ### 5.3 Memory Update
 
-- Append a note to `memory/YYYY-MM-DD.md` summarizing the migration.
-- Update `memory/MEMORY.md` if any long-term path references changed.
+- Update project memory only within the current record scope and when it adds continuity beyond the migration entry.
+- Keep historical path observations intact; current navigation and the old-to-new map carry the new paths.
 
 ### 5.4 AGENTS.md Update
 

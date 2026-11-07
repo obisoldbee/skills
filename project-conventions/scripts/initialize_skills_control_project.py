@@ -460,7 +460,7 @@ def render_control_files(
 - `{member_project}/src/{member_project}` is only a stable projection to `{repository_project}/{package_subpath}`.
 - Link sources come only from `src/config/skill-exports.tsv` and point directly into `{repository_project}/`, never through a member projection.
 - Link scripts require an explicit Agent/target and Skill for apply, never create target parents, and never replace conflicts.
-- Updating `{member_project}` means running its update-only helper against `{repository_project}/{package_subpath}` and stopping after validation. Do not regenerate indexes or links.
+- Fetching the latest upstream `{member_project}` uses its update-only helper against `{repository_project}/{package_subpath}` and stops after validation. Editing package content follows source maintenance.
 - Read the projected repository `AGENTS.md` and references needed for the selected task; reuse complete current readings. Run checks for the changed contract or behavior and preserve required acceptance gates.
 - Complete authorized edits, local corrections, and affected checks without per-step approval. Record significant decisions and substantive work that adds useful continuity; update indexes only when their represented facts change. Response-only tasks create no project records.
 - Windows supports scoped Agent installation using the NT directory-handle helper. Combined `-SyncDevice -Apply` is unavailable; separately authorized checkout update and scoped installation are supported. Never bypass a safe-create failure with `New-Item` or `mklink`.
@@ -471,6 +471,7 @@ def render_control_files(
 | Path | Purpose |
 |---|---|
 | `docs/indexes/members.md` | Canonical device-local member index |
+| `docs/tasks/` (on demand) | Collection-control task bundles and evidence |
 | `src/AGENTS.md` | Projection to `{repository_project}/AGENTS.md` |
 | `src/README.md` | Projection to `{repository_project}/README.md` |
 | `src/config/` | Projection to `{repository_project}/config/` |
@@ -502,6 +503,7 @@ The repository Windows consumer script supports scoped `-Agent`/`-Target` apply.
 | Path | Purpose |
 |---|---|
 | `docs/indexes/members.md` | Canonical member and Repository Root mapping |
+| `docs/tasks/` (on demand) | Collection-control task bundles and evidence |
 | `src/AGENTS.md`, `src/README.md` | Projected public repository instructions |
 | `src/config/` | Projected public exports and Agent candidates |
 | `src/scripts/` | Projected repository link and validation utilities |
@@ -509,6 +511,8 @@ The repository Windows consumer script supports scoped `-Agent`/`-Target` apply.
 | `release/`, `runtime/` | Initially empty generated output |
 
 Updating one Skill is update-only: refresh `../{repository_project}` safely, validate the named package, and stop. It does not reinitialize this collection or relink consumers.
+
+For task bundles and continuation, follow [Task materials](AGENTS.md#task-materials). Create the task index and needed files with the first actual task; member business materials stay in their owning Project Root.
 """,
         "docs/indexes/members.md": members,
         "conversation/00-initialization.md": (
@@ -555,7 +559,7 @@ This wrapper owns project documents, conversation, and memory. Its loadable Skil
 - Edit Skill content through `src/{member_project}` or directly at `../{repository_project}/{package_subpath}`; both resolve to the same bytes.
 - `SKILL.md` is package source even though it is Markdown; never move the package under this wrapper's `docs/` or into an Agent consumer directory.
 - Run Git only at `../{repository_project}` after verifying the worktree root, remote, branch, and status.
-- An update request runs `src/{member_project}/scripts/update_shared_checkout.py`, validates the named package, reports the before/after commit, and stops.
+- A request to fetch the latest upstream runs `src/{member_project}/scripts/update_shared_checkout.py`, validates the named package, reports the before/after commit, and stops. Editing package content follows source maintenance.
 - Update-only never rewrites this wrapper, collection indexes, other members, or Agent links.
 - Put project records under `docs/`, collaboration under `conversation/`, and local continuity under `memory/`.
 - Run package validation and checks for the changed contract or behavior; preserve required acceptance gates without unrelated suites. Complete authorized edits, local corrections, and affected checks without per-step approval.
@@ -583,6 +587,8 @@ src/{member_project}  ->  ../../{repository_project}/{package_subpath}
 The wrapper keeps project-local documents and continuity records. The shared Git checkout at `../{repository_project}` is the only code source of truth. Agent consumer links should point directly to `../{repository_project}/{package_subpath}`, avoiding a link-to-link chain.
 
 To update this Skill only, run its `scripts/update_shared_checkout.py` entry. It may fast-forward the shared repository, validates this named package, and then stops without rebuilding the collection or links.
+
+For multi-file task materials, follow [Task materials](AGENTS.md#task-materials). Use `docs/tasks/` on demand, read its existing README before creating a task, and reuse the same directory for continuation, retries and added evidence.
 """,
         "conversation/00-initialization.md": (
             "# Member Wrapper Initialization\n\n"

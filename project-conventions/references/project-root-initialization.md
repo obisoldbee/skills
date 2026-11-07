@@ -79,6 +79,8 @@ The initializer:
 - reports `moved: []` because classification is not move authority;
 - returns `already_initialized` on a repeated matching run.
 
+Generated AGENTS blocks include self-contained task-material routing; generated README navigation points to that block. This covers ordinary types, the Agent Skill profile, and fresh shared-collection control/member entries. For multi-file investigation, acceptance, recheck and training tasks, use `docs/tasks/` on demand and read its README when present. Continuation, retries and new evidence reuse the same task directory. Initialization creates no empty `docs/tasks/` tree. Adoption preserves existing README, task indexes, evidence and historical paths. See [Task materials](task-artifacts.md) for naming and entry templates. Updating this Skill alone does not rewrite an existing project's contract or routing.
+
 Original/user-provided material stays where the user placed it unless a separate migration authorizes an exact old-to-new map. Typical routing for later Agent outputs is:
 
 | Output | Destination |
@@ -87,6 +89,7 @@ Original/user-provided material stays where the user placed it unless a separate
 | Research, source analysis, transcript correction | `docs/research/` |
 | Implementation plan | `docs/plans/` |
 | Review | `docs/reviews/` |
+| Related reports, evidence and attachments for one investigation, acceptance, recheck or training task | `docs/tasks/YYYY-MM-DD-type-topic-HHMMSS/`, on demand; reuse for continuation |
 | Design prototype/assets | `design/` |
 | Runnable source and tests | `src/` |
 | Decision process and user corrections | `conversation/` |

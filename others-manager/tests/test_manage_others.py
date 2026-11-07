@@ -26,6 +26,42 @@ requires_supported_runtime = unittest.skipUnless(
 
 
 class OthersManagerTests(unittest.TestCase):
+    def test_github_authenticated_request_uses_cli_without_exposing_token(self) -> None:
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"ok": true}'
+        opener = mock.MagicMock()
+        opener.open.return_value = response
+        cli_result = subprocess.CompletedProcess([], 0, stdout="example-secret\n", stderr="")
+        with mock.patch.dict(os.environ, {manager.GITHUB_AUTH_ENV: "gh"}), \
+             mock.patch.object(manager, "_github_token", None), \
+             mock.patch.object(manager, "_github_auth_checked", False), \
+             mock.patch.object(manager.shutil, "which", return_value="/usr/bin/gh"), \
+             mock.patch.object(manager.subprocess, "run", return_value=cli_result) as run, \
+             mock.patch.object(manager.urllib.request, "build_opener", return_value=opener):
+            self.assertEqual({"ok": True}, manager.github_json("/repos/example/repo"))
+            self.assertEqual({"ok": True}, manager.github_json("/repos/example/repo"))
+            self.assertEqual(1, run.call_count)
+            request = opener.open.call_args.args[0]
+            self.assertEqual("Bearer example-secret", request.get_header("Authorization"))
+
+    def test_github_invalid_auth_mode_stops(self) -> None:
+        with mock.patch.dict(os.environ, {manager.GITHUB_AUTH_ENV: "invalid"}):
+            with self.assertRaises(manager.ManagerError):
+                manager.github_json("/repos/example/repo")
+
+    def test_github_default_falls_back_when_cli_unavailable(self) -> None:
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{}'
+        opener = mock.MagicMock()
+        opener.open.return_value = response
+        with mock.patch.dict(os.environ, {}, clear=True), \
+             mock.patch.object(manager, "_github_token", None), \
+             mock.patch.object(manager, "_github_auth_checked", False), \
+             mock.patch.object(manager.shutil, "which", return_value=None), \
+             mock.patch.object(manager.urllib.request, "build_opener", return_value=opener):
+            manager.github_json("/repos/example/repo")
+            self.assertIsNone(opener.open.call_args.args[0].get_header("Authorization"))
+
     def test_normalize_supported_github_urls(self) -> None:
         expected = "Owner/Repo"
         for value in (

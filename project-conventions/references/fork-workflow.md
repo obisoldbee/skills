@@ -2,6 +2,8 @@
 
 This document provides the workflow for one Project Root that wraps one upstream repository fork and contributes back by PR.
 
+Read the section for the requested action. Existing forks keep their current layout and remotes during ordinary maintenance. Use available tools and authentication first; tool installation, login, identity changes, history rewrites and publication follow the current task's specific authorization.
+
 ## When to Use
 
 - Forking an upstream repo to contribute changes back via PR
@@ -13,7 +15,7 @@ This document provides the workflow for one Project Root that wraps one upstream
 
 ### GitHub CLI (`gh`)
 
-The `gh` CLI is the recommended tool for fork workflows. Install it first:
+Use an existing `gh` CLI when available. The following installation examples apply when tool setup is part of the authorized task:
 
 **Windows (winget)**:
 ```bash
@@ -49,10 +51,10 @@ gh auth status
 
 ### Git Identity
 
-Ensure git user.name and user.email are configured (required for commits):
+When committing is authorized and the repository lacks an identity, configure the verified repository locally:
 ```bash
-git config --global user.name "Your Name"
-git config --global user.email "your@email.com"
+git -C <repository-root> config user.name "Your Name"
+git -C <repository-root> config user.email "your@email.com"
 ```
 
 ## Directory Layout

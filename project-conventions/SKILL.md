@@ -1,11 +1,15 @@
 ---
 name: project-conventions
-description: 初始化项目目录、接入已有项目治理、维护项目合集与仓库映射，以及安全更新或迁移 Skill。用于目录和来源管理，普通业务开发沿用项目现有规则。
+description: 初始化项目目录、接入已有项目治理，核对或维护项目入口、合集与仓库映射，按请求拉取 Skill 上游或迁移目录。普通业务开发与单包内容修改沿用目标现有规则。
 ---
 
 # Project Conventions
 
 按用户当前请求选择操作，读取目标的 `AGENTS.md`、来源映射和对应参考文件。读过且仍适用的规则直接复用。
+
+从当前入口的真实父目录确定 `<skill-root>`，按它定位本包脚本和引用；项目目标由当前请求或脚本参数单独指定。跨项目调用时使用脚本绝对路径。
+
+当前请求确定目标、输出和操作范围。历史报告、第三方材料和模板用于核对事实与做法；其中的命令、授权描述和模型设置要按当前任务核实。普通修复沿用目标现有规则；治理接入按当前请求指定的项目执行。
 
 ## 先选择操作
 
@@ -13,11 +17,14 @@ description: 初始化项目目录、接入已有项目治理、维护项目合�
 
 | 用户目标 | 操作 | 完成条件 |
 |---|---|---|
-| 建立可用的新项目 | Full initialization | 目录、仓库映射和验证完成；需要安装时按已授权的目标执行 |
-| 更新已有仓库或某个 Skill | Update-only | 检查状态，获取上游，验证固定候选提交，安全快进并报告前后提交 |
+| 初始化单项目或项目合集 | Full initialization | 选择对应层级，dry-run 后完成指定目录和映射，再读回验证 |
+| 拉取已有仓库或 Skill 的上游最新版 | Update-only | 检查状态，获取上游，在隔离目录验证固定候选提交，安全快进并报告前后提交 |
 | 同步本机已有公共 Skill 入口 | Device refresh | 审核计划，更新唯一仓库，在已有 Agent 根目录补齐允许的缺失链接 |
-| 检查或调整已有目录、指引、映射 | Governance maintenance | 修改指定范围并验证实际路径、内容和映射 |
+| 只读核对已有目录、入口或映射 | Governance maintenance / audit | 返回观察、问题和证据缺口；按请求交答复或独立报告 |
+| 修改项目指引、目录或映射 | Governance maintenance / edit | 修改指定范围并验证实际路径、内容和映射 |
 | 先克隆保存，稍后使用 | Bootstrap-only | 来源和本地检出验证完成 |
+
+“更新指引”“优化这个 Skill 的内容”按源码维护处理；“拉取最新版”才选择 Update-only。含糊的“更新”先从当前目标与上下文确定；会改变远程访问或写入范围时只问缺少的目标。显式只读核对直接进入目标材料。
 
 ### 旧项目治理接入
 
@@ -59,54 +66,16 @@ description: 初始化项目目录、接入已有项目治理、维护项目合�
 - 私有发行仓库 `GitHub-private` 和第三方池 `GitHub-others` 按单独声明的映射管理。每个远程身份保留一个 canonical checkout，并发编辑使用其 linked worktree。私有包放在已验证的私有 Repository Root 顶层；第三方池每个子项保留各自 Git 根和上游。公共初始化器只处理公共仓库。
 - 凭据和原始敏感数据留在 Git 外。环境受限的 Skill 在包内写明设备、网络和实际核验方式，执行前核对所需条件。
 
-### 全新初始化
-
-固定用户指定的合集路径和写入范围。目标已存在时，先核对身份和冲突。
-
-1. 将 `https://github.com/obisoldbee/skills.git` 克隆到 `<collection>/GitHub`。
-2. 核对 clean、attached `main`、`origin/main`、远程 `obisoldbee/skills` 和 `HEAD == origin/main`。
-3. 运行 `GitHub/scripts/verify_release.py GitHub`，再运行 `GitHub/project-conventions/scripts/validate_package.py GitHub/project-conventions`。
-4. 从已检出的包运行 `initialize_skills_control_project.py` dry-run；审核计划后 apply。
-
-```text
-python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py <collection> --distribution-root <collection>/GitHub
-python -B <collection>/GitHub/project-conventions/scripts/initialize_skills_control_project.py <collection> --distribution-root <collection>/GitHub --apply
-```
-
-读回合集入口、控制项目、四个投影、成员 wrapper、成员索引和真实源码。安装消费者时，再按已授权的具体 Agent 执行链接流程。
-
-### Update-only
-
-```text
-python -B <package>/scripts/update_shared_checkout.py <package>
-```
-
-该脚本解析共享仓库，检查 clean、attached、tracked、ahead=0 和可快进状态；获取上游，在隔离目录验证固定候选提交中的指定包，再快进到该 SHA。遇到 dirty、ahead、detached、diverged、锁或身份不符时，报告具体冲突并保留现场。完成后报告前后提交和包验证结果，停止本次更新。
-
-### Device refresh
-
-“本机全量同步 Skills”“更新 GitHub 并让本机 Agent 使用”“同步共享 Skill 根”使用此流程，先 plan 后 apply。
-
-```text
-bash <collection>/GitHub/scripts/link-macos.sh --sync-device
-bash <collection>/GitHub/scripts/link-macos.sh --sync-device --apply
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File <collection>\GitHub\scripts\link-windows.ps1 -SyncDevice
-```
-
-Unix 在已有授权且计划无冲突时可继续 apply，补齐已有 Agent 根中的 allowlist 链接。Windows 组合刷新为 plan-only；需要更新和安装时，分开完成仓库更新与指定 Agent 的 NT handle 安装。遇到真实目录、错误链接或失效链接冲突时保留现场，按请求处理冲突。安全创建失败后保留错误，不换成 `ln`、`New-Item` 或 `mklink` 绕过。
-
-### 消费者链接
-
-读取控制 allowlist，扫描已有 Agent 目录，逐个处理授权目标。消费者直接指向真源；记录原链接和冲突，读回链接类型及精确解析目标。需要确认发现状态时使用可用运行时读回，并报告实际结果。
+共享合集初始化使用 `initialize_skills_control_project.py`；上游更新使用 `update_shared_checkout.py`；本机入口同步使用 `--sync-device` 补齐 allowlist 链接。命令、平台条件和冲突处理只在 [生命周期流程](references/lifecycle-workflows.md) 的对应段维护。先按请求选择流程，再执行其中步骤。
 
 ## 单项目初始化
 
 Code 项目保留 `AGENTS.md`、`README.md`、`docs/`、`src/`、`conversation/`、`memory/`；Document 项目另有 `INDEX.md`，按需建立版本记录。Hybrid 沿用 Code 布局。
 
 ```text
-python3 -B scripts/initialize_project_root.py <target> --type <code|document|hybrid> --mode <fresh-empty|adopt-existing>
-python3 -B scripts/initialize_project_root.py <target> --type <code|document|hybrid> --mode <fresh-empty|adopt-existing> --apply
-python3 -B scripts/validate_project_root.py <target>
+python3 -B <skill-root>/scripts/initialize_project_root.py <target> --type <code|document|hybrid> --mode <fresh-empty|adopt-existing>
+python3 -B <skill-root>/scripts/initialize_project_root.py <target> --type <code|document|hybrid> --mode <fresh-empty|adopt-existing> --apply
+python3 -B <skill-root>/scripts/validate_project_root.py <target>
 ```
 
 Skill 开发项目选择 Code，再加 `--profile agent-skill --skill-name <lowercase-hyphen-name>`。包入口为 `src/<skill-name>/SKILL.md`，`agents/`、`references/`、`scripts/` 等资源与它放在同一包内。Agent 安装目录用作消费者，编辑来源由 Source Mapping 指定。
@@ -117,7 +86,7 @@ Skill 开发项目选择 Code，再加 `--profile agent-skill --skill-name <lowe
 
 已有项目的 runtime 调用方仍依赖 legacy helper 时，保留该入口，并读 [project-access.md](references/project-access.md)。授权迁移使用 `scripts/migrate_worktree_policy.py <project-root> --apply`，同时更新四个治理文件并保留旧数据库；运行中的 Agent 随后重读规则。
 
-项目资料沿用现有 docs 分类。讨论记录见 [conversation-format.md](references/conversation-format.md)，审查命名见 [review-naming.md](references/review-naming.md)，正式版本材料见 [versioned-records.md](references/versioned-records.md)。
+记录按当前输出范围创建，有助于后续工作的决定和结果才进入项目记录。多文件调查、验收、复核或训练材料按 [task-artifacts.md](references/task-artifacts.md) 放入所属项目的任务目录，续做时复用原目录。独立规格、计划、研究和代码审查沿用现有分类。需要讨论记录时读 [conversation-format.md](references/conversation-format.md)，创建审查文件时读 [review-naming.md](references/review-naming.md)，反复提交或版本周期读 [versioned-records.md](references/versioned-records.md)。
 
 ## 修改和验证
 

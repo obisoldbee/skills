@@ -61,6 +61,7 @@ cwd: {cwd}
 - active/ready/blocked lanes:
 - dependencies and phase gates:
 - explicit model/reasoning choices to preserve:
+- selected executor surface and native/visible identity to preserve:
 
 ## 已完成
 -

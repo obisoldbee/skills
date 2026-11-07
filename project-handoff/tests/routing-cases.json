@@ -325,12 +325,12 @@
     "expected": {
       "surface": "visible_thread",
       "requested_route": "terra-max",
-      "model": "gpt-5.6-terra",
+      "model": "gpt-6.1-terra",
       "reasoning": "max",
       "model_basis": "explicit_skill_route",
       "reasoning_basis": "explicit_skill_route",
       "create_thread_arguments": {
-        "model": "gpt-5.6-terra",
+        "model": "gpt-6.1-terra",
         "thinking": "max"
       }
     }
@@ -554,6 +554,121 @@
     "request": "模型和推理都自动选；先设计一个页面，验收后再开发。",
     "expected": {
       "error_contains": "needs_explicit_route"
+    }
+  },
+  {
+    "id": "terra-model-only-current-generation",
+    "request": "用 Terra 创建任务。",
+    "expected": {
+      "model": "gpt-6.1-terra",
+      "reasoning": null,
+      "create_thread_arguments": {
+        "model": "gpt-6.1-terra"
+      }
+    }
+  },
+  {
+    "id": "terra-ultra-writing-option",
+    "request": "用 terra-ultra 创建任务，按给定材料写作。",
+    "expected": {
+      "surface": "visible_thread",
+      "model": "gpt-6.1-terra",
+      "reasoning": "ultra",
+      "create_thread_arguments": {
+        "model": "gpt-6.1-terra",
+        "thinking": "ultra"
+      }
+    }
+  },
+  {
+    "id": "auto-general-computer-operation",
+    "request": "创建任务，模型和推理都自动选，操作一个未熟悉的桌面界面。",
+    "context": {
+      "task_kind": "computer_operation"
+    },
+    "expected": {
+      "model": "gpt-6.1-terra",
+      "reasoning": "ultra",
+      "create_thread_arguments": {
+        "model": "gpt-6.1-terra",
+        "thinking": "ultra"
+      }
+    }
+  },
+  {
+    "id": "auto-fixed-browser-operation",
+    "request": "创建任务，模型和推理都自动选，按已验证的固定步骤在浏览器导出报表，预期状态和停止条件已给定。",
+    "context": {
+      "task_kind": "browser_operation"
+    },
+    "expected": {
+      "model": "gpt-6.1-terra",
+      "reasoning": "medium",
+      "create_thread_arguments": {
+        "model": "gpt-6.1-terra",
+        "thinking": "medium"
+      }
+    }
+  },
+  {
+    "id": "auto-development-preserves-sol",
+    "request": "创建任务，模型和推理都自动选，完成范围明确的开发工作。",
+    "context": {
+      "task_kind": "development"
+    },
+    "expected": {
+      "model": "gpt-6.1-sol",
+      "reasoning": "max",
+      "create_thread_arguments": {
+        "model": "gpt-6.1-sol",
+        "thinking": "max"
+      }
+    }
+  },
+  {
+    "id": "modao-astra-thinking-subagent",
+    "request": "用 astra-xhigh 创建子智能体，负责思考。",
+    "expected": {
+      "surface": "internal_agent",
+      "model": "gpt-6-astra",
+      "reasoning": "xhigh",
+      "create_thread_arguments": {}
+    }
+  },
+  {
+    "id": "modao-terra-ui-subagent",
+    "request": "用 terra-xhigh 创建子智能体，负责 UI 操作。",
+    "expected": {
+      "surface": "internal_agent",
+      "model": "gpt-6.1-terra",
+      "reasoning": "xhigh",
+      "create_thread_arguments": {}
+    }
+  },
+  {
+    "id": "modao-visible-terra-qa",
+    "request": "用 terra-ultra 创建可见任务，独立验收。",
+    "expected": {
+      "surface": "visible_thread",
+      "model": "gpt-6.1-terra",
+      "reasoning": "ultra",
+      "create_thread_arguments": {
+        "model": "gpt-6.1-terra",
+        "thinking": "ultra"
+      }
+    }
+  },
+  {
+    "id": "internal-agent-default-axes",
+    "request": "创建一个子智能体。",
+    "expected": {
+      "surface": "internal_agent",
+      "requested_route": "platform-default",
+      "model": null,
+      "reasoning": null,
+      "model_basis": "platform_default",
+      "reasoning_basis": "platform_default",
+      "create_thread_arguments": {}
     }
   }
 ]

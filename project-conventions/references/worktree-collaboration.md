@@ -29,6 +29,8 @@ If the branch/path exists, inspect it or choose a new task-specific name. Git er
 
 Use the exact output name the user supplies; if none is supplied, choose a task-specific filename. Use exclusive creation (`open(path, 'x')` or equivalent); an existing file means inspect it or select another authorized name. A hash check before overwriting is not an atomic guarantee. Concurrent changes to the same tracked file belong in separate worktrees; for non-Git files use one integrator.
 
+For related multi-file investigation, acceptance, recheck or training materials, default to the owning Project Root's `docs/tasks/` under [task material rules](task-artifacts.md). Read its task index first and reuse an existing task directory for continuation, retries and added evidence. Exclusively reserve a new `YYYY-MM-DD-type-topic-HHMMSS/` directory only for an independent task; one integrator maintains the task index. Create files on demand. Standalone reports, specs, research and code reviews retain their existing categories.
+
 Agents write separate task records. The integrator updates shared daily logs/indexes and assigns canonical sequence numbers during integration. Do not make every worker rewrite the same daily file or reserve all of conversation/. If the project requires a numbered canonical record immediately, one editor allocates it while others keep their own drafts. Response-only work creates no records.
 
 ## Guidance maintenance and execution dependencies
