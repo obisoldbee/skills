@@ -17,7 +17,7 @@ Python 3.10+，仅标准库。生成主机须为 POSIX，输出文件系统须�
 | expected_rule_counts | 归一化后的 domains 与 ipv4_networks 数量；不得根据报错自动改为实测数掩盖缺表 |
 | rules_as_of | 快照日期与版本标识，必填 |
 | custom_direct_rules | 可选纯文本，每行一条既有 DIRECT 规则；导出时保留完整例外与来源 |
-| mixed_ports | 可选各 Mihomo 设备端口映射；桌面默认7897，Android默认7890，须对照目标当前设置 |
+| mixed_ports | 可选端口映射。设备键为 `macos`、`windows`、`android`，区分大小写。省略时桌面默认 7897，Android 默认 7890，须对照目标当前设置 |
 | node_name | 可选 URL 安全 ASCII 节点名，默认 WG-OUT |
 
 原始配置需有 Interface 的 PrivateKey、IPv4 Address `/32` 与已确认 MTU，Peer 的 PublicKey、字面 IPv4 Endpoint。PSK 和 PersistentKeepalive 按原值保留；缺 keepalive 表示 0。当前 iPhone 生成器未核实 Shadowrocket PSK 字段，源文件含 PSK 会显式停止该批，须先完成目标 schema 核验再支持。

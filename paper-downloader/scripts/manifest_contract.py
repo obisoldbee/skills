@@ -11,7 +11,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 
 SCHEMA = "paper-downloader/download-manifest/v2"
@@ -249,11 +249,69 @@ def identity_key(row: dict[str, Any]) -> str:
     return f"title:{title}" if title else ""
 
 
+def publication_groups(rows: list[dict[str, Any]]) -> list[list[int]]:
+    """Join rows through any shared identifier, including a later bridging row."""
+    aliases = []
+    by_alias: dict[tuple[str, str], list[int]] = {}
+    for index, row in enumerate(rows):
+        keys = [(kind, value) for kind in ("doi", "pmid", "pmcid")
+                if (value := normalized_identifier(kind, row.get(kind)))]
+        if not keys and has_titled_pdf_route(row):
+            # A generic title such as "Editorial" can belong to different papers.
+            # Only the same supplied resource binds two title-only inventory rows.
+            url = urlsplit(str(row["pdf_url"]).strip())._replace(fragment="").geturl()
+            keys = [("title_route", identity_key(row) + "\n" + url)]
+        aliases.append(keys)
+        for key in keys:
+            by_alias.setdefault(key, []).append(index)
+    groups = []
+    seen: set[int] = set()
+    for start in range(len(rows)):
+        if start in seen:
+            continue
+        pending, group, identifiers = [start], [], {}
+        while pending:
+            index = pending.pop()
+            if index in seen:
+                continue
+            seen.add(index)
+            group.append(index)
+            for kind, value in aliases[index]:
+                if identifiers.setdefault(kind, value) != value:
+                    raise ValueError(f"conflicting {kind} in linked publication rows: "
+                                     f"{identifiers[kind]} and {value}")
+                pending.extend(by_alias.pop((kind, value), ()))
+        groups.append(sorted(group))
+    return groups
+
+
+def has_titled_pdf_route(row: dict[str, Any]) -> bool:
+    return bool(str(row.get("title") or "").strip() and is_http_pdf_route(row.get("pdf_url")))
+
+
+def is_http_pdf_route(value: Any) -> bool:
+    try:
+        url = urlsplit(str(value or "").strip())
+        if url.scheme not in {"http", "https"} or not url.hostname or url.username is not None or url.password is not None:
+            return False
+        if "*" in unquote(url.netloc + url.path + url.query):
+            return False
+        path = unquote(url.path).casefold()
+        if path.endswith(".pdf"):
+            return True
+        segments = {re.sub(r"\.(?:php|aspx?|cgi|s?html?)$", "", part) for part in path.split("/")}
+        if segments & {"search", "search-results", "search_results", "searchresults", "dosearch", "advanced-search", "advancedsearch"}:
+            return False
+        search_fields = {"q", "query", "search", "term", "searchterm", "searchtext"}
+        return not any(key.casefold() in search_fields for key, _ in parse_qsl(url.query, keep_blank_values=True))
+    except ValueError:
+        return False
+
+
 def row_binding_projection(row: dict[str, Any]) -> dict[str, Any]:
     projection = {field: row.get(field) for field in ROW_BINDING_FIELDS}
-    # Preserve historical v2 bindings when the optional quota classification
-    # was absent. New classifications are frozen with the inventory rows.
-    for field in ("collection_role", "collection_role_reason"):
+    # Optional metadata joins the frozen projection only when present, preserving older bindings.
+    for field in ("collection_role", "collection_role_reason", "route_sources", "alternate_pdf_urls"):
         if field in row:
             projection[field] = row[field]
     return projection
@@ -270,21 +328,22 @@ def collection_role(row: dict[str, Any]) -> str:
 
 def quota_counts(rows: Iterable[dict[str, Any]], target_count: int | None = None) -> dict[str, Any]:
     rows = list(rows)
-    targets = [row for row in rows if collection_role(row) == "target"
-               and row.get("disposition", "eligible") == "eligible"
-               and row.get("status") != "duplicate"]
+    roles = [collection_role(row) for row in rows]
+    targets: set[int] = set()
+    completed: dict[str, set[int]] = {"target": set(), "supplementary": set()}
+    for group in publication_groups(rows):
+        for index in group:
+            row = rows[index]
+            if row.get("disposition", "eligible") != "eligible" or row.get("status") == "duplicate":
+                continue
+            if roles[index] == "target":
+                targets.add(group[0])
+            if row.get("status") == "downloaded" and row.get("pdf", {}).get("validated") is True and identity_key(row):
+                completed[roles[index]].add(group[0])
     if target_count is None:
         target_count = len(targets)
     if type(target_count) is not int or target_count < 0:
         raise ValueError("target_count must be a non-negative integer")
-    completed: dict[str, set[str]] = {"target": set(), "supplementary": set()}
-    for row in rows:
-        if (row.get("status") == "downloaded"
-                and row.get("pdf", {}).get("validated") is True
-                and row.get("disposition", "eligible") == "eligible"):
-            key = identity_key(row)
-            if key:
-                completed[collection_role(row)].add(key)
     # The same publication is never counted twice across the two lists.
     supplementary = completed["supplementary"] - completed["target"]
     count = len(completed["target"])
@@ -293,7 +352,7 @@ def quota_counts(rows: Iterable[dict[str, Any]], target_count: int | None = None
         "target_downloaded": count,
         "target_remaining": max(0, target_count - count),
         "target_quota_met": count >= target_count,
-        "supplementary_rows": sum(collection_role(row) == "supplementary" for row in rows),
+        "supplementary_rows": roles.count("supplementary"),
         "supplementary_downloaded": len(supplementary),
     }
 
@@ -481,6 +540,8 @@ def validate_manifest(payload: Any, *, output_root: Path | None = None) -> dict[
         raise ValueError("inventory row_ids do not exactly match manifest row order")
     if inventory.get("format") not in {"markdown", "csv"}:
         raise ValueError("inventory format must be exactly markdown or csv")
+    if "identity_grouping" in inventory and inventory["identity_grouping"] != "shared-identifiers/v1":
+        raise ValueError("unsupported inventory identity_grouping")
     sha = str(inventory.get("sha256") or "")
     if not re.fullmatch(r"[0-9a-f]{64}", sha):
         raise ValueError("inventory sha256 is missing or invalid")

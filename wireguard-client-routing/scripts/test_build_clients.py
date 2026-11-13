@@ -68,6 +68,32 @@ class BuildContract(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o700 if p.is_dir() else 0o600)
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o700)
 
+    def test_mixed_ports_requires_a_mihomo_device_and_uses_only_omitted_defaults(self):
+        self.m['targets'] = ['macos']
+        self.m['client_configs'] = {'macos': self.sources['macos']}
+        for invalid in (None, []):
+            self.m['mixed_ports'] = invalid
+            self.fails_without_output('mixed_ports_must_be_a_device_map')
+        for device in ('macOS', 'iphone'):
+            self.m['mixed_ports'] = {device: 8765}
+            self.fails_without_output('invalid_mixed_ports_device')
+        for invalid in (False, 0, 65536, '8765'):
+            self.m['mixed_ports'] = {'macos': invalid}
+            self.fails_without_output('invalid_mixed_port for macos')
+        for ports, expected in (({'macos': 8765}, 8765), ({}, 7897)):
+            self.m['mixed_ports'] = ports
+            self.m['output_dir'] = str(self.root / str(expected))
+            self.run_build()
+            config = Path(self.m['output_dir']) / builder.FILENAMES['macos']
+            self.assertEqual(json.loads(config.read_text())['mixed-port'], expected)
+
+    def test_invalid_cidr_names_field_and_physical_line(self):
+        nets = self.root / 'nets'
+        nets.write_text('# fixture\n\n1.0.1.0/24\n1.0.2.1/24\n')
+        self.fails_without_output(r'cn_networks line 4$')
+        nets.write_text(nets.read_text().replace('1.0.2.1', '1.0.2.0'))
+        self.run_build()
+
     def test_missing_android_source_is_atomic(self):
         self.m['client_configs'] = {k: v for k, v in self.sources.items() if k != 'android'}
         self.fails_without_output('client_map_must_match_all_targets')

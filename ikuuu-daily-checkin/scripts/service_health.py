@@ -10,10 +10,11 @@ import secrets
 import sqlite3
 import subprocess
 from zoneinfo import ZoneInfo
-from report_common import parse_space_id, space_id_text
+from report_common import PAGE_LABELS, parse_space_id, space_id_text
 
 NAMES = {'volcengine-invites-monitor':'方舟众测', 'ikuuu-daily-checkin':'Ikuuu',
          'minimax-agent-daily-checkin':'MiniMax', 'buddy-travelling':'WorkBuddy'}
+BUSINESS_NOTICES = {'low_traffic':'Ikuuu 流量不足。', 'failure':'Ikuuu 签到异常。'}
 
 def now():
     return datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')
@@ -97,10 +98,12 @@ def transition_notice(service, event, page, detail, extra=None):
     suffix = '正在维护。' if event['kind'] == 'entered' else '已恢复。'
     return NAMES[service] + suffix, []
 
-def observe(directory, service, phase, sender, *, page, evidence='', detail='', extra=None):
+def observe(directory, service, phase, sender, *, page, evidence='', detail='', extra=None, business_notice=None):
     """Serialize observation and delivery; suppress unchanged states across processes/days."""
     if service not in NAMES or phase not in ('maintenance','available','unknown'):
         raise ValueError('invalid health observation')
+    if business_notice is not None and (service != 'ikuuu-daily-checkin' or business_notice not in BUSINESS_NOTICES):
+        raise ValueError('invalid business notice')
     if phase != 'unknown' and not evidence.strip():
         raise ValueError('confirmed health requires current page evidence')
     try:
@@ -119,14 +122,20 @@ def observe(directory, service, phase, sender, *, page, evidence='', detail='', 
                 # A new observed transition supersedes an obsolete undelivered notification.
                 state['pending'] = {'kind':kind,'key':'health-'+secrets.token_hex(16),
                     'time':now(),'delivery':'pending'}
+                if kind == 'recovered' and business_notice:
+                    state['pending']['business_notice'] = business_notice
             state.update(phase=phase,last_observed_at=now())
             save(path,state)
             event = state.get('pending')
             if not event:
                 return {'status':'not_triggered','transition':None,'phase':phase}
+            selected_notice = event.get('business_notice')
+            notification_kind = selected_notice or 'maintenance_' + event['kind']
+            if selected_notice:
+                extra = (BUSINESS_NOTICES[selected_notice], [])
             if event['delivery'] in ('attempting','unknown'):
                 return {'status':'unknown','transition':event['kind'],'phase':phase,
-                        'error':'prior_delivery_unconfirmed'}
+                        'notification_kind':notification_kind,'error':'prior_delivery_unconfirmed'}
             event['delivery'] = 'attempting'
             save(path,state)  # Interrupted/ambiguous delivery cannot become a second blind send.
             result = sender(event['key'],transition_notice(service,event,page,detail,extra))
@@ -138,7 +147,7 @@ def observe(directory, service, phase, sender, *, page, evidence='', detail='', 
             else:
                 event['delivery'] = 'pending' if result.get('status') == 'failed' else 'unknown'
             save(path,state)
-            return {**result,'transition':event['kind'],'phase':phase}
+            return {**result,'transition':event['kind'],'phase':phase,'notification_kind':notification_kind}
     except (OSError,ValueError,KeyError,TypeError,sqlite3.Error):
         # Corrupt/busy state is never treated as a fresh incident; do not spam or reset it.
         return {'status':'failed','transition':None,'error':'health_state_unavailable'}
@@ -147,11 +156,13 @@ def main():
     service = Path(__file__).resolve().parents[1].name
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--phase',choices=['maintenance','available','unknown'],required=True)
-    parser.add_argument('--page',choices=['closed','preserved','unconfirmed','not_created'],required=True)
+    parser.add_argument('--page',choices=PAGE_LABELS,required=True)
     parser.add_argument('--space-id',type=parse_space_id,
                         help='Actual Ego integer or runtime:kind:id; required when a page was created')
     parser.add_argument('--evidence',default='',help='Short redacted current visible evidence')
     parser.add_argument('--detail',default='',help='Short actual business result, not model advice')
+    parser.add_argument('--business-notice',choices=BUSINESS_NOTICES,
+                        help='Verified business notice to send in place of a recovery message')
     parser.add_argument('--chat-id',required=True)
     parser.add_argument('--state-dir',type=Path,default=default_state(service))
     parser.add_argument('--config',type=Path,default=default_config())
@@ -163,11 +174,11 @@ def main():
         parser.error('actual page identity required')
     if args.page == 'not_created' and args.space_id is not None:
         parser.error('not_created cannot carry a page identity')
-    page = {'closed':'已关闭','preserved':'已保留','unconfirmed':'关闭未确认','not_created':'未创建'}[args.page]
+    page = PAGE_LABELS[args.page]
     if args.space_id is not None: page += f'（{space_id_text(args.space_id)}）'
     result = observe(args.state_dir,service,args.phase,
         lambda key,notice:send_notice(args.config,args.chat_id,key,notice),
-        page=page,evidence=args.evidence,detail=args.detail)
+        page=page,evidence=args.evidence,detail=args.detail,business_notice=args.business_notice)
     print(json.dumps(result,ensure_ascii=False))
     return 1 if result['status'] in ('failed','unknown') else 0
 

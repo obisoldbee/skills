@@ -4,9 +4,11 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path, PurePosixPath
 import re
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from xml.parsers import expat
 import zipfile
@@ -57,7 +59,8 @@ def inspect(source, out):
             if len(infos) > 10000:
                 raise ValueError('too many ZIP entries')
             names = [i.filename for i in infos]
-            if len(names) != len(set(names)):
+            known_names = set(names)
+            if len(names) != len(known_names):
                 raise ValueError('duplicate ZIP entries')
             for i in infos:
                 p = PurePosixPath(i.filename)
@@ -65,15 +68,33 @@ def inspect(source, out):
                     raise ValueError('unsafe ZIP member')
             report['entries'] = names
             report['metadata'] = {}
+            report['previews'] = []
+            remaining = LIMIT
+            preview_names = [name for name in names if name == 'previews/thumbnail.png'
+                             or re.fullmatch(r'previews/page[1-9][0-9]*\.png', name)]
             for name in ('mimetype', 'META-INF/metadata.xml', 'META-INF/textinfo.xml',
-                         'previews/thumbnail.png', 'previews/page1.png'):
-                if name not in names:
+                         *preview_names):
+                if name not in known_names:
                     continue
                 info = archive.getinfo(name)
+                if name.endswith('.png'):
+                    preview = {'member': name}
+                    report['previews'].append(preview)
+                    if info.flag_bits & 1 or info.file_size > remaining:
+                        preview['skipped_reason'] = ('encrypted' if info.flag_bits & 1
+                                                     else 'preview_byte_limit')
+                        continue
                 if info.file_size > LIMIT or info.flag_bits & 1:
                     raise ValueError('oversized/encrypted selected member')
-                with archive.open(info) as stream:
-                    data = stream.read(LIMIT + 1)
+                try:
+                    with archive.open(info) as stream:
+                        data = stream.read(LIMIT + 1)
+                except (zipfile.BadZipFile, RuntimeError) as error:
+                    if not name.endswith('.png'):
+                        raise
+                    preview['skipped_reason'] = str(error)
+                    remaining -= info.file_size
+                    continue
                 if len(data) > LIMIT:
                     raise ValueError('oversized selected member')
                 if name.endswith('.xml'):
@@ -81,9 +102,13 @@ def inspect(source, out):
                     report['metadata'][name] = [{'tag': e.tag, 'text': e.text.strip(), 'attributes': e.attrib}
                                                 for e in root.iter() if e.text and e.text.strip()]
                 elif name.endswith('.png'):
+                    remaining -= len(data)
                     if not data.startswith(b'\x89PNG\r\n\x1a\n'):
-                        raise ValueError('preview is not PNG')
-                    previews[PurePosixPath(name).name] = data
+                        preview['skipped_reason'] = 'invalid_png_signature'
+                        continue
+                    filename = PurePosixPath(name).name
+                    previews[filename] = data
+                    preview['output'] = filename
                 else:
                     report['mimetype'] = data.decode('utf-8', errors='replace')
     elif magic.startswith(b'RIFF'):
@@ -266,6 +291,7 @@ def main():
     sub.add_argument('--reference', type=Path)
     sub.add_argument('--visual', choices=('pass', 'fail', 'unknown'), default='unknown')
     sub.add_argument('--notes', default='')
+    sub.add_argument('--receipt', type=Path, help='new QA receipt file; existing paths refused')
     args = parser.parse_args()
     try:
         if args.action == 'inspect':
@@ -274,6 +300,16 @@ def main():
             result = extract(args.source, args.out, args.fit_artwork, args.margin)
         else:
             result = assess(args.artifact, args.reference, args.visual, args.notes)
+            if args.receipt is not None:
+                payload = json.dumps(result, indent=2) + '\n'
+                receipt = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=args.receipt.parent,
+                                                      delete=False)
+                try:
+                    with receipt:
+                        receipt.write(payload)
+                    os.link(receipt.name, args.receipt)
+                finally:
+                    os.unlink(receipt.name)
         print(json.dumps(result, indent=2))
         return 2 if result['status'] == 'partial_incomplete' else 0
     except (ValueError, OSError, ET.ParseError, expat.ExpatError, zipfile.BadZipFile) as error:

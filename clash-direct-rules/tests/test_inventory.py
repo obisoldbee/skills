@@ -113,7 +113,22 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(before, self.source.read_bytes())
         self.assertEqual(m.current(self.bind)[1], h)
         self.assertEqual(result['status'], 'candidate_only')
+        self.assertEqual(json.loads((out/'plan.json').read_text())['add'], [condition])
+        self.assertEqual(result['added_count'], 1)
         self.assertEqual((out/'candidate.js').stat().st_mode & 0o777, 0o600)
+
+    def test_plan_repeated_add_preserves_original_bytes(self):
+        data = ('// fixture\r\nconst restoredRules = ' + json.dumps(self.base) + ';\r\n').encode()
+        self.source.write_bytes(data)
+        self.source_hash = m.digest(data)
+        h = self.prepare({'add':[self.base[0]], 'remove':[]})
+        out = self.root/'candidate'
+        result = m.plan(self.bind, self.change, self.source_hash, h, out)
+        self.assertEqual(json.loads((out/'plan.json').read_text())['add'], [])
+        self.assertEqual((result['added_count'], result['removed_count']), (0, 0))
+        self.assertEqual(result['candidate_sha256'], self.source_hash)
+        self.assertEqual((out/'candidate.js').read_bytes(), data)
+        self.assertEqual(m.current(self.bind)[1], h)
 
     def test_plan_explicit_remove_preserves_other_rules(self):
         h=self.prepare({'add':[], 'remove':[self.base[0]]})
@@ -158,6 +173,34 @@ class InventoryTests(unittest.TestCase):
         self.assertNotIn('DO_NOT_OUTPUT',json.dumps(result))
         y.write_text('rules:\n- MATCH,proxy\n')
         self.assertEqual(m.check(self.bind)['status'],'generated_mismatch')
+
+    def test_stale_source_survives_generated_file_errors_and_prefix_differences(self):
+        inventory_hash = self.snapshot()['inventory_sha256']
+        self.source.write_text(self.render(['DOMAIN,new.example,DIRECT'] + self.base))
+        source_hash = m.digest(self.source.read_bytes())
+        generated = self.root/'generated.yaml'
+        self.bind['generated_config'] = str(generated)
+        self.bind_path.write_bytes(m.encoded(self.bind))
+        for state, content, matches in (
+                ('mismatch', 'rules:\n- MATCH,proxy\n', False),
+                ('missing', None, None),
+                ('unsupported', 'private_field: SYNTHETIC_HIDDEN\n', None)):
+            with self.subTest(state=state):
+                if content is None:
+                    generated.unlink()
+                else:
+                    generated.write_text(content)
+                proc = subprocess.run([sys.executable,'-B',str(SCRIPT),'--binding',str(self.bind_path),'check'],
+                                      capture_output=True,text=True)
+                self.assertEqual(proc.returncode, 2)
+                result = json.loads(proc.stdout)
+                self.assertEqual((result['status'], result['source_status']), ('stale_source','stale_source'))
+                self.assertEqual((result['generated_status'], result['generated_prefix_matches']), (state,matches))
+                self.assertEqual((result['source_sha256'], result['inventory_sha256']), (source_hash, inventory_hash))
+                self.assertEqual((result['added_count'], result['removed_count'], result['order_changed']), (1,0,False))
+                self.assertNotIn('SYNTHETIC_HIDDEN', proc.stdout + proc.stderr)
+                self.assertNotIn(str(self.root), proc.stdout + proc.stderr)
+                self.assertEqual(m.current(self.bind)[1], inventory_hash)
 
     def test_integrity_mismatch(self):
         self.snapshot()

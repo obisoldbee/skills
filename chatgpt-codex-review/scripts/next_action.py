@@ -11,12 +11,12 @@ import sys
 from urllib.parse import urlsplit
 
 from validate_browser_binding import validate_binding as validate_browser_driver
-from verify_artifacts import verify_one
+from verify_artifacts import KINDS, verify_one
 
 
 PHASES = {
     "ready_to_submit", "submitting", "waiting_web", "review_ready",
-    "repairing", "validating", "completed", "blocked", "paused",
+    "repairing", "validating", "ready_to_deliver", "completed", "blocked", "paused",
 }
 SOURCE = re.compile(r"(?:git:(?:[0-9a-f]{40}|[0-9a-f]{64})|(?:mcp|packet):[0-9a-f]{64})\Z")
 SOURCE_PREFIX = {"github": "git:", "mcp": "mcp:", "local_packet": "packet:"}
@@ -98,7 +98,7 @@ def contract_digest(contract):
             require(isinstance(item, dict) and isinstance(item.get("name"), str)
                     and ARTIFACT_NAME.fullmatch(item["name"]) is not None
                     and isinstance(item.get("kind"), str)
-                    and item["kind"] in {"zip", "png", "json", "utf8"}, "invalid artifact item")
+                    and item["kind"] in KINDS, "invalid artifact item")
             require(item["name"].casefold() not in names, "duplicate artifact name")
             names.add(item["name"].casefold())
     return hashlib.sha256(json.dumps(contract, sort_keys=True, ensure_ascii=False,
@@ -419,7 +419,7 @@ def result(state, action, reason, **updates):
     phase = updates.get("phase", state["phase"])
     candidate = {**state, **updates}
     schedule_action = ("establish_durable" if action == "ensure_durable_followup"
-                       else "none" if state.get("followup_mode", "durable") == "inline"
+                       else "none" if candidate.get("execution_scope") == "materials_only" or state.get("followup_mode", "durable") == "inline"
                        else "keep_active" if web_capture_required(candidate) or (
                            candidate.get("awaiting_send") is True and phase in {"ready_to_submit", "submitting"})
                        else "pause_if_active")
@@ -432,6 +432,10 @@ def followup_checkpoint(state, event, ledger=None):
     checkpoint = event.get("checkpoint")
     require(checkpoint in {"before_submit", "turn_end", "inline_deadline"}, "invalid followup checkpoint")
     timestamp(event.get("observed_at"))
+    if (state.get("execution_scope") == "materials_only" and state["phase"] in {"ready_to_submit", "ready_to_deliver"}
+            and prepared_request(state)):
+        return result(state, "deliver_prepared_request", "Deliver the frozen request and record its receipt.",
+                      phase="ready_to_deliver")
     if state.get("execution_scope") == "materials_only" or state["phase"] in {"completed", "paused", "blocked"}:
         answer = result(state, "continue_current_step", "Keep the recorded scope or stop condition; this check does not resume or submit work.")
         answer["schedule_action"] = "none" if state.get("execution_scope") == "materials_only" else "pause_if_active"
@@ -1691,11 +1695,24 @@ def _decide(state, event, observer_record=None):
     require(state.get("followup_mode", "durable") in {"durable", "inline"}, "invalid followup_mode")
     require(not (state.get("durable_followup_requested") is True and state.get("followup_mode") == "inline"),
             "explicit durable follow-up cannot silently become inline")
+    materials_only = state.get("execution_scope") == "materials_only"
+    if state["phase"] == "ready_to_deliver":
+        require(materials_only and prepared_request(state), "materials delivery requires a bound frozen request")
+    if materials_only and state["phase"] == "completed":
+        delivered = state.get("delivery") or {}
+        require(prepared_request(state) and bound(delivered, state, token=True)
+                and delivered.get("complete") is True and evidence(delivered.get("evidence"))
+                and delivered.get("sha256") == state["prepared_request"]["sha256"]
+                and delivered.get("path") == state["prepared_request"]["path"],
+                "completed materials need the bound delivery receipt")
     conversation = state.get("conversation_url")
     if conversation is None:
+        local_delivery = materials_only and (state["phase"] in {"ready_to_deliver", "completed"}
+                                           or state["phase"] in {"paused", "blocked"}
+                                           and state.get("resume_phase") == "ready_to_deliver")
         resumable_unsent = (state["phase"] in {"paused", "blocked"}
                             and state.get("resume_phase") in {"ready_to_submit", "submitting"})
-        require(state["phase"] in {"ready_to_submit", "submitting"} or resumable_unsent,
+        require(state["phase"] in {"ready_to_submit", "submitting"} or resumable_unsent or local_delivery,
                 "only an unsent initial round may lack a conversation URL")
     else:
         require(conversation_url(conversation),
@@ -1858,16 +1875,16 @@ def _decide(state, event, observer_record=None):
                 and nonempty(event.get("dispositions_ref"))
                 and event.get("materials_verified") is True,
                 "Astra must freeze the request, source, original requirements, checks and dispositions")
-        prepared = record(state, event, path=event["review_request_path"], sha256=event["prompt_sha256"],
+        materials_only = materials_only or event.get("materials_only") is True
+        preparation_state = {**state, "execution_scope": "materials_only"} if materials_only else state
+        prepared = record(preparation_state, event, path=event["review_request_path"], sha256=event["prompt_sha256"],
                           requirements_ref=event["requirements_ref"],
                           source_readback_ref=event["source_readback_ref"],
                           checks_ref=event["checks_ref"],
                           dispositions_ref=event["dispositions_ref"])
-        if event.get("materials_only") is True:
-            return result(state, "deliver_prepared_request", "Explicit materials-only scope stops before submission.",
-                          prepared_request=prepared)
-        if state.get("execution_scope") == "materials_only" or event.get("materials_only") is True:
-            return result(state, "deliver_prepared_request", "Materials-only scope stops before submission.",
+        if materials_only:
+            return result(state, "deliver_prepared_request", "Deliver the frozen request and record its receipt.",
+                          phase="ready_to_deliver", execution_scope="materials_only", awaiting_send=False,
                           prepared_request=prepared)
         if submission_observer(state, event) is None:
             return ensure_followup(state, "Prepare is saved; verify the selected observation mode before sending.",
@@ -2162,9 +2179,20 @@ def _decide(state, event, observer_record=None):
         answer["state_updates"]["validation"] = validation
         return answer
     if kind == "delivery":
-        require(state["phase"] == "validating", "delivery gate requires validating")
         require(event.get("delivered_source_id") == state["source_id"], "delivery source mismatch")
         require(type(event.get("complete")) is bool, "declare delivery completion")
+        if materials_only:
+            require(state["phase"] in {"ready_to_deliver", "ready_to_submit"} and prepared_request(state),
+                    "materials delivery requires a bound frozen request")
+            prepared = state["prepared_request"]
+            require(event.get("prompt_sha256") == prepared["sha256"], "materials delivery prompt SHA mismatch")
+            delivery = record(state, event, complete=event["complete"], path=prepared["path"], sha256=prepared["sha256"])
+            if not event["complete"]:
+                return result(state, "deliver_prepared_request", "The frozen request still awaits complete delivery.",
+                              phase="ready_to_deliver", delivery=delivery)
+            return result(state, "complete", "The current frozen request was delivered.",
+                          phase="completed", delivery=delivery, awaiting_send=False)
+        require(state["phase"] == "validating", "delivery gate requires validating")
         delivery = record(state, event, complete=event["complete"])
         answer = completion({**state, "delivery": delivery}, observer_record)
         answer["state_updates"]["delivery"] = delivery

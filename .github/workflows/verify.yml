@@ -172,6 +172,21 @@ jobs:
           python -B web-bookmark-intelligence/scripts/validate_skill.py
           python -B -m unittest discover -s web-bookmark-intelligence/tests -p 'test_*.py'
 
+      - name: Verify offline routing, bridge, check-in and H3 package behavior
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -B clash-direct-rules/scripts/validate_package.py
+          python -B -m unittest discover -s clash-direct-rules/tests
+          python -B dot-grok-bridge/assets/service/run_offline_tests.py
+          python -B -m unittest discover -s ikuuu-daily-checkin/scripts
+          python -B -m unittest discover -s minimax-agent-daily-checkin/scripts
+          node --test minimax-agent-daily-checkin/scripts/test_browser_round.mjs
+          python -B -m unittest discover -s minimax-h3-prompt/tests
+          python -B wireguard-client-routing/scripts/test_build_clients.py
+
       - name: Verify media-understanding package behavior
         shell: bash
         run: |

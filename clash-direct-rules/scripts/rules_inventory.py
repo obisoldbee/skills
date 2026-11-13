@@ -183,17 +183,32 @@ def generated_rules(path):
 def check(b):
     old, old_hash = current(b)
     now, _ = source_state(b)
-    result = {'status': 'current' if old and old['source_sha256'] == now['source_sha256'] and old['rules_sha256'] == now['rules_sha256'] else 'stale_source' if old else 'uninitialized',
+    source_status = 'uninitialized'
+    if old:
+        matches = old['source_sha256'] == now['source_sha256'] and old['rules_sha256'] == now['rules_sha256']
+        source_status = 'current' if matches else 'stale_source'
+    result = {'status': source_status, 'source_status': source_status,
               'source_sha256': now['source_sha256'], 'rule_count': now['rule_count'],
               'inventory_sha256': old_hash, 'revision': old['revision'] if old else None,
               **delta(old, now)}
     policy(b, now['rules'])
     if b.get('generated_config'):
-        rules = generated_rules(b['generated_config'])
-        result['generated_rule_count'] = len(rules)
-        result['generated_prefix_matches'] = rules[:now['rule_count']] == now['rules']
-        if not result['generated_prefix_matches']:
-            result['status'] = 'generated_mismatch'
+        result['generated_prefix_matches'] = None
+        try:
+            rules = generated_rules(b['generated_config'])
+        except FileNotFoundError:
+            generated_status = 'missing'
+        except OSError:
+            generated_status = 'unreadable'
+        except (ContractError, ValueError):
+            generated_status = 'unsupported'
+        else:
+            prefix_matches = rules[:now['rule_count']] == now['rules']
+            result.update(generated_rule_count=len(rules), generated_prefix_matches=prefix_matches)
+            generated_status = 'matched' if prefix_matches else 'mismatch'
+        result['generated_status'] = generated_status
+        if source_status == 'current' and generated_status != 'matched':
+            result['status'] = 'generated_' + generated_status
     return result
 
 
@@ -281,18 +296,23 @@ def plan(b, changes, expected_source, expected_current, out):
     need(not set(add).intersection(remove), 'conflicting_change')
     need(set(remove).issubset(now['rules']), 'removal_not_present')
     need(all(re.search(r',DIRECT(?:,no-resolve)?$', x) and x.count(',') >= 2 for x in add), 'addition_must_be_direct_rule')
-    proposed = [x for x in add if x not in now['rules']] + [x for x in now['rules'] if x not in remove]
+    actual_add = [x for x in add if x not in now['rules']]
+    proposed = actual_add + [x for x in now['rules'] if x not in remove]
     policy(b, proposed)
-    candidate = text[:start] + json.dumps(proposed, ensure_ascii=False, indent=2) + text[end:]
-    need(parse_source(candidate.encode(), b['rule_array'])[0] == proposed, 'candidate_parse_failed')
+    candidate = text
+    if actual_add or remove:
+        candidate = text[:start] + json.dumps(proposed, ensure_ascii=False, indent=2) + text[end:]
+    candidate_bytes = candidate.encode('utf-8')
+    need(parse_source(candidate_bytes, b['rule_array'])[0] == proposed, 'candidate_parse_failed')
     directory = private_path(out)
     need(not Path(b['source']).is_relative_to(directory) and not Path(b['state_dir']).is_relative_to(directory), 'output_overlaps_binding')
     need(digest(read_bytes(b['source'])) == expected_source and current(b)[1] == expected_current, 'inputs_changed')
     directory.mkdir(mode=0o700, parents=False, exist_ok=False)
-    write_new(directory / 'candidate.js', candidate.encode())
+    write_new(directory / 'candidate.js', candidate_bytes)
     doc = {'status': 'candidate_only', 'source_sha256': expected_source, 'inventory_sha256': expected_current,
-           'candidate_sha256': digest(candidate.encode()), 'rules_sha256': digest(encoded(proposed)),
-           'add': add, 'remove': remove, 'before_count': len(now['rules']), 'after_count': len(proposed)}
+           'candidate_sha256': digest(candidate_bytes), 'rules_sha256': digest(encoded(proposed)),
+           'add': actual_add, 'remove': remove, 'added_count': len(actual_add), 'removed_count': len(remove),
+           'before_count': len(now['rules']), 'after_count': len(proposed)}
     write_new(directory / 'plan.json', encoded(doc))
     return {k: v for k, v in doc.items() if k not in {'add', 'remove'}}
 

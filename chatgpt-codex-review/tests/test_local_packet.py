@@ -143,6 +143,42 @@ class PacketTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "materials-only"):
                 HELPER.decide(current, {**submission(current), "source_upload": self.upload(packet)})
 
+    def test_local_material_delivery_survives_readback_without_web_or_scheduler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.inputs(root)
+            packet = self.build(root)
+            current = self.bind(state("ready_to_submit"), packet)
+            current.update(execution_scope="materials_only", prepared_request=None,
+                           conversation_url=None, web_io_binding=None, followup=None)
+            prepared = HELPER.decide(current, preparation(current))
+            self.assertEqual(("ready_to_deliver", False, "none"),
+                             (prepared["phase"], prepared["terminal"], prepared["schedule_action"]))
+            current = apply(current, prepared)
+            event_args = {"delivered_source_id": current["source_id"], "prompt_sha256": "e" * 64,
+                          "complete": True, "evidence": ["local/user-delivery-receipt"]}
+            for corrupt in ({"prompt_sha256": "0" * 64}, {"delivered_source_id": "packet:" + "0" * 64},
+                            {"request_token": "other"}, {"evidence": []}):
+                with self.subTest(corrupt=corrupt), self.assertRaises(ValueError):
+                    HELPER.decide(current, event(current, "delivery", **(event_args | corrupt)))
+            partial = HELPER.decide(current, event(current, "delivery", **(event_args | {"complete": False})))
+            self.assertFalse(partial["terminal"])
+            for phase in ("ready_to_deliver", "ready_to_submit"):
+                with self.subTest(phase=phase):
+                    # Existing v2 materials_only states can have a bound request in ready_to_submit.
+                    saved = {**current, "phase": phase}
+                    delivered = HELPER.decide(saved, event(saved, "delivery", **event_args))
+                    self.assertEqual(("completed", True, "none"),
+                                     (delivered["phase"], delivered["terminal"], delivered["schedule_action"]))
+                    persisted = root / "state.json"
+                    persisted.write_text(json.dumps(apply(saved, delivered)))
+                    resumed = json.loads(persisted.read_text())
+                    check = HELPER.decide(resumed, event(resumed, "followup_check", checkpoint="turn_end",
+                                                       observed_at="2026-01-01T00:00:00Z"))
+                    self.assertEqual("already_complete", check["action"])
+                    self.assertTrue(check["terminal"])
+                    self.assertEqual("none", check["schedule_action"])
+
     def test_local_packet_can_send_read_review_and_repair_as_a_new_version(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

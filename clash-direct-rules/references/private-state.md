@@ -19,7 +19,7 @@ Keep local protected/revoked decisions and their provenance in the wrapper. Chan
 
 ## Read and synchronize
 
-`check` emits only status, hashes, counts, revision and order/prefix comparison. It does not print domains, process paths, nodes, secret values or source snippets. Exit 0 means current; exit 2 requires reconciliation or indicates a missing/unsupported input. Its narrow parser recognizes one `const <rule_array> = <JSON array>;` outside strings/comments. A computed array, duplicate declaration or unsupported generated YAML yields an error; inspect the real source before adapting the parser. Do not execute an unknown enhancement to extract its rules.
+`source_status` compares the durable source to CURRENT. When a generated file is bound, `generated_status` reports `matched`, `mismatch`, `missing`, `unreadable` or `unsupported`. The last three leave `generated_prefix_matches` null. Source hashes, counts and order comparison remain available while that file is being rebuilt. Exit 0 requires a current source and a matching generated prefix when bound. The source parser recognizes one `const <rule_array> = <JSON array>;` outside strings and comments. Inspect unsupported input privately.
 
 To record an independently reviewed current source, first run the preview, then the same command with `--write`:
 
@@ -45,7 +45,7 @@ python3 -B <skill-root>/scripts/rules_inventory.py --binding <binding.json> plan
   --changes <private change.json> --out <new private candidate directory>
 ```
 
-The output directory's parent must exist. The directory must be absent and outside Git and the package. Outputs are `candidate.js` and `plan.json`. The plan pins both inputs, names the delta and hashes the candidate. Recheck those inputs before applying it. The helper leaves source, inventory and running config untouched.
+The output directory's parent must exist. The directory must be absent and outside Git and the package. Outputs are `candidate.js` and `plan.json`. The plan pins both inputs and lists the actual additions and removals. If both counts are zero, the candidate has the source's exact bytes and the operation ends there. Recheck both inputs before applying a change.
 
 For an absent or known-empty enhancement, `restore-plan` creates the same two private outputs using the latest inventory's verified script backup:
 

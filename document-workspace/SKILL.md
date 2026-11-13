@@ -73,7 +73,9 @@ For a populated folder, all non-transient, portable, readable original regular f
 they are and byte-identical preserved copies go to `raw/as-received/`, including files whose
 suffix is unclassified. Mark each known machine-generated summary with repeated
 `--upstream-derived <relative-path>` during both plan and apply. The tool records it as
-`source_class=upstream-derived` and `reliability=unverified`.
+`source_class=upstream-derived` and `reliability=unverified`. Repeating initialization checks each
+explicitly named path against its existing source record. Report missing records or conflicting
+classifications by path and keep the saved records intact.
 
 Stop on a reserved-path collision. Select a nested work package or obtain explicit conflict
 resolution; do not merge an unknown layout into the managed one.

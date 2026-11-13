@@ -43,6 +43,14 @@ def build(manifest_path):
     require(isinstance(targets, list) and targets and all(isinstance(x, str) for x in targets), 'targets_required')
     require(len(set(targets)) == len(targets) and set(targets) <= PLATFORMS, 'invalid_target_list')
     require(set(m.get('client_configs', {})) == set(targets), 'client_map_must_match_all_targets')
+    mixed_ports = m.get('mixed_ports', {})
+    require(isinstance(mixed_ports, dict), 'mixed_ports_must_be_a_device_map')
+    mihomo_devices = PLATFORMS - {'iphone'}
+    for index, (device, port) in enumerate(mixed_ports.items(), 1):
+        if device not in mihomo_devices:
+            expected = device.lower() if device.lower() in mihomo_devices else 'android, macos or windows'
+            raise InvalidInput(f'invalid_mixed_ports_device at entry {index}: use {expected}')
+        require(type(port) is int and 1 <= port <= 65535, f'invalid_mixed_port for {device}')
     require(m.get('ipv6_policy') == 'ipv4-only', 'explicit_ipv4_only_policy_required')
     require(isinstance(m.get('rules_as_of'), str) and m['rules_as_of'].strip(), 'rules_as_of_required')
     node = m.get('node_name', 'WG-OUT')
@@ -72,11 +80,14 @@ def build(manifest_path):
         domains.append(s.lower())
     domains = list(dict.fromkeys(domains))
     networks = []
-    for row in read_input(m['cn_networks']).splitlines():
+    for line_number, row in enumerate(read_input(m['cn_networks']).splitlines(), 1):
         s = row.strip()
         if not s or s.startswith('#'):
             continue
-        n = ipaddress.ip_network(s)
+        try:
+            n = ipaddress.ip_network(s)
+        except ValueError:
+            raise InvalidInput(f'invalid_cidr: cn_networks line {line_number}') from None
         if n.version == 4:
             networks.append(n)
     networks = [str(n) for n in ipaddress.collapse_addresses(networks)]
@@ -170,8 +181,7 @@ def build(manifest_path):
             rendered['iphone-node-fields.txt'] = '\n'.join(['Private iPhone node fields', 'Type WireGuard', 'Server ' + p['server'], 'Port ' + str(p['port']),
                 'IP ' + p['ip'] + '/32', 'Private key ' + p['private'], 'Server public key ' + p['public'], 'MTU ' + str(p['mtu']), 'Keepalive ' + str(p['keepalive']), 'PSK empty', 'IPv6 empty', ''])
         else:
-            mixed_port = m.get('mixed_ports', {}).get(platform, 7890 if platform == 'android' else 7897)
-            require(type(mixed_port) is int and 1 <= mixed_port <= 65535, 'invalid_mixed_port')
+            mixed_port = mixed_ports.get(platform, 7890 if platform == 'android' else 7897)
             wgpeer = {'server': p['server'], 'port': p['port'], 'public-key': p['public'], 'allowed-ips': ['0.0.0.0/0']}
             if p['psk']:
                 wgpeer['pre-shared-key'] = p['psk']

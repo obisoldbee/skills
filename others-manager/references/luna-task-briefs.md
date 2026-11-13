@@ -52,7 +52,8 @@ Procedure:
 5. Return the exact plan path and plan ID. State that the controller must independently review it and use its private active-writer capability; do not compose, return, or run an apply command.
 
 Failure policy:
-- On exit code 2, return the plan and its blockers for controller review; stop before apply or edits.
+- If inventory (step 2) exits 2, record its blocked members and run plan-update (step 3) once. The inventory contains no plan ID.
+- If plan-update exits 0 or 2, read PLAN_PATH and complete step 4 before handing off its actual plan ID and per-member blockers. If the file is absent or invalid, or either command otherwise fails, report the failed step and stop.
 - Never repair or overwrite an unsafe repository.
 - If any exact-path or identity check fails, stop all writes.
 - Any attempted write outside PLAN_PATH is a global stop.

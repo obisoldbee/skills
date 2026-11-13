@@ -42,7 +42,7 @@ v1 没有附件门槛，helper 明确拒绝 `schema_version=1`。迁移时读取
 }
 ```
 
-示例值不可执行。`execution_scope` 取 `review_only/repair_loop/materials_only`，从原始用户要求绑定；旧 v2 缺省 repair_loop 是兼容值，恢复时仍须核对真实修复授权。review_only（包括 audit-only）允许网页发送/收取，完整报告可保留确认缺陷与未核实建议，不自动派修。materials_only 只交冻结请求。新网页调研/深度 review 先按原用户要求与现有 run 选择执行面。普通任务未选独立可见聊天或持久跟进时，可显式保存 `followup_mode=inline` 与 `inline_policy.basis=current_task`，由当前活动回合的真实 Web IO 执行并原生返回 Controller；无须先创建聊天、定时器或补双向通讯授权。已有或明确选定的持久跟进使用 `followup_mode=durable`，核实真实 Web IO heartbeat 与返回入口。用户明确要求 durable 或独立可见任务时，分别保存 `durable_followup_requested=true` 或 `visible_task_requested=true`，拒绝用 current_task 替代；旧 v2 缺省 durable，恢复旧 run 不因缺调度自动改模式。把旧缺省显式补成相同 repair_loop/durable 只确认原语义，保留 ledger 原 binding/key/payload/SHA/状态与预算；真正 scope/mode 改变仍是新业务边界，不能重写旧结果冒充新结果。
+示例值不可执行。`execution_scope` 取 `review_only/repair_loop/materials_only`，从原始用户要求绑定；旧 v2 缺省 repair_loop 是兼容值，恢复时仍须核对真实修复授权。review_only（包括 audit-only）允许网页发送/收取，完整报告可保留确认缺陷与未核实建议，不自动派修。materials_only 准备后进入 ready_to_deliver。Controller 实际交给用户后登记 delivery，附上交付证据和冻结请求的 SHA，续工读回 completed。新网页调研/深度 review 先按原用户要求与现有 run 选择执行面。普通任务未选独立可见聊天或持久跟进时，可显式保存 `followup_mode=inline` 与 `inline_policy.basis=current_task`，由当前活动回合的真实 Web IO 执行并原生返回 Controller；无须先创建聊天、定时器或补双向通讯授权。已有或明确选定的持久跟进使用 `followup_mode=durable`，核实真实 Web IO heartbeat 与返回入口。用户明确要求 durable 或独立可见任务时，分别保存 `durable_followup_requested=true` 或 `visible_task_requested=true`，拒绝用 current_task 替代；旧 v2 缺省 durable，恢复旧 run 不因缺调度自动改模式。把旧缺省显式补成相同 repair_loop/durable 只确认原语义，保留 ledger 原 binding/key/payload/SHA/状态与预算；真正 scope/mode 改变仍是新业务边界，不能重写旧结果冒充新结果。
 
 网页目标独立记录为 `web_target={model_label,mode_label,selection_basis:"skill_default"|"explicit_user"}`；新请求默认 GPT-6/Pro，显式覆盖绑定原文引用。每条待发送请求保存 `web_target_readback={model_label,mode_label,observed_at,model_selection_ref,mode_selection_ref}`，引用本次真实菜单选中状态与档位标签，并核对与期望目标一致。只有完成实际 UI 核对才将 submission.ui_model_verified 记 true；helper 不读取网页，也不独立证明这些标签。既有已发请求保留原目标与原始证据，新默认不回写历史。网页目标与本地执行者 model/reasoning 分开，Pro、订阅和研究工具不混写。
 
@@ -91,7 +91,7 @@ Web IO 的 `artifact_receipt` 保存完整 JSON 到独立文件，回 Astra 小�
 | `assessment` | review_message_id、coverage_complete；完整时 confirmed_findings、unresolved_claims、file_dependent_findings | review_only 保留问题后交报告；repair_loop 才派允许的确认修复，缺件仅挡依赖文件项 |
 | `worker_result` | `candidate_source_id`, `delivery_path`；处理文件依赖项时 `addressed_file_findings` | 仅从 repairing 进入 validating；缺文件项仍保留，不因一次局部交付消失 |
 | `validation` | `checked_source_id`, `passed`, `required_unverified`；需复审时新 token | repair_loop 失败继续返修；review_only 失败保留 validating/证据并 finish_delivery，报告验收未通过；源码变更送新网页轮次 |
-| `delivery` | `delivered_source_id`, `complete` | 同一源码约定交付门槛 |
+| `delivery` | `delivered_source_id`, `complete`，materials_only 另带已交请求的 `prompt_sha256` 与本轮交付凭据 | materials_only 匹配当前冻结请求且 complete=true 后记 completed，部分交付保留 ready_to_deliver。审查与返修按现有 validating 门槛交付 |
 | `external_blocker` | `reason`, `attempts`, `requires_external_change`, `independent_work_remaining` | 普通空间丢失/崩溃转恢复；其余先完成独立工作，确需外部改变才 blocked |
 | `pause` / `resume` | 用户停止/明确预算指令引用，或阻碍解除证据；active browser_gate 另需下文 gate-bound 来源校验 | 保留同一 run 的恢复入口；回执/定时提示不解除人工门 |
 | `followup_closed` | 同一 automation ID 的真实 PAUSED view，并传最新 Web IO record | 采集和收讫均闭合但尚未处理时返回 process_saved_result，不因旧 waiting_web 再启表；仍需采集/收讫才恢复 Web IO，用户停止/阻碍保存检查点，旧无调度不先建再关 |

@@ -697,6 +697,39 @@ class OthersManagerTests(unittest.TestCase):
             self.assertEqual("already_current", plan["repositories"][0]["action"])
             self.assertEqual(github_snapshot, plan["repositories"][0]["github_snapshot"])
 
+            unavailable = pool / "unavailable"
+            unavailable.mkdir()
+            (unavailable / ".git").write_text("unavailable", encoding="utf-8")
+            path = manager.operation_lock_root() / f"others-manager-plan-{uuid.uuid4().hex}.json"
+            self.addCleanup(path.unlink, missing_ok=True)
+            with mock.patch.object(manager, "github_update_snapshot", return_value=github_snapshot):
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(2, manager.main(["inventory", "--pool", str(pool)]))
+                    self.assertEqual(2, manager.main(["plan-update", "--pool", str(pool), "--output", str(path)]))
+                plan_id = json.loads(path.read_text(encoding="utf-8"))["plan_id"]
+                mixed = manager.load_plan(str(path), "others-manager-update-plan", plan_id)
+                local_git = manager.run_git
+
+                def offline_git(args, **kwargs):
+                    if args[0] == "fetch":
+                        self.assertEqual(kwargs["cwd"], repo)
+                        (repo / ".git" / "FETCH_HEAD").write_text(head + "\n", encoding="ascii")
+                        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                    return local_git(args, **kwargs)
+
+                with mock.patch.object(manager, "run_git", side_effect=offline_git):
+                    report = manager.apply_update(pool, mixed)
+            results = {item["name"]: item["result"] for item in report["repositories"]}
+            self.assertEqual({"fixture": "already_current", "unavailable": "blocked"}, results)
+            ready, blocked = mixed["repositories"]
+            self.assertIsNone(blocked["git_fingerprint"])
+            with mock.patch.dict(blocked, blockers=["dirty_worktree"]):
+                with self.assertRaisesRegex(manager.ManagerError, "fingerprint"):
+                    manager.validate_update_plan_shape(mixed)
+            with mock.patch.dict(ready, git_fingerprint=None):
+                with self.assertRaisesRegex(manager.ManagerError, "fingerprint"):
+                    manager.validate_update_plan_shape(mixed)
+
     def test_unsupported_runtime_stops_before_creating_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             pool = Path(temporary).resolve()

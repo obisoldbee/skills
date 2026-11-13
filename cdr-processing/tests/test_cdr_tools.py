@@ -62,6 +62,22 @@ class ToolsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 m.xml(data)
 
+    def test_versioned_assessment_receipts_refuse_reuse(self):
+        candidate = self.root / 'candidate.pdf'
+        first, second = self.root / 'v1.json', self.root / 'v2.json'
+        def assess(receipt):
+            return subprocess.run([sys.executable, '-B', str(SCRIPT), 'assess',
+                                   str(candidate), '--receipt', str(receipt)], capture_output=True)
+        candidate.write_bytes(b'first candidate')
+        self.assertEqual(assess(first).returncode, 0)
+        before = first.read_bytes()
+        self.assertEqual(json.loads(before)['artifact_sha256'], m.digest(candidate))
+        candidate.write_bytes(b'second candidate')
+        self.assertEqual(assess(second).returncode, 0)
+        self.assertEqual(json.loads(second.read_bytes())['artifact_sha256'], m.digest(candidate))
+        self.assertNotEqual(assess(first).returncode, 0)
+        self.assertEqual(first.read_bytes(), before)
+
     def test_selective_zip_and_no_overwrite(self):
         src = self.root/'synthetic.cdr'
         with zipfile.ZipFile(src, 'w') as z:
@@ -83,6 +99,28 @@ class ToolsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.inspect(src, self.root/'out')
         self.assertFalse((self.root/'out').exists())
+
+    def test_inspect_accounts_for_each_page_preview(self):
+        import base64
+        png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==')
+        src, out = self.root / 'pages.cdr', self.root / 'inspection'
+        with zipfile.ZipFile(src, 'w') as archive:
+            for page in ('page1', 'page2'):
+                archive.writestr('previews/' + page + '.png', png)
+            archive.writestr('previews/page3.png', b'not a PNG')
+            archive.writestr('other/page4.png', png)
+        before = m.digest(src)
+        cp = subprocess.run([sys.executable, '-B', str(SCRIPT), 'inspect', str(src), str(out)],
+                            capture_output=True)
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        self.assertEqual(json.loads((out / 'inspection.json').read_bytes())['previews'], [
+            {'member': 'previews/page1.png', 'output': 'page1.png'},
+            {'member': 'previews/page2.png', 'output': 'page2.png'},
+            {'member': 'previews/page3.png', 'skipped_reason': 'invalid_png_signature'}])
+        self.assertEqual({p.name for p in out.iterdir()}, {'page1.png', 'page2.png', 'inspection.json'})
+        self.assertEqual((out / 'page1.png').read_bytes(), png)
+        self.assertEqual((out / 'page2.png').read_bytes(), png)
+        self.assertEqual(m.digest(src), before)
 
     def test_riff_and_multiple_pages(self):
         src = self.root/'riff.cdr'

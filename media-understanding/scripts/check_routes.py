@@ -153,7 +153,7 @@ def inspect_credentials(credentials: dict[str, Any] | None, home: Path) -> dict[
     path = expand_home(str(credentials["file"]), home)
     required = list(credentials.get("required_env", []))
     values = dotenv_values(path)
-    keys = set(values)
+    keys = {key for key, value in values.items() if value.strip()}
     missing = sorted(set(required) - keys)
     expected = dict(credentials.get("expected_values", {}))
     mismatched = sorted(key for key, value in expected.items() if values.get(key) != value)
@@ -203,7 +203,12 @@ def main() -> None:
         if requested and route["id"] not in requested:
             continue
         executor = inspect_executor(route["executor"], args.home)
-        credentials = inspect_credentials(route.get("credentials"), args.home)
+        if route["id"] == "agnes-image":
+            from providers.agnes_vision import slot_binding
+            slot = expand_home(route["credentials"]["file"], args.home)
+            _, credentials, _ = slot_binding(slot, args.model)
+        else:
+            credentials = inspect_credentials(route.get("credentials"), args.home)
         kimi_binding = None
         route_readiness = readiness(route, executor, credentials)
         selected_model = route.get("model")

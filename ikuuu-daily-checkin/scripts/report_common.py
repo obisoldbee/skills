@@ -3,6 +3,8 @@ import json
 import re
 import sys
 
+PAGE_LABELS = {"closed": "已关闭", "preserved": "已保留", "unconfirmed": "关闭未确认",
+               "failed": "关闭失败", "not_created": "未创建"}
 
 def short_text(value, name, limit=80):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
@@ -36,16 +38,14 @@ def space_id_text(value):
 
 def page_text(page):
     status = page["status"]
-    labels = {"closed": "已关闭", "preserved": "已保留", "unconfirmed": "关闭未确认", "failed": "关闭失败",
-              "not_created": "未创建"}
-    if status not in labels:
+    if status not in PAGE_LABELS:
         raise ValueError("unsupported page status")
     if page.get("keep_reason") is not None:
         if page["keep_reason"] != "user_requested" or status != "preserved":
             raise ValueError("keep_reason requires preserved user_requested page")
         if page.get("space_id") is None:
             raise ValueError("user-requested retention requires a page identity")
-    value = labels[status]
+    value = PAGE_LABELS[status]
     if page.get("space_id") is not None:
         if status == "not_created":
             raise ValueError("not_created cannot carry a page identity")

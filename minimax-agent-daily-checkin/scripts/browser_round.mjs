@@ -43,18 +43,22 @@ export async function runRound(api, input, checkpoint = () => {}) {
           r.outcome='already_completed'; r.evidence='点击前观察到今日已签到，未重复提交';
         } else {
           if (!Number.isSafeInteger(card.reward) || card.reward<=0) fail('未读到唯一可领取奖励');
-          r.points_before=before; r.click_attempted=true;
+          r.points_before=before; r.remaining_points=null; r.click_attempted=true;
           record('checkin_attempted',{reward:card.reward}); // Persist before sending the click.
           await ui.claim(card.reward);
           await ui.wait(3000);
           const afterCard=await ui.card(); record('card_after',afterCard);
-          let after=await ui.points(); record('points_after',{points:after});
+          const readBalance = async action => {
+            const points=await ui.points();
+            r.remaining_points=Number.isSafeInteger(points) && points>=0 ? points : null;
+            record(action,{points:r.remaining_points});
+          };
+          await readBalance('points_after');
           if (!afterCard.completed) fail('已提交签到，但完成状态未确认；不能重复领取');
-          if (after-before!==card.reward) {
-            await ui.wait(5000); after=await ui.points(); record('points_recheck',{points:after});
+          if (r.remaining_points-before!==card.reward) {
+            await ui.wait(5000); await readBalance('points_recheck');
           }
-          r.remaining_points=Number.isSafeInteger(after)?after:null;
-          if (after-before!==card.reward) fail('已提交签到，但积分增量未核验；不能重复领取');
+          if (r.remaining_points-before!==card.reward) fail('已提交签到，但积分增量未核验；不能重复领取');
           r.outcome='newly_completed'; r.reward=card.reward;
           r.evidence='本轮点击后显示今日已签到，且积分增量与奖励一致';
         }

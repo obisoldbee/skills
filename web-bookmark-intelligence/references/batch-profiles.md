@@ -8,6 +8,7 @@
 - Creates one independent case per URL.
 - Uses serial handling by default.
 - Preserves completed, blocked, and failed cases during resume.
+- `batch-plan.json` lists this request's URLs. `batch-state.json` keeps the whole batch, including the last status and reason for each unselected URL.
 - Keeps a successful retrieval at `pending_quality` until a matching assessment passes.
 
 ## Shoulong Profile

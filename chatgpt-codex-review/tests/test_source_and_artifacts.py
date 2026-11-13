@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from unittest import mock
 import unittest
 import zipfile
 
@@ -111,6 +112,58 @@ class ArtifactTests(unittest.TestCase):
             result = FILES.verify(self.document(root, [], optional))
             self.assertTrue(result["required_ready"])
             self.assertEqual(result["files"]["preview"]["status"], "missing")
+
+    def test_missing_and_invalid_pdf_leave_verified_markdown_available(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary = root / "report.md"
+            summary.write_text("# A report\n", encoding="utf-8")
+            preview = root / "preview.pdf"
+            report = {"name": "report.md", "kind": "utf8"}
+            pdf = {"name": "preview.pdf", "kind": "pdf"}
+            for proof in ({}, {"preview.pdf": str(preview)}):
+                for required in (False, True):
+                    contract = self.document(root, [report, pdf] if required else [report],
+                                             [] if required else [pdf], {"report.md": str(summary), **proof})
+                    checked = FILES.verify(contract)
+                    self.assertEqual("verified", checked["files"]["report.md"]["status"])
+                    self.assertEqual("missing", checked["files"]["preview.pdf"]["status"])
+                    self.assertEqual(not required, checked["required_ready"])
+            preview.write_bytes(b"not PDF")
+            checked = FILES.verify(self.document(root, [report], [pdf], {"report.md": str(summary), "preview.pdf": str(preview)}))
+            self.assertTrue(checked["required_ready"])
+            self.assertEqual("invalid", checked["files"]["preview.pdf"]["status"])
+            preview.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            with mock.patch.object(FILES.shutil, "which", return_value=None):
+                checked = FILES.verify(self.document(root, [pdf], files={"preview.pdf": str(preview)}))
+            self.assertEqual("unverified", checked["files"]["preview.pdf"]["status"])
+            self.assertFalse(checked["required_ready"])
+
+    @unittest.skipUnless(FILES.shutil.which("pdfinfo"), "optional PDF parser unavailable")
+    def test_saved_pdf_must_have_a_readable_page_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preview = root / "preview.pdf"
+            pdf = bytearray(b"%PDF-1.4\n")
+            objects = [b"<< /Type /Catalog /Pages 2 0 R >>",
+                       b"<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+                       b"<< /Type /Page /Parent 2 0 R /Resources << >> /MediaBox [0 0 72 72] >>"]
+            offsets = []
+            for index, obj in enumerate(objects, 1):
+                offsets.append(len(pdf))
+                pdf.extend(f"{index} 0 obj\n".encode() + obj + b"\nendobj\n")
+            xref = len(pdf)
+            pdf.extend(b"xref\n0 4\n0000000000 65535 f \n")
+            for offset in offsets:
+                pdf.extend(f"{offset:010d} 00000 n \n".encode())
+            pdf.extend(f"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+            preview.write_bytes(pdf)
+            doc = self.document(root, [{"name": "preview", "kind": "pdf"}], files={"preview": str(preview)})
+            checked = FILES.verify(doc)
+            self.assertTrue(checked["required_ready"], checked)
+            self.assertEqual(1, checked["files"]["preview"]["pages"])
+            preview.write_bytes(b"%PDF-1.4\ninvalid\n%%EOF\n")
+            self.assertEqual("invalid", FILES.verify(doc)["files"]["preview"]["status"])
 
     def test_hash_json_utf8_and_root_boundary(self):
         with tempfile.TemporaryDirectory() as directory:

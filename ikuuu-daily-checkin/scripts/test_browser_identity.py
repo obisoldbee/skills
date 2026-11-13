@@ -39,14 +39,14 @@ class BrowserIdentityTests(unittest.TestCase):
     def test_actual_non_ego_identifiers_pass_created_page_statuses(self):
         for identity in ('tabbit:tab:42', 'edge:tab:abc', 'system-browser:tab:7',
                          'harness-browser:tab:9'):
-            for status in ('closed', 'preserved', 'unconfirmed'):
+            for status in ('closed', 'preserved', 'unconfirmed', 'failed'):
                 result, observe, _, _ = self.run_cli(status, identity)
                 self.assertEqual(result, 0)
                 self.assertIn('页面 ' + identity, observe.call_args.kwargs['page'])
                 self.assertEqual(parse_space_id(identity), identity)
 
     def test_missing_non_ego_identifier_cannot_be_normalized_to_zero(self):
-        for status in ('closed', 'preserved', 'unconfirmed'):
+        for status in ('closed', 'preserved', 'unconfirmed', 'failed'):
             result, observe, _, _ = self.run_cli(status)
             self.assertEqual(result, 2)
             observe.assert_not_called()

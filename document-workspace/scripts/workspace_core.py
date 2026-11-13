@@ -722,7 +722,7 @@ def plan_initialize(
     )
     workspace_record = root / "control" / "workspace.json"
     if workspace_record.exists() or is_link_like(workspace_record):
-        validation = validate_workspace(root)
+        validation = validate_workspace(root, requested_upstream_derived=upstream_paths)
         return {
             "operation": "initialize",
             "status": "already_initialized",
@@ -2693,6 +2693,7 @@ def validate_workspace(
     *,
     allow_unregistered_work: bool = False,
     allow_one_unpreserved_relative: str | None = None,
+    requested_upstream_derived: Iterable[str] = (),
 ) -> dict[str, Any]:
     root = validate_exact_directory(root_raw)
     for relative in LAYOUT_DIRECTORIES:
@@ -2737,6 +2738,22 @@ def validate_workspace(
             "Every raw file must have exactly one source record; agent-produced or unrecorded files are refused.",
             details={"unrecorded": sorted(actual_raw - expected_raw), "missing": sorted(expected_raw - actual_raw)},
         )
+
+    if requested_upstream_derived:
+        originals = {record["original_relative_path"]: record for record in source_records
+                     if record["source_mode"] in {"adopted", "explicit-in-workspace"}}
+        conflicts = []
+        for path in requested_upstream_derived:
+            record = originals.get(path)
+            if record is None or record["source_class"] != "upstream-derived":
+                conflicts.append({"path": path, "source_class": record["source_class"] if record else None,
+                                  "reliability": record["reliability"] if record else None})
+        if conflicts:
+            raise WorkspaceError(
+                "classification_conflict",
+                "Requested upstream-derived paths must match their existing in-workspace source records.",
+                details={"requested_source_class": "upstream-derived", "conflicts": conflicts},
+            )
 
     artifact_records: list[dict[str, Any]] = []
     expected_work: set[str] = set()

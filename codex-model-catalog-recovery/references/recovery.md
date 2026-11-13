@@ -32,7 +32,7 @@ Get-AppxPackage *Codex* | Select-Object Name,Version,PackageFamilyName,InstallLo
 
 ## 读取缓存与查询核心目录
 
-缓存只提取 `fetched_at`、`client_version`、目标条目的 `slug/display_name/visibility`；不转存完整账户配置。先保存两次查询各自的摘要，再看缓存。新版核心可能写入缓存，旧核心随后又覆盖，因此最终缓存不能代表两次结果。
+人工查看缓存时只提取 `fetched_at`、`client_version` 和目标条目的 `slug/display_name/visibility`。对照探针在每次查询前记录 `models_cache.json` 的 SHA-256 或 `absent`，读不清时记 null。使用同一账户、home、工作目录和已核实的有效配置，原样保留缓存供各次查询按正常方式使用。
 
 检查目标核心 `app-server --help`。协议不确定时，可用它的 `app-server generate-json-schema --out <新的临时目录>` 离线核查 `initialize`、`model/list`。不要给接口猜测 `refresh`、`force` 参数。下面脚本使用 newline JSON stdio、`initialize` → `initialized` → `model/list`（含隐藏项和分页）。它查询运行时目录，**不保证绕过运行时自身缓存，也不承诺强制服务端刷新**。
 
@@ -42,7 +42,9 @@ Get-AppxPackage *Codex* | Select-Object Name,Version,PackageFamilyName,InstallLo
 python -B <skill>/scripts/probe_models.py --binary <核心绝对路径> --codex-home <目标home绝对路径> --cwd <工作目录绝对路径> --expect <模型ID>
 ```
 
-默认总超时 45 秒，最多 20 页。退出码 0 = 完整目录含可见目标；2 = 查询/协议失败；3 = 完整目录缺失或隐藏。输出只包含定位信息、模型 ID、隐藏状态和思考强度。不会新建聊天、发消息或执行推理；运行时仍可能联网并更新自身缓存/日志。脚本结束仅清理自己启动的诊断进程，不终止现有桌面或 daemon。
+比较时在同一命令追加 `--compare-binary <候选核心绝对路径>`。探针先查桌面，缺项时再查候选。候选可见就立即复查桌面。按 `comparison` 读回各次退出码及缓存起点。桌面复查可见时进入 `inspect_desktop_menu`，核对 UI 筛选及连接目标。两次桌面查询都缺项时，候选查询须与其中一次桌面查询有相同的可读缓存起点（或均为 absent），才转入桌面更新和兼容性检查。起点不同或无法核实时进入 `check_cache_context`，保留现有核心配置。
+
+每次核心查询默认超时 45 秒，最多 20 页。退出 0 表示完整目录含可见目标，3 表示缺失或隐藏，2 表示查询失败。RPC 错误显示本地请求阶段 `stage` 和回包中的整数 `rpc_code`。例如 `initialize/-32602` 核对初始化参数，`model/list/-32601` 核对该版本是否支持目录方法。探针只启动自己的目录查询进程，核心可能联网和更新自身缓存或日志。
 
 ## 分支 A：移除已确认过时的目录覆盖
 
@@ -62,7 +64,7 @@ python -B <skill>/scripts/probe_models.py --binary <核心绝对路径> --codex-
 
 应用前同时满足：
 
-- 同环境对照可复现“桌面核心缺目标、候选核心有可见目标”。
+- 同一有效配置下，对照结果为 `3、0、3` 且 `next_check=check_desktop_update_and_compatibility`。首次或复查桌面返回 0 时检查菜单，任一查询返回 2 时处理该次失败。
 - 当前安装版本的本地代码或文档确实支持以 `CODEX_CLI_PATH` 指定核心。只读检查相关代码片段即可；不能把旧案例当成现版本支持证据。
 - 候选路径已存在、来源可信，`Get-AuthenticodeSignature -FilePath $candidateCore` 为 `Valid` 且签名者是 OpenAI；版本和 model/list 协议可用。保留与核心配套的 code-mode-host 等文件，不单独拷 exe 拼装运行时。
 - 已记录 User/Machine/当前 Process 三层旧值及启动路径，且用户已有修复授权覆盖该目标。`User` 级覆盖影响该用户未来启动且读取此变量的其他程序，需要告知；现有非空覆盖要解释并保留，不能假设为空。

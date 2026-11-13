@@ -1581,6 +1581,68 @@ def normalize_publication_identity(row: dict[str, Any], field: str) -> str:
     fail("publication_identity_missing", f"{field} has no stable publication identity")
 
 
+def validate_publication_lineage(rows: list[dict[str, Any]], requested: int) -> int:
+    """Resolve shared identifiers across the entire frozen inventory before counting it."""
+    aliases: list[list[str]] = []
+    by_alias: dict[str, list[int]] = {}
+    for index, row in enumerate(rows):
+        field = f"source[{index + 1}]"
+        keys = []
+        if row.get("identifier_verified") is True:
+            for name in ("doi", "pmid", "pmcid", "original_publication_url"):
+                if row.get(name):
+                    alias = normalize_publication_identity({name: row[name]}, field)
+                    kind, _, value = alias.partition(":")
+                    if kind == "doi":
+                        value = re.sub(r"^https?://(?:(?:dx|www)\.)?doi\.org/", "", value).strip()
+                    elif kind == "pmid":
+                        value = re.sub(r"^(?:PMID\s*:\s*|https?://(?:www\.)?pubmed\.ncbi\.nlm\.nih\.gov/)",
+                                       "", value, flags=re.I).strip().rstrip("/")
+                    elif kind == "pmcid":
+                        value = re.sub(r"^(?:PMCID\s*:\s*|https?://(?:pmc|www)\.ncbi\.nlm\.nih\.gov/(?:pmc/)?articles/)",
+                                       "", value, flags=re.I).strip().rstrip("/")
+                    alias = f"{kind}:{value}"
+                    if alias not in keys:
+                        keys.append(alias)
+        if not keys:
+            keys.append(normalize_publication_identity(row, field))
+        aliases.append(keys)
+        for key in keys:
+            by_alias.setdefault(key, []).append(index)
+    groups = []
+    seen: set[int] = set()
+    for start in range(len(rows)):
+        if start in seen:
+            continue
+        pending, group, identifiers = [start], [], {}
+        while pending:
+            index = pending.pop()
+            if index in seen:
+                continue
+            seen.add(index)
+            group.append(index)
+            for key in aliases[index]:
+                kind, _, value = key.partition(":")
+                if kind != "url" and identifiers.setdefault(kind, value) != value:
+                    fail("publication_identifier_conflict", "linked publication records have conflicting identifiers",
+                         kind=kind, values=[identifiers[kind], value], source_id=rows[index].get("source_id"))
+                pending.extend(by_alias.pop(key, ()))
+        groups.append(sorted(group))
+    target_count = sum(any(rows[i].get("reviewable") is True and not rows[i].get("duplicate_of")
+                           and rows[i].get("collection_role", "target") == "target" for i in group)
+                       for group in groups)
+    for group in groups:
+        canonical = next((i for i in group if not rows[i].get("duplicate_of")), group[0])
+        canonical_id = rows[canonical].get("source_id")
+        for i in group:
+            if i != canonical and (rows[i].get("duplicate_of") != canonical_id or rows[i].get("reviewable") is True):
+                fail("duplicate_publication_identity", "link the repeated source to its canonical row before freezing",
+                     source_id=rows[i].get("source_id"), canonical_source_id=canonical_id,
+                     target_reviewable=target_count, target_requested=requested,
+                     target_remaining=max(0, requested - target_count))
+    return len(groups)
+
+
 def source_ids_sha256(source_ids: Iterable[str]) -> str:
     data = "".join(f"{source_id}\n" for source_id in sorted(source_ids)).encode("utf-8")
     return sha256_bytes(data)
@@ -2995,7 +3057,10 @@ def validate_run(
     inventory_path = package_path(package_root, package, "payload/sources/inventory.jsonl")
     source_rows, _ = load_jsonl(inventory_path, "source inventory")
     source_ids: set[str] = set()
-    publication_identities: dict[str, str] = {}
+    requested = manifest.get("target_publication_count", MIN_REVIEWABLE)
+    if type(requested) is not int or requested < MIN_REVIEWABLE:
+        fail("invalid_target_quota", "target_publication_count must be an integer at least 30")
+    unique_publications = validate_publication_lineage(source_rows, requested)
     reviewable_source_ids: list[str] = []
     reviewable_count = 0
     acquisition_operation_receipts_structurally_validated = 0
@@ -3006,18 +3071,6 @@ def validate_run(
             fail("duplicate_source_id", "source_id is duplicated", source_id=source_id)
         source_ids.add(source_id)
         identity = normalize_publication_identity(row, f"source[{index}]")
-        canonical_source_id = publication_identities.get(identity)
-        if canonical_source_id is not None:
-            if row.get("duplicate_of") != canonical_source_id or row.get("reviewable") is True:
-                fail(
-                    "duplicate_publication_identity",
-                    "duplicate DOI/PMID/PMCID/URL cannot count as another publication",
-                    source_id=source_id,
-                    canonical_source_id=canonical_source_id,
-                    publication_identity=identity,
-                )
-        else:
-            publication_identities[identity] = source_id
         reviewable, validated_identity, validated_source_id, operation_verified = validate_source_row(
             row,
             index,
@@ -3034,7 +3087,7 @@ def validate_run(
         )
         if reviewable:
             reviewable_source_ids.append(source_id)
-    quota = target_quota(source_rows, manifest.get("target_publication_count", MIN_REVIEWABLE))
+    quota = target_quota(source_rows, requested)
     reviewable_source_ids = sorted(reviewable_source_ids)
     reviewable_ids_sha = source_ids_sha256(reviewable_source_ids)
     if manifest.get("reviewable_source_count") != reviewable_count:
@@ -3063,7 +3116,7 @@ def validate_run(
         package,
         source_rows,
         reviewable_count=reviewable_count,
-        unique_publication_count=len(publication_identities),
+        unique_publication_count=unique_publications,
         runtime=runtime,
         acquisition_operation_receipts_structurally_validated=(
             acquisition_operation_receipts_structurally_validated

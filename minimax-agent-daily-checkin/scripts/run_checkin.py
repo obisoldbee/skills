@@ -95,11 +95,21 @@ def run_once(args, directory, day, browser=None, render=complete):
                     'service_day':day,'outcome':'runtime_unavailable','remaining_points':None,
                     'click_attempted':False,'points_before':None,'reward':None,'space_ids':[],
                     'evidence':'','page':'not_created' if not cli else 'unconfirmed'}
-                # A killed command has no trustworthy final disposition. Do not launch a replacement.
+                # The browser can be killed after business verification but before close is observed.
                 if result.get('page')!='closed':
-                    result.update(page='unconfirmed' if result.get('space_ids') or cli else 'not_created',
-                                  outcome='failure' if result.get('space_ids') else 'runtime_unavailable',
-                                  reward=None,reason='浏览器命令未完整结束；未重开空间或重复签到')
+                    result['page']='unconfirmed' if result.get('space_ids') or cli else 'not_created'
+                    actions=result.get('actions',[])
+                    if any(a.get('action') in ('business_complete','finish_attempted') for a in actions):
+                        result['reason']='本轮空间关闭未确认'
+                    else:
+                        result.update(outcome='failure' if result.get('space_ids') else 'runtime_unavailable',
+                                      reward=None,reason='浏览器命令中断，业务结果待核查')
+                        if result.get('click_attempted'):
+                            # Older checkpoints kept the baseline here until the first post-click read.
+                            last=next((a for a in reversed(actions) if a.get('action') in
+                                       ('points_after','points_recheck','checkin_attempted')), {})
+                            points=last.get('points')
+                            result['remaining_points']=points if type(points) is int and points>=0 else None
         receipt.update(phase='reporting',browser=result)
         save(receipt_path,receipt)
         def sender(key,notice):

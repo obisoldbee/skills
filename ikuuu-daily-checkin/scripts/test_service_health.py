@@ -1,10 +1,13 @@
 """Persistent maintenance transitions, delivery ambiguity and minimal user notices."""
+from contextlib import redirect_stdout
+from io import StringIO
 import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from service_health import observe, post_payload, NAMES, send_notice, locked
+from service_health import main, observe, post_payload, NAMES, send_notice, locked
+from report_common import page_text
 
 class HealthTests(unittest.TestCase):
     def setUp(self):
@@ -94,6 +97,48 @@ class HealthTests(unittest.TestCase):
             'content': [[{'tag':'text','text':'方舟众测有 3 条待处理邀请。'}]]}})
         self.assertNotIn('空间',str(self.calls[-1][1]))
         self.assertNotIn('诊断详情',str(self.calls[-1][1]))
+
+    def test_recovery_cli_delivers_one_notice_and_keeps_actual_cleanup(self):
+        for balance, page, business, expected_kind, expected_text in (
+                (3, 'failed', 'low_traffic', 'low_traffic', 'Ikuuu 流量不足。'),
+                (42, 'closed', None, 'maintenance_recovered', 'Ikuuu已恢复。'),
+                (3, 'closed', 'failure', 'failure', 'Ikuuu 签到异常。')):
+            with self.subTest(balance=balance, page=page, business=business):
+                root = self.path / expected_kind
+                observe(root, 'ikuuu-daily-checkin', 'maintenance', self.send,
+                        page='已关闭', evidence='合成维护页')
+                self.calls.clear()
+                argv = ['service_health.py', '--phase', 'available', '--page', page,
+                        '--space-id', 'tabbit:tab:42', '--state-dir', str(root),
+                        '--chat-id', 'oc_fixture', '--detail', f'刷新确认 {balance} GB',
+                        '--evidence', '合成签到页']
+                if business:
+                    argv += ['--business-notice', business]
+                output = StringIO()
+                with patch('sys.argv', argv), redirect_stdout(output), patch('service_health.send_notice',
+                        side_effect=lambda config, chat, key, notice: self.send(key, notice)):
+                    self.assertEqual(main(), 0)
+                result = json.loads(output.getvalue())
+                self.assertEqual((result['transition'], result['notification_kind']), ('recovered', expected_kind))
+                self.assertEqual([notice for key, notice in self.calls], [(expected_text, [])])
+                self.assertEqual(json.loads((root/'state.json').read_text())['phase'], 'available')
+                if page == 'failed':
+                    self.assertEqual(page_text({'status':page, 'space_id':'tabbit:tab:42'}),
+                                     '关闭失败（页面 tabbit:tab:42）')
+
+    def test_rejected_recovery_retries_the_saved_business_notice(self):
+        service = 'ikuuu-daily-checkin'
+        self.run_phase('maintenance', service=service)
+        self.calls.clear()
+        def reject(key, notice):
+            self.calls.append((key, notice))
+            return {'status':'failed'}
+        first = observe(self.path, service, 'available', reject, page='已关闭',
+                        evidence='合成签到页', business_notice='low_traffic')
+        second = self.run_phase('available', service=service)
+        self.assertEqual([first['notification_kind'], second['notification_kind']], ['low_traffic']*2)
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(self.calls[0], self.calls[1])
 
     def test_confirmation_requires_evidence(self):
         with self.assertRaises(ValueError):

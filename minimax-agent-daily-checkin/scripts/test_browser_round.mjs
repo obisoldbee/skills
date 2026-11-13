@@ -36,6 +36,9 @@ test('one space and fresh points precede the only claim; finish and absence prov
   const beforeClick=f.checkpoints.find(r=>r.actions.at(-1).action==='checkin_attempted');
   assert.equal(beforeClick.points_before,1000);assert.equal(beforeClick.click_attempted,true);
   assert.equal(beforeClick.outcome,'failure');assert.equal(beforeClick.reward,null);
+  assert.equal(beforeClick.remaining_points,null);
+  const afterClick=f.checkpoints.find(r=>r.actions.at(-1).action==='points_after');
+  assert.equal(afterClick.remaining_points,1400);
 });
 test('already completed reads fresh points and closes without claiming',async()=>{
   const f=fixture({completed:true}),r=await f.run();
@@ -50,6 +53,7 @@ test('missing baseline hands off the original space without clicking or finishin
 test('unknown click result never retries or rewrites it to already-completed',async()=>{
   const f=fixture({claimFails:true}),r=await f.run();
   assert.equal(r.outcome,'failure');assert.equal(r.click_attempted,true);assert.equal(r.reward,null);
+  assert.equal(r.points_before,1000);assert.equal(r.remaining_points,null);
   assert.equal(r.page,'preserved');assert.equal(f.events.filter(v=>v==='claim').length,1);
   assert.equal(f.events.filter(v=>v==='create').length,1);assert(!f.events.includes('finish'));
 });

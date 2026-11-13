@@ -1,5 +1,6 @@
 import fcntl
 import json
+import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -73,6 +74,39 @@ class RunTests(unittest.TestCase):
         receipt=json.loads((self.directory/'receipt.json').read_text())
         self.assertEqual(receipt['browser']['page'],'unconfirmed')
         self.assertEqual(receipt['notifications'],[])
+
+    def timeout_at_checkpoint(self, checkpoint):
+        def interrupt(*args, **kwargs):
+            (self.directory/'browser.json').write_text(json.dumps(checkpoint))
+            raise subprocess.TimeoutExpired('fixture', 180)
+        with patch('run_checkin.shutil.which', return_value='offline-fixture'), \
+             patch('run_checkin.subprocess.run', side_effect=interrupt) as child, \
+             patch('run_checkin.send_notice', return_value={'status':'sent','message_id':'om_fixture'}) as send:
+            first=run_once(self.args,self.directory,'2026-09-25')
+            self.assertEqual(run_once(self.args,self.directory,'2026-09-25'),first)
+        child.assert_called_once()
+        receipt=json.loads((self.directory/'receipt.json').read_text())
+        return first, receipt['browser'], send
+
+    def test_timeout_during_finish_keeps_verified_reward_without_business_alert(self):
+        actions=[{'action':'checkin_attempted','reward':10},{'action':'points_after','points':110},
+                 {'action':'business_complete'},{'action':'finish_attempted'}]
+        checkpoint=self.result(outcome='newly_completed',points_before=100,remaining_points=110,reward=10,
+                               click_attempted=True,page='unconfirmed',actions=actions)
+        (report,code), result, send=self.timeout_at_checkpoint(checkpoint)
+        self.assertEqual((result['outcome'],result['reward'],result['remaining_points']),('newly_completed',10,110))
+        self.assertEqual(code,1)
+        self.assertIn('签到成功（+10 积分）',report)
+        self.assertIn('页面：关闭未确认（空间 71）',report)
+        send.assert_not_called()
+
+    def test_timeout_at_older_claim_checkpoint_does_not_display_baseline(self):
+        checkpoint=self.result(outcome='failure',points_before=100,remaining_points=100,reward=None,
+                               click_attempted=True,page='unconfirmed',actions=[{'action':'checkin_attempted','reward':10}])
+        (report,code),result,send=self.timeout_at_checkpoint(checkpoint)
+        self.assertEqual((result['points_before'],result['remaining_points'],code),(100,None,1))
+        self.assertIn('剩余积分：未确认',report)
+        send.assert_called_once()
 
     def test_query_has_no_notification_or_service_state_change(self):
         self.args.mode='query-only'

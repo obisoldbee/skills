@@ -277,7 +277,8 @@ class WorkspaceCLITest(unittest.TestCase):
         self.assertFalse((self.workspace / "control").exists())
 
     def test_plan_tokens_bind_intervening_workspace_state_and_initialize_arguments(self) -> None:
-        self.initialize()
+        (self.workspace / "summary.txt").write_text("synthetic summary", encoding="utf-8")
+        self.apply("initialize", self.workspace, "--timestamp", TIME, "--upstream-derived", "summary.txt")
         conversation = {
             "conversation_id": "01-first-decision",
             "timestamp": "2030-01-02T04:00:00Z",
@@ -303,10 +304,29 @@ class WorkspaceCLITest(unittest.TestCase):
             CORE.apply_initialize(
                 self.workspace,
                 timestamp=TIME,
-                upstream_derived=("invented-summary.txt",),
+                upstream_derived=("summary.txt",),
                 plan_token=str(init_plan["plan_token"]),
             )
         self.assertEqual(raised.exception.code, "stale_or_mismatched_plan")
+
+    def test_repeated_adoption_reports_explicit_classification_conflicts(self) -> None:
+        for name in ("摘要.txt", "补充.txt"):
+            (self.workspace / name).write_text(name, encoding="utf-8")
+        args = ("initialize", self.workspace, "--timestamp", TIME, "--upstream-derived", "摘要.txt")
+        self.apply(*args)
+        before = tree_snapshot(self.workspace)
+        plan, applied = self.apply(*args)
+        self.assertEqual((plan["status"], applied["status"]), ("already_initialized", "already_initialized"))
+        for extra in ((), ("--apply", "--plan-token", str(plan["plan_token"]))):
+            result = self.run_cli(*args, "--upstream-derived", "补充.txt", "--upstream-derived", "missing.txt",
+                                  *extra, expected=2)
+            self.assertEqual(result["error"], "classification_conflict")
+            self.assertEqual(result["details"]["conflicts"], [
+                {"path": "missing.txt", "source_class": None, "reliability": None},
+                {"path": "补充.txt", "source_class": "local-existing", "reliability": "unknown"},
+            ])
+            self.assertEqual(tree_snapshot(self.workspace), before)
+        self.assertEqual(self.run_cli("validate", self.workspace)["status"], "valid")
 
     def test_missing_attachment_is_not_preserved_and_has_no_dependency(self) -> None:
         self.initialize()

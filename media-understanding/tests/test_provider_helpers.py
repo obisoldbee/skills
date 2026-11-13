@@ -36,7 +36,7 @@ REQUEST_STATE = load_module(
 
 
 class ProviderHelperTests(unittest.TestCase):
-    def test_export_dotenv_and_environment_override(self):
+    def test_export_dotenv_and_environment_conflict(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "synthetic.env"
             path.write_text("# comment\nexport AGNES_API_KEY='fixture-key'\nAGNES_MODEL=model\n")
@@ -44,7 +44,8 @@ class ProviderHelperTests(unittest.TestCase):
                 self.assertEqual(ROUTES.dotenv_values(path), AGNES.load_env(path))
                 self.assertEqual("fixture-key", AGNES.load_env(path)["AGNES_API_KEY"])
             with mock.patch.dict(AGNES.os.environ, {"AGNES_API_KEY": "environment-fixture"}, clear=True):
-                self.assertEqual("environment-fixture", AGNES.load_env(path)["AGNES_API_KEY"])
+                self.assertEqual("fixture-key", AGNES.load_env(path)["AGNES_API_KEY"])
+                self.assertIn("AGNES_API_KEY", AGNES.slot_binding(path)[1]["mismatched_expected_env"])
 
     def analysis_args(self, *, resume: bool = False, retries: int = 3) -> argparse.Namespace:
         return argparse.Namespace(
@@ -136,8 +137,9 @@ class ProviderHelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             env = Path(temporary) / "agnes.env"
             env.write_text("AGNES_API_KEY=placeholder\nAGNES_MODEL=agnes-old\n", encoding="utf-8")
+            env.chmod(0o600)
             result = AGNES.call_agnes("https://example.com/image.png", "describe", env, 1)
-        self.assertEqual(result["failure_type"], "unsupported_model")
+        self.assertEqual(result["failure_type"], "configuration_mismatch")
 
     def test_audio_1026_stops_remaining_segments(self) -> None:
         segments = [

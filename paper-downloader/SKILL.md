@@ -22,7 +22,7 @@ Require one bounded input set:
 - one writable output root: a new Akashic `12-agent-submissions/YYYY/MM/DD/<package_id>/` or an approved local inventory;
 - current browser/runtime capabilities and, if already available, an authorized browser session without revealing its credentials.
 
-Stop on title-only similarity, wildcard/search-result URLs, missing output scope, or unclear access authority. Never infer a DOI from a similar title.
+An exact title plus a supplied publisher PDF URL may enter the first pass. Verify the file's PDF Title metadata before counting a title-bound download. If the supplied file cannot be retrieved and there is no stable identifier for browser follow-up, retain the failed attempt and ask for a current exact PDF URL or identifier. Keep title-only entries unresolved. When identifiers are absent, merge rows only if both the normalized title and the supplied PDF URL match. Keep same-title articles from different publisher URLs separate. For rows joined by an identifier, the fetching row fills missing lookup keys from eligible duplicates. `route_sources` records where they came from and `alternate_pdf_urls` preserves additional supplied routes for retry after an unsuccessful fetch. Stop on wildcard/search-result URLs, missing output scope, or unclear access authority.
 
 Read [download-rules.md](references/download-rules.md) for attempts and stop conditions. Load the other references for the current branch:
 

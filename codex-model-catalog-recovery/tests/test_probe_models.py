@@ -26,8 +26,15 @@ def read():
     return json.loads(sys.stdin.readline())
 def reply(i, result):
     print(json.dumps({'id': i, 'result': result}), flush=True)
+def fail(i, code):
+    error = {'code':code, 'message':'SECRET-SHOULD-NOT-LEAK', 'data':{'private':'SYNTHETIC-HIDDEN'}}
+    print(json.dumps({'id':i, 'error':error}), flush=True)
 first = read()
 assert first['method'] == 'initialize'
+if mode == 'initialize_error':
+    fail(first['id'], -32602)
+    assert sys.stdin.readline() == ''
+    sys.exit()
 if mode == 'timeout':
     time.sleep(10)
     sys.exit()
@@ -38,6 +45,8 @@ assert request['method'] == 'model/list'
 assert request['params'] == {'includeHidden': True}
 if mode == 'error':
     print(json.dumps({'id': request['id'], 'error': {'message': 'SECRET-SHOULD-NOT-LEAK'}}), flush=True)
+elif mode in ('method_error', 'non_integer', 'bool_code'):
+    fail(request['id'], {'method_error':-32601, 'non_integer':'PRIVATE-ERROR', 'bool_code':True}[mode])
 elif mode == 'eof':
     sys.exit()
 elif mode == 'invalid':
@@ -51,6 +60,11 @@ else:
         request = read()
         assert request['method'] == 'model/list'
         assert request['params']['cursor'] == 'second'
+    if mode == 'shared':
+        cache = Path(os.environ['CODEX_HOME']) / 'models_cache.json'
+        if not cache.exists():
+            mode = 'missing'
+            cache.write_text('{"synthetic":true}')
     reply(request['id'], {'data': [] if mode == 'missing' else [entry],
                           'nextCursor': 'second' if mode == 'loop' else None})
 # No other RPCs (such as thread/start or turn/start) are permitted.
@@ -72,6 +86,20 @@ class ProbeTests(unittest.TestCase):
         return probe.query([sys.executable, '-B', str(self.server), mode],
                            cwd=str(self.root), env=dict(os.environ), timeout=timeout)
 
+    def cli_with_servers(self, modes, compare=False):
+        original_query = probe.query
+        modes = iter(modes)
+        def fake_core(command, **kwargs):
+            return original_query([sys.executable, '-B', str(self.server), next(modes)], **kwargs)
+        argv = [str(SCRIPT), '--binary', sys.executable, '--codex-home', str(self.root),
+                '--cwd', str(self.root), '--expect', 'target']
+        if compare:
+            argv += ['--compare-binary', str(self.server)]
+        with patch.object(sys, 'argv', argv), patch.object(probe, 'query', side_effect=fake_core), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            code = probe.main()
+        return code, json.loads(output.getvalue())
+
     def test_success_and_reasoning(self):
         self.assertEqual(self.run_server('success'), [
             {'model': 'target', 'hidden': False, 'reasoning_efforts': ['max']}])
@@ -88,6 +116,48 @@ class ProbeTests(unittest.TestCase):
     def test_rpc_error_does_not_echo_secret(self):
         with self.assertRaisesRegex(probe.ProbeError, '^rpc_error$'):
             self.run_server('error')
+
+    def test_cli_rpc_errors_keep_only_local_stage_and_integer_code(self):
+        for mode, stage, rpc_code in [('initialize_error', 'initialize', -32602),
+                                      ('method_error', 'model/list', -32601),
+                                      ('non_integer', 'model/list', None),
+                                      ('bool_code', 'model/list', None)]:
+            with self.subTest(mode=mode):
+                code, result = self.cli_with_servers([mode])
+                expected = {'status':'query_failed', 'error':'rpc_error', 'stage':stage}
+                if rpc_code is not None:
+                    expected['rpc_code'] = rpc_code
+                self.assertEqual((code, result), (2, expected))
+
+    def test_shared_cache_rechecks_desktop_and_routes_to_its_menu(self):
+        code, result = self.cli_with_servers(['shared']*3, compare=True)
+        runs = result['comparison']
+        self.assertEqual(code, 0)
+        self.assertEqual([(r['core'], r['exit_code']) for r in runs],
+                         [('desktop',3), ('candidate',0), ('desktop_recheck',0)])
+        self.assertEqual(runs[0]['cache_before'], 'absent')
+        self.assertEqual(len(runs[1]['cache_before']), 64)
+        self.assertEqual(runs[1]['cache_before'], runs[2]['cache_before'])
+        self.assertEqual(result['next_check'], 'inspect_desktop_menu')
+        self.assertFalse(result['desktop_ui_verified'])
+
+    def test_comparison_requires_comparable_cache_for_persistent_difference(self):
+        modes = ['missing', 'success', 'missing']
+        code, result = self.cli_with_servers(modes, compare=True)
+        self.assertEqual((code, result['next_check']), (3, 'check_desktop_update_and_compatibility'))
+        (self.root/'models_cache.json').mkdir()
+        code, result = self.cli_with_servers(modes, compare=True)
+        self.assertEqual((code, result['next_check']), (3, 'check_cache_context'))
+
+    def test_comparison_stops_after_visible_desktop_or_query_error(self):
+        for modes, code, next_check in ((['success'], 0, 'inspect_desktop_menu'),
+                                        (['missing','missing'], 3, 'check_shared_catalog_context'),
+                                        (['initialize_error'], 2, 'query_error'),
+                                        (['missing','method_error'], 2, 'query_error')):
+            with self.subTest(modes=modes):
+                actual, result = self.cli_with_servers(modes, compare=True)
+                self.assertEqual((actual, result['next_check']), (code, next_check))
+                self.assertEqual(len(result['comparison']), len(modes))
 
     def test_eof(self):
         with self.assertRaisesRegex(probe.ProbeError, 'server_eof'):

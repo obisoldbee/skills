@@ -27,6 +27,29 @@ class ProjectHandoffContractTests(unittest.TestCase):
                             'reasoning_efforts': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']}
                            for m in models]}
 
+    def test_scaffold_reads_git_status_from_checkout_worktree_and_subdirectory(self):
+        scaffold = SKILL_ROOT / "scripts" / "make_handoff.py"
+        with tempfile.TemporaryDirectory() as raw:
+            parent = Path(raw).resolve()
+            checkout, linked = parent / "checkout", parent / "linked"
+            subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+            (checkout / "sub").mkdir()
+            (checkout / "sub" / "sample.txt").write_text("fixture")
+            git = ["git", "-C", str(checkout)]
+            subprocess.run(git + ["add", "."], check=True)
+            subprocess.run(git + ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                                  "-c", "commit.gpgsign=false", "commit", "-qm", "fixture"], check=True)
+            subprocess.run(git + ["worktree", "add", "-q", "--detach", str(linked)], check=True)
+            for root in (checkout, linked):
+                (root / "sub" / "sample.txt").write_text("updated")
+                for cwd in (root, root / "sub"):
+                    with self.subTest(cwd=cwd):
+                        expected = subprocess.check_output(["git", "-C", str(cwd), "status", "--short"], text=True)
+                        report = subprocess.check_output([sys.executable, str(scaffold), "--cwd", str(cwd)], text=True)
+                        self.assertIn("- git status: " + expected, report)
+            report = subprocess.check_output([sys.executable, str(scaffold), "--cwd", str(parent)], text=True)
+            self.assertIn("- git status: unavailable:", report)
+
     def test_role_defaults_preserve_independent_axes(self):
         roles = {'top_difficulty': ('gpt-6-astra', 'ultra'),
                  'orchestration': ('gpt-6-astra', 'high'),

@@ -7,7 +7,7 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-from buddy_contract import dispatch_receipt, make_receipt, previous_receipt_block_receipt, receipt_for_observed_state
+from buddy_contract import dispatch_receipt, make_receipt, previous_receipt_block_receipt, receipt_for_observed_state, status_only_receipt
 from render_report import render
 
 
@@ -44,6 +44,15 @@ class ReportTests(unittest.TestCase):
                     gift="not_claimed", points=None)
         self.assertEqual(render(data), "Buddy｜2026-09-13\n结果：旅行中（本轮未派出）\n"
                          "领取：本轮未领取\n旅行：剩余 03:05:54\n页面：已关闭\n飞书：未触发")
+
+    def test_claimed_gift_and_current_travel_state_are_both_reported(self):
+        for state, label in (("daily_limit_reached", "今日次数已用完"), ("ready_to_travel", "可旅行")):
+            with self.subTest(state=state):
+                data = self.completed()
+                data.update(receipt=status_only_receipt("2026-09-13", state), points=6)
+                result = render(data)
+                self.assertIn("结果：" + label, result)
+                self.assertIn("领取：6 积分（本轮已领取）", result)
 
     def test_unknown_dispatch_and_prior_unknown_never_become_completed(self):
         data = self.completed()

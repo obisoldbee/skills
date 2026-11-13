@@ -65,7 +65,7 @@ The topic integrator uses a ninth, separate context and freezes `research-brief.
 
 ### Akashic-first identity check
 
-Derive one canonical publication identity in this order: DOI, PMID, PMCID, then normalized publication URL. Search the Akashic registry before any network download.
+Keep the primary receipt identity in DOI, PMID, PMCID, then normalized publication URL order. Compare every verified identifier across rows, including links through intermediate rows. Retain each source row, point repeated records to one canonical source, and resolve conflicting identifiers before freezing. Search the Akashic registry before any network download.
 
 - On an exact Akashic match, reuse the existing source, materialize a hash-equal package payload, and record `access_status: akashic_reused` with `download_attempted: false`.
 - On a miss, the preflighted and runtime-discovered `$paper-downloader` executor may attempt retrieval. Every attempt must occur after the lookup timestamp and preserve a source-bound runtime operation receipt.

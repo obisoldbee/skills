@@ -6,20 +6,24 @@ import subprocess
 import sys
 
 
-def run(cmd, cwd):
+def read_git_status(cwd):
     try:
         proc = subprocess.run(
-            cmd,
+            ["git", "--no-optional-locks", "status", "--short"],
             cwd=cwd,
             text=True,
             capture_output=True,
             timeout=5,
             check=False,
         )
-    except Exception as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         return f"unavailable: {exc}"
-    output = (proc.stdout or proc.stderr).strip()
-    return output[:1200] if output else "no output"
+    if proc.returncode:
+        return f"unavailable: {proc.stderr.strip() or proc.returncode}"
+    output = proc.stdout.rstrip("\n")
+    if len(output) > 1200:
+        return output[:1200] + "\n[truncated: run git status --short for all paths]"
+    return output or "no output"
 
 
 def main():
@@ -34,11 +38,7 @@ def main():
 
     cwd = os.path.abspath(args.cwd)
     now = dt.datetime.now().astimezone().isoformat(timespec="seconds")
-    git_status = (
-        run(["git", "status", "--short"], cwd)
-        if os.path.isdir(os.path.join(cwd, ".git"))
-        else "not a git repository or .git not in cwd"
-    )
+    git_status = read_git_status(cwd)
 
     print(
         f"""# Complete Project Handoff

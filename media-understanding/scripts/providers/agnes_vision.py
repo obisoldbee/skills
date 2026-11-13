@@ -37,7 +37,7 @@ DEFAULT_MODEL = "agnes-3.0-flash"
 
 def load_env(path: Path) -> Dict[str, str]:
     values: Dict[str, str] = {}
-    if path.exists():
+    if path.is_file():
         for line in path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -46,25 +46,51 @@ def load_env(path: Path) -> Dict[str, str]:
                 line = line[7:].strip()
             key, value = line.split("=", 1)
             values[key.strip()] = value.strip().strip("'\"")
-    for key in ("AGNES_API_KEY", "AGNES_BASE_URL", "AGNES_MODEL"):
-        if os.environ.get(key):
-            values[key] = os.environ[key]
     return values
 
 
-def key_status(path: Path) -> Dict[str, Any]:
+def slot_binding(path: Path, requested_model: Optional[str] = None):
+    """Resolve the private slot once and report only public names and model identity."""
     values = load_env(path)
-    mode = None
-    if path.exists():
-        mode = stat.filemode(path.stat().st_mode)
+    required = ("AGNES_API_KEY", "AGNES_MODEL")
+    missing = sorted(key for key in required if not values.get(key, "").strip())
+    model = values.get("AGNES_MODEL", "")
+    base_url = (values.get("AGNES_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+    expected = {"AGNES_API_KEY": values.get("AGNES_API_KEY", ""), "AGNES_MODEL": model,
+                "AGNES_BASE_URL": base_url}
+    mismatched = set()
+    for key, value in expected.items():
+        inherited = os.environ.get(key)
+        if inherited and (inherited.rstrip("/") if key == "AGNES_BASE_URL" else inherited) != value:
+            mismatched.add(key)
+    if (model and model != DEFAULT_MODEL) or (requested_model is not None and requested_model != model):
+        mismatched.add("AGNES_MODEL")
+    exists = path.is_file()
+    private = None if not exists or os.name == "nt" else path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0
+    report = {
+        "file": str(path), "exists": exists, "private_permissions": private,
+        "required_env": list(required), "present_env": sorted(set(required) - set(missing)),
+        "missing_env": missing, "mismatched_expected_env": sorted(mismatched),
+        "safe_values": {"AGNES_MODEL": DEFAULT_MODEL} if model == DEFAULT_MODEL and not mismatched else {},
+        "optional_present_env": ["AGNES_BASE_URL"] if values.get("AGNES_BASE_URL") else [],
+    }
+    readiness = ("missing_credentials" if not exists or missing else
+                 "unsafe_credential_permissions" if private is False else
+                 "configuration_mismatch" if mismatched else "configured_not_called")
+    return expected, report, readiness
+
+
+def key_status(path: Path) -> Dict[str, Any]:
+    _, report, readiness = slot_binding(path)
     return {
-        "env_path": str(path),
-        "exists": path.exists(),
-        "mode": mode,
-        "has_agnes_api_key": bool(values.get("AGNES_API_KEY")),
-        "has_agnes_base_url": bool(values.get("AGNES_BASE_URL")),
-        "has_agnes_model": bool(values.get("AGNES_MODEL")),
-        "safe_permissions": (not path.exists()) or (path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0),
+        "env_path": str(path), "exists": report["exists"],
+        "mode": stat.filemode(path.stat().st_mode) if report["exists"] else None,
+        "has_agnes_api_key": "AGNES_API_KEY" in report["present_env"],
+        "has_agnes_base_url": "AGNES_BASE_URL" in report["optional_present_env"],
+        "has_agnes_model": "AGNES_MODEL" in report["present_env"],
+        "safe_permissions": report["private_permissions"],
+        "readiness": readiness, "missing_env": report["missing_env"],
+        "mismatched_expected_env": report["mismatched_expected_env"],
     }
 
 
@@ -134,18 +160,13 @@ def call_agnes(
             "failure_type": "invalid_image_url",
             "error": "Agnes image input must be a public http(s) URL; local paths and file:// are not accepted",
         }
-    values = load_env(env_path)
-    api_key = values.get("AGNES_API_KEY")
-    if not api_key:
-        return {"status": "failure", "failure_type": "missing_key", "error": f"missing AGNES_API_KEY in {env_path}"}
-    base_url = values.get("AGNES_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
-    model = model_override or values.get("AGNES_MODEL", DEFAULT_MODEL)
-    if model != DEFAULT_MODEL:
-        return {
-            "status": "failure",
-            "failure_type": "unsupported_model",
-            "error": f"Agnes route is pinned to {DEFAULT_MODEL}",
-        }
+    values, report, readiness = slot_binding(env_path, model_override)
+    if readiness != "configured_not_called":
+        return {"status": "failure", "failure_type": readiness, "request_state": "not_sent",
+                "missing_env": report["missing_env"], "mismatched_expected_env": report["mismatched_expected_env"]}
+    api_key = values["AGNES_API_KEY"]
+    base_url = values["AGNES_BASE_URL"]
+    model = values["AGNES_MODEL"]
     body = {
         "model": model,
         "messages": [

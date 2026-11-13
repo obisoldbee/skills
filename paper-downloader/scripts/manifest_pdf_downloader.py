@@ -30,10 +30,13 @@ from manifest_contract import (  # noqa: E402
     PDF_MIN_BYTES,
     atomic_create_bytes,
     atomic_write_bytes,
+    canonical_identity,
     declared_output_path,
     declared_output_root,
     empty_pdf_receipt,
     exact_status_counts,
+    has_titled_pdf_route,
+    is_http_pdf_route,
     quota_counts,
     is_within,
     load_manifest,
@@ -252,8 +255,11 @@ def route_urls(row: dict[str, Any]) -> list[tuple[str, str]]:
             ]
         )
     pdf_url = str(row.get("pdf_url") or "").strip()
-    if pdf_url:
+    if is_http_pdf_route(pdf_url):
         urls.append(("provided_pdf_url", pdf_url))
+    for alternate in row.get("alternate_pdf_urls", {}):
+        if is_http_pdf_route(alternate):
+            urls.append(("provided_pdf_url", alternate))
     doi = str(row.get("doi") or "").strip()
     if doi:
         urls.append(("doi_landing", f"https://doi.org/{doi}"))
@@ -305,8 +311,13 @@ def process_row(row: dict[str, Any], args: argparse.Namespace, local_roots: list
     result.setdefault("pmcid_followup_required", False)
     if result.get("disposition") not in {None, "", "eligible"}:
         return result
-    if result.get("status") in {"duplicate", "unverified_citation", "verified_abstract"}:
+    if result.get("status") in {"duplicate", "verified_abstract"}:
         return result
+    if result.get("status") == "unverified_citation":
+        if (not has_titled_pdf_route(result) or result["attempts"]
+                or result.get("failure_reason") not in {None, "", "stable_identifier_missing_or_invalid"}):
+            return result
+        result.update(status="pending", failure_reason="")
 
     recorded = result.get("pdf") if isinstance(result.get("pdf"), dict) else {}
     recorded_path = str(recorded.get("path") or "")
@@ -365,7 +376,11 @@ def process_row(row: dict[str, Any], args: argparse.Namespace, local_roots: list
     # A non-pending row has already completed or exited the first-pass lane.
     # Reruns may recover disk evidence above, but must not repeat network routes
     # or downgrade its exact queue/terminal outcome.
+    no_browser_identity = not canonical_identity(result)
+    manual_reason = "supplied_pdf_unavailable_need_current_pdf_url_or_publication_identifier"
     if result.get("status") != "pending":
+        if result.get("status") == "browser_required" and no_browser_identity and has_titled_pdf_route(result):
+            result.update(status="needs_manual_review", failure_reason=manual_reason)
         return result
 
     errors: list[str] = []
@@ -442,6 +457,9 @@ def process_row(row: dict[str, Any], args: argparse.Namespace, local_roots: list
         result["attempts"].append(attempt)
         errors.append(error)
 
+    if no_browser_identity:
+        result.update(status="needs_manual_review", failure_reason=manual_reason)
+        return result
     result["failure_reason"] = "; ".join(error for error in errors if error) or "no_route_succeeded"
     result["status"] = "browser_required"
     result["failure_reason"] = "browser_followup_required_after_first_pass: " + result["failure_reason"]

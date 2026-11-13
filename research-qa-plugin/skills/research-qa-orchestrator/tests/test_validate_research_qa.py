@@ -1985,6 +1985,43 @@ class ValidatorTests(unittest.TestCase):
             write_jsonl(inventory, rows)
             self.assert_run_error(fixture, plugin, "duplicate_publication_identity")
 
+    def test_shared_pmid_across_receipt_identities_reports_one_missing_target(self):
+        make_row = source_row
+        make_pdf = minimal_valid_pdf_bytes
+        for complete in (1, 2):
+            with self.subTest(complete=complete), tempfile.TemporaryDirectory() as temporary:
+                def overlapping(index):
+                    row = make_row(index)
+                    if index in (1, 2):
+                        row.update(pmid="12345", title="Same publication")
+                        if index != complete:
+                            row.update(doi=None, publication_identity="pmid:12345")
+                    return row
+                root = Path(temporary)
+                plugin, components = build_plugin(root)
+                with mock.patch(__name__ + ".source_row", side_effect=overlapping), mock.patch(
+                    __name__ + ".minimal_valid_pdf_bytes",
+                    side_effect=lambda label: make_pdf("publication-1" if label == "publication-2" else label),
+                ):
+                    fixture = RunFixture(root, plugin, components)
+                with self.assertRaises(validator.ValidationError) as raised:
+                    validator.validate_run(plugin, fixture.package, submissions_root_input=fixture.submissions_root,
+                                           live_rule_input=fixture.rule, akashic_root_input=fixture.akashic_root)
+                self.assertEqual(raised.exception.code, "duplicate_publication_identity")
+                self.assertEqual(raised.exception.details["target_reviewable"], 29)
+                self.assertEqual(raised.exception.details["target_remaining"], 1)
+
+    def test_transitive_aliases_require_consistent_identifier_lineage(self):
+        rows = [source_row(1), source_row(2), source_row(3)]
+        rows[0].update(doi="10.1000/one")
+        rows[1].update(doi=None, pmid="https://pubmed.ncbi.nlm.nih.gov/12345/", reviewable=False, duplicate_of="src-001")
+        rows[2].update(doi="10.1000/one", pmid="12345", pmcid="PMC12345", reviewable=False, duplicate_of="src-001")
+        self.assertEqual(validator.validate_publication_lineage(rows, 30), 1)
+        rows[1]["doi"] = "10.1000/two"
+        with self.assertRaises(validator.ValidationError) as raised:
+            validator.validate_publication_lineage(rows, 30)
+        self.assertEqual(raised.exception.code, "publication_identifier_conflict")
+
     def test_failed_access_status_cannot_be_reviewable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

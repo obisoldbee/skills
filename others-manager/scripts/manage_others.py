@@ -166,8 +166,6 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
             raise ManagerError("plan repository order or name is invalid")
         if item.get("path") != str(Path(pool_value) / expected_name):
             raise ManagerError("plan repository path is outside its direct child")
-        validate_fingerprint_shape(item.get("fingerprint"), "repository fingerprint")
-        validate_fingerprint_shape(item.get("git_fingerprint"), "repository Git fingerprint")
         blockers = item.get("blockers")
         if not isinstance(blockers, list) or not all(isinstance(reason, str) for reason in blockers):
             raise ManagerError("plan blockers must be a list of strings")
@@ -176,6 +174,16 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
             raise ManagerError("plan advisories must be a list of strings")
         if item.get("action") not in {"blocked", "already_current", "fast_forward_candidate"}:
             raise ManagerError("plan action is invalid")
+        # Inspection can stop before observing one or both directory identities.
+        # Only its explicit null values are valid on the matching blocked path.
+        blocked = item["action"] == "blocked"
+        unreadable = blocked and "unreadable_repository_root" in blockers
+        inexact = blocked and "repository_path_is_not_exact_real_path" in blockers
+        if not (unreadable and "fingerprint" in item and item["fingerprint"] is None
+                and item.get("git_fingerprint") is None):
+            validate_fingerprint_shape(item.get("fingerprint"), "repository fingerprint")
+        if not ((unreadable or inexact) and "git_fingerprint" in item and item["git_fingerprint"] is None):
+            validate_fingerprint_shape(item.get("git_fingerprint"), "repository Git fingerprint")
         if blockers:
             if item.get("action") != "blocked":
                 raise ManagerError("blocked repository must have blocked action")

@@ -160,6 +160,8 @@ Each dispatch names the result reader, readable return location, next check entr
 
 Write one normalized JSON receipt from the actual `create_thread` result and validate it together with the exact pre-dispatch attempt before updating registry/status/log. The validator rejects hidden-subagent tools and fields, path-like ids, missing ready ids, false confirmation states, a changed tool/route/attempt hash, and any actual argument that differs from the route validator's exact projection. That exact comparison also rejects injection of a field listed in `omitted_create_thread_fields`. This syntactic guard does not replace app readback when readback is available.
 
+For example, when both axes use platform defaults, call the tool with `prompt` and the resolved `target`. The corresponding receipt has `actual_create_thread_arguments: {}`. If only `thinking` was sent, record only that key and its actual value.
+
 Required creation-receipt fields:
 
 ~~~yaml
@@ -168,7 +170,7 @@ status: created_confirmed | created_unconfirmed | queued | failed
 surface: visible_thread
 requested_route: astra-high | astra-xhigh | astra-max | astra-ultra | sol-max | sol-medium | terra-max | terra-ultra | terra-medium | terra-xhigh | luna-max | <supported visible route>
 dispatch_attempt_sha256: <64 lowercase hex from the route validator>
-actual_create_thread_arguments: <exact arguments actually passed; may be {}>
+actual_create_thread_arguments: <only the model/thinking fields actually sent, or {}>
 task_kind: codex
 thread_id: <ready task id or null>
 client_thread_id: <queued client id or null>

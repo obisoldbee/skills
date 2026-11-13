@@ -48,8 +48,6 @@ def render(data):
         gift_text = "本轮未领取" if gift == "not_claimed" else "领取未确认"
     else:
         raise ValueError("unsupported gift status")
-    if outcome == "status_only" and gift == "claimed":
-        result = "已领取礼物（本轮未派出）"
     lines = [f"Buddy｜{receipt['service_day']}", "结果：" + result, "领取：" + gift_text]
     # Expected destinations and stale receipt values are never presented as a
     # confirmed trip. An unknown dispatch has no confirmed travel row.

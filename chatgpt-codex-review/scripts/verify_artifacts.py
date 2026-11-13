@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import shutil
+import subprocess
 import stat
 import sys
 import unicodedata
@@ -15,7 +17,7 @@ import zlib
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
-KINDS = {"zip", "png", "json", "utf8"}
+KINDS = {"zip", "png", "pdf", "json", "utf8"}
 MAX_FILE = 128 * 1024 * 1024
 MAX_MEMBER = 64 * 1024 * 1024
 MAX_TOTAL = 256 * 1024 * 1024
@@ -138,6 +140,27 @@ def verify_png(path):
         raise ValueError("PNG failed full decode: " + str(exc)) from exc
 
 
+def verify_pdf(path):
+    with path.open("rb") as stream:
+        if not re.match(rb"%PDF-\d\.\d", stream.read(8)):
+            raise ValueError("invalid PDF header")
+        stream.seek(max(0, path.stat().st_size - 1024))
+        if not stream.read().rstrip().endswith(b"%%EOF"):
+            raise ValueError("incomplete PDF trailer")
+    parser = shutil.which("pdfinfo")
+    if not parser:
+        raise UnverifiedFormatError("PDF page tree unverified: pdfinfo is unavailable")
+    try:
+        checked = subprocess.run([parser, "-f", "1", "-l", "1", str(path)],
+                                 capture_output=True, timeout=15, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise UnverifiedFormatError("PDF parser timed out") from exc
+    pages = re.search(rb"^Pages:\s+(\d+)\s*$", checked.stdout, re.MULTILINE)
+    if checked.returncode or b"Syntax Error" in checked.stderr or not pages or int(pages[1]) == 0:
+        raise ValueError("invalid PDF page tree")
+    return {"pages": int(pages[1])}
+
+
 def verify_one(item, path, root):
     if not isinstance(path, str) or not path:
         return {"status": "missing"}
@@ -146,6 +169,10 @@ def verify_one(item, path, root):
         return {"status": "invalid", "error": "artifact path must be absolute"}
     try:
         resolved = file.resolve(strict=True)
+    except FileNotFoundError:
+        if file.resolve().is_relative_to(root) and not file.is_symlink():
+            return {"status": "missing"}
+        return {"status": "invalid", "error": "artifact must be inside its root"}
     except OSError as exc:
         return {"status": "invalid", "error": str(exc)}
     if not resolved.is_relative_to(root) or file.is_symlink() or not file.is_file():
@@ -170,6 +197,8 @@ def verify_one(item, path, root):
             details = verify_zip(file)
         elif kind == "png":
             details = verify_png(file)
+        elif kind == "pdf":
+            details = verify_pdf(file)
         else:
             body = file.read_text(encoding="utf-8")
             if kind == "json":

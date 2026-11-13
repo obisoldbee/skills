@@ -30,7 +30,7 @@ python3 -B "<skill_dir>/scripts/render_report.py"
 | `reason` | 可选。仅阻塞/异常时一行简短中文原因，不填正常执行解释，不复制日志。 |
 | `action` | 可选。确需用户操作时只写一项必要动作；正常和维护自动等待均省略，不写“结束/无/建议优化”。 |
 
-维护脚本 `transition:entered/recovered` 分别映射 maintenance_entered/maintenance_recovered，status 使用其真实发送结果；无变化不产生通知项。未执行通知、配置缺失、发送失败、回执未知、已送达必须区分。通知情况独立于业务结果：发送失败不抹掉已完成动作，业务正常也不能掩盖收尾或发送异常。
+维护脚本返回 `transition=entered/recovered` 时，把 `notification_kind` 填入通知项的 `kind`，同时采用实际发送状态和回执。无变化时不产生维护通知项。业务、页面收尾和通知分别取本轮证据。
 
 ## Ikuuu 输入
 

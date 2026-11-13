@@ -272,7 +272,8 @@ def verify_inventory(manifest: dict[str, Any], inventory_path: Path) -> list[dic
     inventory_format = str(manifest["inventory"].get("format") or "")
     if inventory_format not in {"markdown", "csv"}:
         raise ValueError("canonical manifest inventory format is missing or invalid")
-    observed_rows = build_rows(inventory_path, inventory_format=inventory_format)
+    observed_rows = build_rows(inventory_path, inventory_format=inventory_format,
+                               legacy_frozen="identity_grouping" not in manifest["inventory"])
     observed_ids = [row["row_id"] for row in observed_rows]
     if observed_ids != manifest["inventory"]["row_ids"]:
         raise ValueError("inventory canonical row-id set/order does not match manifest")

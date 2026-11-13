@@ -221,6 +221,7 @@ def classify_travel_control(
 
 def choose_destination(options: list[dict[str, object]], requested: str | None) -> dict[str, object]:
     """Choose an exact unique enabled destination or retain one observed default."""
+    target = None
     if requested is not None:
         if not requested.strip():
             return {
@@ -235,24 +236,33 @@ def choose_destination(options: list[dict[str, object]], requested: str | None) 
                 "reason": "requested_destination_missing_or_ambiguous",
                 "confirm_allowed": False,
             }
-        if matches[0].get("enabled") is not True:
+        target = matches[0]
+        if target.get("enabled") is not True:
             return {
                 "state": "destination_unavailable",
                 "reason": "requested_destination_disabled",
                 "confirm_allowed": False,
             }
+    selected = [option for option in options if option.get("selected") is True]
+    if len(selected) > 1 or (selected and any(type(option.get("selected")) is not bool for option in options)):
+        return {
+            "state": "destination_state_unknown",
+            "reason": "destination_selection_not_unambiguous",
+            "confirm_allowed": False,
+        }
+    if target is not None:
+        is_selected = target.get("selected") is True
         return {
             "state": (
                 "destination_ready"
-                if matches[0].get("selected") is True
+                if is_selected
                 else "destination_selection_required"
             ),
             "destination": requested,
-            "selection_action": "keep_selected" if matches[0].get("selected") is True else "select_exact_once",
-            "confirm_allowed": matches[0].get("selected") is True,
+            "selection_action": "keep_selected" if is_selected else "select_exact_once",
+            "confirm_allowed": is_selected,
         }
 
-    selected = [option for option in options if option.get("selected") is True]
     if (
         len(selected) != 1
         or selected[0].get("enabled") is not True

@@ -27,7 +27,7 @@ message.created 到达原接收任务后，使用消息 ID 调 claim_message。�
 
 claimed=true 后用自身已有权限处理内容，每段处理后 complete_message。claimed=false 不重复执行。end_of_turn=false 时等末段，再对末段 reply_to 回复或追问。
 
-多段输出第一段 end_of_turn=false、final=false，后段 reply_to 链接自己上一条 end_of_turn=false 的出站 MID，不 claim 自己消息。本轮末段 end_of_turn=true；仍有追问和修订时 final=false。关闭会话的末条 final=true，接收方确认之前各段和末条后会话才 completed。
+多段输出第一段 end_of_turn=false、final=false，后段 reply_to 链接自己上一条 end_of_turn=false 的出站 MID，不 claim 自己消息。本轮末段 end_of_turn=true；仍有追问和修订时 final=false。回复 final=true 前查看 CID 中双方各段，若较早的 MID 仍待投或待处理，等原 MID 到达并处理再回复。发送方可以用 final 交付自己分段输出的末段，接收方在双方之前各段都有 processed_at 后确认 final。
 
 ## Grok 作用域回调
 

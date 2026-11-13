@@ -45,11 +45,11 @@ Keep ordinary review in the chat. Preserve body evidence already obtained if a l
 
 ## Durable evidence
 
-1. Create one case per source with `scripts/intake_case.py` inside the authorized `output_root`.
+1. For a batch, first create or resume it with `scripts/plan_batch.py`. Use each selected row's `case_id` and `<batch>/cases/<case_id>/` as its directory. Create one intake per source with `scripts/intake_case.py` inside the authorized `output_root`.
 2. Capture the page using the route above. Save case-local HTML and relevant media, then run `scripts/capture_pipeline.py`.
 3. For every captured body image or canvas occurrence, complete the case-bound inventory in [media-routing.md](references/media-routing.md), including duplicate, decorative and unavailable items. Add OCR or visual interpretation when a substantive claim depends on that media; preserve its result separately from the page text.
 4. Bind the case with `scripts/assess_capture_evidence.py`. Create page-purpose notes or action cards when requested.
-5. For a batch, use `scripts/plan_batch.py` to create or resume the plan, then capture each planned case through the selected route.
+5. For a batch, save the case's capture as `capture.json` and its assessment as `evidence-assessment.json`. Rerun the planner for the selected URLs and read the full counts from `batch-state.json`.
 
 Read [capture-and-quality-gates.md](references/capture-and-quality-gates.md) for saved capture checks and [batch-profiles.md](references/batch-profiles.md) for batch processing. Use historical adapters only for an explicitly requested compatibility run.
 

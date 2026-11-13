@@ -290,7 +290,8 @@ def main() -> int:
         "case_root": package_relative(case_root, root),
         "intake": {"path": package_relative(intake_path, root), "sha256": sha256_file(intake_path)},
         "source": {
-            "url": args.source_url,
+            "url": (intake.get("source_locator") if intake.get("input_kind") in {"web_page", "video_page"}
+                    else args.source_url),
             "local_html": package_relative(html_path, root),
             "sha256": sha256_file(html_path),
         },

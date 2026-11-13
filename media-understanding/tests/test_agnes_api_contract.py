@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -22,6 +24,7 @@ class AgnesContractTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.env = Path(self.temp.name) / "fixture.env"
         self.env.write_text("AGNES_API_KEY=fixture-key\nAGNES_MODEL=agnes-3.0-flash\n")
+        self.env.chmod(0o600)
         self.patch = mock.patch.dict(agnes.os.environ, {}, clear=True)
         self.patch.start()
         self.addCleanup(self.patch.stop)
@@ -52,6 +55,50 @@ class AgnesContractTests(unittest.TestCase):
             else:
                 self.assertEqual(body["chat_template_kwargs"], {"enable_thinking": thinking})
             self.assertEqual(result["request_state"], "completed")
+
+    def test_route_preflight_and_execution_use_the_same_slot(self):
+        slot = Path(self.temp.name) / ".codex/secrets/agnes.env"
+        slot.parent.mkdir(parents=True)
+        self.env = slot
+        base = {"AGNES_API_KEY": "fixture-private", "AGNES_MODEL": agnes.DEFAULT_MODEL}
+        cases = [
+            ({}, {}, "missing_credentials", None),
+            ({"AGNES_MODEL": agnes.DEFAULT_MODEL}, {}, "missing_credentials", None),
+            (dict(base, AGNES_API_KEY=""), {}, "missing_credentials", None),
+            (dict(base, AGNES_API_KEY="   "), {}, "missing_credentials", None),
+            (base, {"AGNES_MODEL": "old-model"}, "configuration_mismatch", "AGNES_MODEL"),
+            (dict(base, AGNES_MODEL="nonpublic-synthetic-model-marker"), {}, "configuration_mismatch", "AGNES_MODEL"),
+            (base, {"AGNES_API_KEY": "inherited-private"}, "configuration_mismatch", "AGNES_API_KEY"),
+            (base, {"AGNES_BASE_URL": "https://other.invalid/v1"}, "configuration_mismatch", "AGNES_BASE_URL"),
+            (base, dict(base, AGNES_BASE_URL=agnes.DEFAULT_BASE_URL + "/"), "configured_not_called", None),
+        ]
+        for values, inherited, expected, conflict in cases:
+            with self.subTest(expected=expected, conflict=conflict):
+                slot.write_text("".join(f"{k}={v}\n" for k, v in values.items()))
+                slot.chmod(0o600)
+                with mock.patch.dict(agnes.os.environ, inherited, clear=True):
+                    output = subprocess.check_output([
+                        sys.executable, "-B", str(ROOT / "scripts/check_routes.py"),
+                        "--route", "agnes-image", "--home", self.temp.name], text=True)
+                    route = json.loads(output)["routes"][0]
+                    self.assertEqual(route["readiness"], expected)
+                    self.assertNotIn("fixture-private", output)
+                    self.assertNotIn("inherited-private", output)
+                    self.assertNotIn("nonpublic-synthetic-model-marker", output)
+                    if conflict:
+                        self.assertIn(conflict, route["credentials"]["mismatched_expected_env"])
+                        self.assertEqual({}, route["credentials"]["safe_values"])
+                    with mock.patch.object(agnes, "authenticated_urlopen", return_value=self.response()) as send:
+                        result = self.call()
+                if expected == "configured_not_called":
+                    self.assertEqual(result["model"], route["model"])
+                    self.assertEqual(result["request_state"], "completed")
+                    send.assert_called_once()
+                else:
+                    self.assertNotIn("nonpublic-synthetic-model-marker", json.dumps(result))
+                    self.assertEqual(result["failure_type"], expected)
+                    self.assertEqual(result["request_state"], "not_sent")
+                    send.assert_not_called()
 
     def test_invalid_budget_stops_before_request(self):
         with mock.patch.object(agnes, "authenticated_urlopen") as send:

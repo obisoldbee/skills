@@ -20,23 +20,23 @@
 scheduled/自动化每轮收尾后必须调用包内 `scripts/service_health.py`，包括正常轮和 unknown 轮；维护提醒不能凭模型记忆、旧聊天、日期或当轮变量去重。调用前读取本参考。手动/只读查询只关闭已确认维护页面，不调用此通知脚本、不改自动化状态。
 
 ```text
-python3 -B <本Skill目录>/scripts/service_health.py --phase <maintenance|available|unknown> --page <closed|preserved|unconfirmed|not_created> --space-id <本轮实际页面标识> --evidence <本轮简短脱敏证据> --detail <本轮实际业务结果> --chat-id <prompt中的lark_chat_id>
+python3 -B <本Skill目录>/scripts/service_health.py --phase <maintenance|available|unknown> --page <closed|preserved|failed|unconfirmed|not_created> --space-id <本轮实际页面标识> --evidence <本轮简短脱敏证据> --detail <本轮实际业务结果> --chat-id <prompt中的lark_chat_id> [--business-notice <low_traffic|failure>]
 ```
 
 `--space-id` 保留兼容字段名。Ego 传真实非负整数；其他路线用工具实际返回的标识，格式为 `runtime:kind:id`，如 `tabbit:tab:42`、`edge:tab:abc`、`system-browser:tab:7` 或 `harness-browser:tab:9`。`kind` 为实际 `space`、`group` 或 `tab`。未创建页面时传 `--page not_created` 并省略该参数；不能为通过校验虚构 ID。
 
 参数用数组或正确 shell 引号传递，实际执行现成脚本；不要复制实现或自行发送维护正文。脚本只处理状态/通知，**不会替你关闭空间**，必须先完成真实收尾再传 `--page`。维护不得传“签到成功”“待处理 0”，应传“维护中，本轮未执行”或真实已尝试状态。
 
-- 首次 maintenance：记录并通知“维护中”。持续 maintenance：静默，每轮仍关闭。第一次 available：通知“维护结束”，继续原任务；后续 available 静默。
+- 首次 maintenance 记录并通知，持续 maintenance 静默且每轮仍关闭。恢复后的第一次 available 处理一次通知，正文按下方固定输出选择。
 - unknown 不开始/结束维护，不消费待发送状态；独立登录/异常提醒按原规则执行。方舟每轮实际登录提醒仍没有冷却。
 - 本机状态默认写到 `$XDG_STATE_HOME/skill-automations/<skill-name>/`（未设则 `~/.local/state/skill-automations/`）；稳定路径跨天使用，禁止加日期/run_id、每轮清空或写入包内。可由部署者用 `--state-dir` 指定稳定的外部目录。它只保存服务状态与通知回执，不是重试调度器、签到/派出账本，也不保存账号或 chat_id。
 - 机器人配置默认 `$XDG_CONFIG_HOME/skill-automations/lark-bot.json`（未设则 `~/.config/skill-automations/lark-bot.json`），仅 CLI 路径/profile；也可用 `--config` 指定已有部署配置。目标会话仍只从 prompt 参数传入。不改宿主 OAuth、strict mode 或身份。
 - 状态读写带进程锁、原子保存。发送成功且有 message_id 才记已送达。明确发送失败会留下待送事件，由下一次相同状态的正式触发补发同一幂等键；不在本轮循环重发。发送超时/中断/回执不明不盲目补发，报告未确认。新状态取代过时未送事件，恢复时不补一条过时“维护中”。
-- 返回 transition=entered/recovered 时，本轮维护通知已由脚本处理；不要再套用通用失败通知。没有变化且 maintenance 时不发送普通失败通知。available 的邀请/低流量/签到异常规则仍有效；已有恢复提醒包含同一业务情况时不得重复推送。
+- 返回 `transition=entered/recovered` 时，本轮通知由状态脚本处理。持续维护时静默。正常可用且没有状态转变时，按定时规则处理业务提醒。
 - 通知失败不重开已关闭的空间。状态损坏不自行清空重建；如实报告“维护状态记录不可用”，保留原文件。
 
 ## 固定输出
 
-飞书只发一句 `项目名正在维护。` 或 `项目名已恢复。`，项目名由脚本生成。恢复时已有邀请或业务异常提醒，用那一句替代恢复提示，仍只发送一次。时间、页面、原因、未确认项和后续操作留在本地记录，不进入通知。
+飞书只发一句。恢复轮按 [定时通知条件](scheduled-wrapper.md) 选业务提醒。已核验低流量传 `low_traffic`，业务异常优先传 `failure`，其他情况省略。脚本在本次恢复事件中保存所选提醒，返回 `notification_kind`，报告按这个字段填写通知类型。进入维护时发送维护提示。时间、页面和原因仅记入本地回执。
 
 最终回复统一按 [result-report.md](result-report.md) 渲染，维护结果与通知回执并入那一份短报告，不额外输出服务健康检查段落或脚本 JSON。记录缺失或发送失败不能冒充“已发送”。

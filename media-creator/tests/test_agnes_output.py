@@ -25,7 +25,8 @@ assert SPEC and SPEC.loader
 agnes = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(agnes)
 
-CONTENT = b"complete generated media"
+# One complete grayscale pixel; shared by the mocked URL and Base64 transports.
+CONTENT = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==")
 RESULT_URL = "https://media.invalid/result?signature=private-result-signature"
 
 
@@ -138,6 +139,106 @@ class AgnesOutputTests(unittest.TestCase):
                 self.assertEqual(code, 0, report)
                 self.assertEqual(output.read_bytes(), CONTENT)
                 self.assertEqual(list(output.parent.iterdir()), [output])
+
+    def test_invalid_image_never_reserves_output_and_same_result_can_resume(self):
+        damaged = bytearray(CONTENT)
+        damaged[43] ^= 1
+        for name, data in (("empty", b""), ("text", b"plain text"), ("truncated", CONTENT[:-4]),
+                           ("fake", CONTENT[:8] + b"wrong"), ("corrupt", bytes(damaged))):
+            for route in ("b64", "url"):
+                with self.subTest(name=name, route=route):
+                    output = self.root / f"{name}-{route}.png"
+                    item = ({"url": RESULT_URL} if route == "url" else
+                            {"b64_json": base64.b64encode(data).decode()})
+                    result = {"data": [item]}
+                    self.request.side_effect = lambda *args, **kwargs: result
+                    self.urlopen.side_effect = lambda *args, **kwargs: io.BytesIO(data)
+                    code, report = self.run_cli(route, output)
+                    self.assertEqual(code, 1, report)
+                    self.assertFalse(output.exists())
+                    self.assertEqual(self.assert_recovery(report, output)["result"], result)
+                    self.assertEqual(self.request.call_count, 1)
+                    self.request.reset_mock()
+                    self.config.reset_mock()
+                    if route == "url":
+                        self.urlopen.side_effect = lambda *args, **kwargs: io.BytesIO(CONTENT)
+                        agnes.save_image_result(result, output, timeout=1)
+                    else:
+                        agnes.save_image_result({"data": [{"b64_json": base64.b64encode(CONTENT).decode()}]},
+                                                output, timeout=1)
+                    self.assertEqual(output.read_bytes(), CONTENT)
+                    self.request.assert_not_called()
+
+    def test_jpeg_and_webp_bytes_validate_and_save_to_the_exact_file(self):
+        try:
+            from PIL import Image, features
+        except ImportError:
+            self.skipTest("optional non-PNG decoder unavailable")
+        for format_name, suffix, feature in (("JPEG", ".jpg", "jpg"), ("WEBP", ".webp", "webp")):
+            with self.subTest(format=format_name):
+                if not features.check(feature):
+                    self.skipTest(f"optional {format_name} codec unavailable")
+                encoded = io.BytesIO()
+                Image.new("RGB", (3, 2), (90, 128, 70)).save(encoded, format=format_name)
+                data = encoded.getvalue()
+                output = self.root / ("clock" + suffix)
+                with self.assertRaises(agnes.AgnesError):
+                    agnes.save_image_result({"data": [{"b64_json": base64.b64encode(data[:-4]).decode()}]},
+                                            output, timeout=1)
+                self.assertFalse(output.exists())
+                agnes.save_image_result({"data": [{"b64_json": base64.b64encode(data).decode()}]},
+                                        output, timeout=1)
+                self.assertEqual(data, output.read_bytes())
+                with Image.open(output) as verified:
+                    verified.load()
+                    self.assertEqual((format_name, (3, 2)), (verified.format, verified.size))
+
+    def test_unavailable_decoder_preserves_original_result_and_png_still_works(self):
+        # A suffix-free destination can receive a non-PNG after submission.
+        result = {"data": [{"url": RESULT_URL}]}
+        self.request.side_effect = lambda *a, **kw: result
+        self.urlopen.side_effect = lambda *a, **kw: io.BytesIO(b"\xff\xd8\xff\xd9")
+        output = self.root / "clock"
+        with mock.patch.dict(sys.modules, {"PIL": None}):
+            code, report = self.run_cli("url", output)
+            self.assertEqual(code, 1)
+            self.assertFalse(output.exists())
+            self.assertEqual(result, self.assert_recovery(report, output)["result"])
+            agnes.save_image_result({"data": [{"b64_json": base64.b64encode(CONTENT).decode()}]},
+                                    self.root / "separate.png", timeout=1)
+        self.request.reset_mock()
+        self.config.reset_mock()
+        with mock.patch.object(agnes.importlib.util, "find_spec", return_value=None):
+            code, report = self.run_cli("url", self.root / "clock.jpg")
+        self.assertEqual(code, 1)
+        self.assertFalse(report["provider_calls"])
+        self.assertFalse(report["secrets_read"])
+        self.config.assert_not_called()
+        self.request.assert_not_called()
+
+    def test_image_input_and_pixel_budgets_stop_before_publication(self):
+        for route in ("url", "b64"):
+            with self.subTest(route=route), mock.patch.object(agnes, "MAX_IMAGE_BYTES", 1):
+                output = self.root / (route + ".png")
+                code, report = self.run_cli(route, output)
+                self.assertEqual(code, 1)
+                self.assertFalse(output.exists())
+                self.assert_recovery(report, output)
+                self.request.reset_mock()
+                self.config.reset_mock()
+        with mock.patch.object(agnes, "MAX_IMAGE_PIXELS", 0):
+            output = self.root / "large.png"
+            code, report = self.run_cli("b64", output)
+            self.assertEqual(code, 1)
+            self.assertFalse(output.exists())
+            self.assert_recovery(report, output)
+
+    def test_png_bytes_cannot_be_published_as_jpeg(self):
+        output = self.root / "image.jpg"
+        code, report = self.run_cli("b64", output)
+        self.assertEqual(code, 1)
+        self.assertFalse(output.exists())
+        self.assert_recovery(report, output)
 
     def test_output_parent_inspection_failure_stops_before_configuration(self) -> None:
         for failure in (PermissionError("not readable"), OSError(errno.ELOOP, "symlink loop")):

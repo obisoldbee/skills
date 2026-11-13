@@ -41,7 +41,7 @@ description: 部署、扩展或排查 ChatGPT Dot 与 Grok Bot 的自建 MCP 协
 ## 保持协议条件
 
 - 一个会话固定为 Dot 与一个已启用 bot。多 bot 子任务各开独立会话，由 Dot 关联；身份来自 OAuth、专用 Bearer 或作用域回调，不来自正文自报。
-- `end_of_turn=true` 结束本轮，`final=true` 结束整个会话。多段输出按顺序发送，只有末段结束本轮。还需追问/修订时保持 `final=false`。
+- `end_of_turn=true` 结束本轮，`final=true` 结束整个会话。多段输出按顺序发送，只有末段结束本轮。回复 final 前按 CID 核对双方分段的处理回执，缺段时等原 MID 补投和处理。还需追问/修订时保持 `final=false`。
 - 固定消息 ID 保证幂等；同 ID 重试保持正文、路由和任务字段完全一致。结果不确定先读状态，不换 ID 重复派活。
 - 先实际 claim，处理后 complete。`claimed=false` 停止重复执行。调试方不代接收方领取或确认来凑验收结果。
 - 凭据各角色独立，每个 bot 使用唯一 secret 变量名；helper 固定只读自身变量，不回退到通用变量。不要假设不同 bot 的同名环境变量彼此隔离。固定 HTTPS 443、目的主机校验、禁止重定向和非公网地址检查保留。回调 URL 本身也是秘密能力。

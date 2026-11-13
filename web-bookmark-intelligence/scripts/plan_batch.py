@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack, contextmanager
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
 from common import ensure_within, file_reference_matches, package_relative, read_json, resolve_declared_path, sha256_file, stable_id, utc_now, write_json
-from assess_capture_evidence import validate_persisted_assessment
+from assess_capture_evidence import bound_regular_file, declared_case_root, mapping, validate_persisted_assessment
 from intake_case import canonical_url
 
 TERMINAL_STATES = {"captured", "blocked", "failed"}
@@ -69,6 +71,24 @@ def previous_legacy_attempt(batch_schema: object, item: dict[str, object]) -> di
     return snapshot
 
 
+def has_bound_capture(case_dir: Path, item: dict[str, object], root: Path) -> bool:
+    path = case_dir / "capture.json"
+    if path.is_symlink() or not path.is_file():
+        return False
+    capture = mapping(read_json(path))
+    intake_path = bound_regular_file(mapping(capture.get("intake")), root, case_dir)
+    source = mapping(capture.get("source"))
+    if (capture.get("schema") != "web-bookmark-intelligence/capture-record/v3"
+            or capture.get("case_id") != item["case_id"] or declared_case_root(capture, root) != case_dir
+            or source.get("url") != item["source_url"] or intake_path is None
+            or not file_reference_matches(source, root, case_dir, path_key="local_html")):
+        return False
+    intake = mapping(read_json(intake_path))
+    return (intake.get("schema") == "web-bookmark-intelligence/intake/v2"
+            and intake.get("case_id") == item["case_id"] and declared_case_root(intake, root) == case_dir
+            and intake.get("source_locator") == item["source_url"])
+
+
 def passing_case_assessment(case_dir: Path, item: dict[str, object], root: Path) -> dict[str, object] | None:
     """Return a bound assessment receipt only when it closes the quality gate."""
     assessment_path = case_dir / "evidence-assessment.json"
@@ -118,6 +138,29 @@ def passing_case_assessment(case_dir: Path, item: dict[str, object], root: Path)
     }
 
 
+@contextmanager
+def batch_write_lock(*paths: Path):
+    """Hold stable OS locks across the read and both writes. Closing releases each lock."""
+    with ExitStack() as handles:
+        for path in sorted(set(paths)):
+            lock = path.with_name("." + path.name + ".lock")
+            lock.parent.mkdir(parents=True, exist_ok=True)
+            if lock.is_symlink():
+                raise SystemExit(f"batch lock is a symlink: {lock}")
+            flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+            handle = handles.enter_context(os.fdopen(os.open(lock, flags, 0o600), "r+b"))
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise SystemExit(f"cannot acquire batch write lock for {path}: {exc}") from exc
+        yield
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--urls", nargs="*", default=[])
@@ -135,14 +178,26 @@ def main() -> int:
     out_dir = ensure_within(args.out_dir, root)
     out_dir.mkdir(parents=True, exist_ok=True)
     state_path = ensure_within(args.state or out_dir / "batch-state.json", root)
+    plan_path = ensure_within(out_dir / "batch-plan.json", root)
+    if plan_path == state_path:
+        raise SystemExit("--state must be separate from batch-plan.json")
+    with batch_write_lock(state_path, plan_path):
+        return plan_batch(args.profile, urls, root, out_dir, state_path, plan_path)
+
+
+def plan_batch(profile: str, urls: list[str], root: Path, out_dir: Path, state_path: Path, plan_path: Path) -> int:
     prior = read_json(state_path) if state_path.exists() else {"cases": []}
     prior_by_url = {item.get("source_url"): item for item in prior.get("cases", []) if isinstance(item, dict)}
     prior_schema = prior.get("schema")
 
     cases: list[dict[str, object]] = []
+    selected: set[str] = set()
     for raw_url in urls:
         canonical, unsafe_reason = canonical_url(raw_url)
         source_url = canonical or raw_url
+        if source_url in selected:
+            continue
+        selected.add(source_url)
         existing = prior_by_url.get(source_url)
         recovered_legacy_attempt: dict[str, object] | None = None
         if existing:
@@ -155,11 +210,19 @@ def main() -> int:
                 and is_legacy_adapter_item(prior_schema, existing)
                 and is_legacy_adapter_only_blocker(existing)
             )
-            assessment = (
-                passing_case_assessment(case_dir, existing, root)
-                if batch_identity_valid and prior_status in {"pending_quality", "captured"}
-                else None
-            )
+            assessment = None
+            capture_found = False
+            if (batch_identity_valid and prior_status in {"planned", "pending_quality", "captured"}
+                    and case_dir.resolve() == case_dir):
+                try:
+                    assessment = passing_case_assessment(case_dir, existing, root)
+                except (OSError, ValueError):
+                    pass
+                if not assessment and prior_status == "planned":
+                    try:
+                        capture_found = has_bound_capture(case_dir, existing, root)
+                    except (OSError, ValueError):
+                        pass
             if assessment:
                 existing["status"] = "captured"
                 existing["quality_assessment"] = assessment
@@ -168,6 +231,9 @@ def main() -> int:
                 existing["status"] = "pending_quality"
                 existing.pop("quality_assessment", None)
                 existing["blocked_reason"] = "stale_or_invalid_quality_assessment"
+            elif capture_found:
+                existing["status"] = "pending_quality"
+                existing["blocked_reason"] = "quality_assessment_required"
             if recoverable_legacy_block:
                 recovered_legacy_attempt = previous_legacy_attempt(prior_schema, existing)
             elif existing.get("status") in TERMINAL_STATES or existing.get("status") in {
@@ -180,7 +246,7 @@ def main() -> int:
         host_matches = host == "chinalowcarb.com" or host.endswith(".chinalowcarb.com")
         status = "planned"
         blocked_reason = unsafe_reason
-        if args.profile == "shoulong" and not host_matches:
+        if profile == "shoulong" and not host_matches:
             status, blocked_reason = "blocked", "shoulong_profile_host_mismatch"
         elif unsafe_reason:
             status = "blocked"
@@ -189,13 +255,13 @@ def main() -> int:
             "source_url": source_url,
             "status": status,
             "blocked_reason": blocked_reason,
-            "profile": args.profile,
+            "profile": profile,
             "capture_pipeline": SHARED_CAPTURE_PIPELINE,
             "capture_adapter": "runtime_selected",
             "capture_mode": "rendered_browser_or_case_local_html",
             "quality_gate": "capture_pipeline.py",
             "media_route_on_text_failure": "media_understanding_then_ocr",
-            "continuity_key": stable_id("batch", source_url) if args.profile == "shoulong" else None,
+            "continuity_key": stable_id("batch", source_url) if profile == "shoulong" else None,
             "quality_assessment_required": True,
         }
         if recovered_legacy_attempt:
@@ -204,8 +270,8 @@ def main() -> int:
 
     batch = {
         "schema": "web-bookmark-intelligence/batch/v3",
-        "created_at": utc_now(),
-        "profile": args.profile,
+        "created_at": prior.get("created_at") or utc_now(),
+        "profile": profile,
         "capture_pipeline": SHARED_CAPTURE_PIPELINE,
         "capture_adapter": "runtime_selected",
         "max_workers": 1,
@@ -214,8 +280,9 @@ def main() -> int:
         "formal_write_authorized": False,
         "cases": cases,
     }
-    write_json(out_dir / "batch-plan.json", batch, root)
-    write_json(state_path, batch, root)
+    prior_by_url.update((item["source_url"], item) for item in cases)
+    write_json(state_path, {**batch, "cases": list(prior_by_url.values())}, root)
+    write_json(plan_path, batch, root)
     print(f"cases={len(cases)}")
     return 0
 

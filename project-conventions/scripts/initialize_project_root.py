@@ -647,7 +647,10 @@ def inspect_target(
         raise ProjectInitializationError(f"target is not a directory: {target}")
     if not target.parent.is_dir():
         raise ProjectInitializationError(f"target parent does not exist: {target.parent}")
-    if mode == "fresh-empty" and target.exists():
+    root_identity = directory_identity(target) if target.exists() else None
+    if mode == "adopt-existing" and root_identity is None:
+        raise ProjectInitializationError(f"adopt-existing target does not exist: {target}")
+    if mode == "fresh-empty" and root_identity is not None:
         initialized_marker = target / CONTROL_DIRECTORY / "project.json"
         managed_top_level = (
             {
@@ -673,7 +676,7 @@ def inspect_target(
     preserves: list[str] = []
     preconditions: dict[str, FileSnapshot | None] = {}
     directory_preconditions: dict[str, PathIdentity | None] = {
-        ".": directory_identity(target) if target.exists() else None
+        ".": root_identity
     }
     for relative in sorted(directories):
         path = target / relative

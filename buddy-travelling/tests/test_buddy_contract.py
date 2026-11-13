@@ -151,6 +151,16 @@ class BuddyContractTests(unittest.TestCase):
         self.assertEqual("select_exact_once", decision["selection_action"])
         self.assertFalse(decision["confirm_allowed"])
 
+    def test_requested_destination_requires_exclusive_observed_selection(self):
+        for other, allowed in ((True, False), (None, False), (False, True)):
+            options = [{"label": "茶馆", "enabled": True, "selected": True},
+                       {"label": "海边", "enabled": True, "selected": other}]
+            for requested in ("茶馆", None):
+                with self.subTest(other=other, requested=requested):
+                    decision = choose_destination(options, requested)
+                    self.assertEqual(decision["confirm_allowed"], allowed)
+                    self.assertEqual(decision["state"], "destination_ready" if allowed else "destination_state_unknown")
+
     def test_missing_named_destination_does_not_confirm(self):
         decision = choose_destination([{"label": "上海", "enabled": True}], "北京")
 

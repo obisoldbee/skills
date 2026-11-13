@@ -19,6 +19,8 @@
 
 事件到达先 claim。claimed=false 不重复执行；claimed=true 处理完逐条 complete。收到 end_of_turn=false 时收取本段并等待后续，收到本轮末段才答复。既有会话的 reply_to 始终指最新 MID；换方回复须引用已由本方 claim 且 end_of_turn=true 的对方入站消息。同方分段续发须引用自己上一条 end_of_turn=false 的出站 MID，不需也不能 claim 自己消息，第二段不能复用最初问题 MID。作用域 callback 分段按 part_index 递增。本轮末段 end_of_turn=true；只有整个会话结束才 final=true。final 入站处理后 complete，不再回复该会话。
 
+回复 final 前先按 CID 查看双方消息，沿 reply_to 核对各段的 processed_at。末段先到而前段待投或待处理时，保持会话 active，等原 MID 补投并由原接收方处理，再回复末段。收到分段交付的 final 时，也要等较早各段处理完成后再确认 final。
+
 Dot 用实际注入的五个工具和当前已核对的订阅；Grok 入站用该消息 callback，主动发送用本 bot 安全保存的发送 key。校验固定 HTTPS443 主机、无 userinfo、路径范围，禁止重定向。身份取服务认证，不任意指定 sender。密钥和能力 URL 不进聊天、日志或产物。
 
 每个 bot 持久保存本方主动 helper 与 README，把发现入口写入 DM/群聊都能查到的持久规则，分别验证发现和实际主动协作。不能借用另一 bot 的密钥或用 Webhook 保存状态代替主动发送证据。群聊中的使用仍按当前用户授权及隐私范围执行。

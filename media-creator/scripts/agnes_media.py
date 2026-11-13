@@ -11,17 +11,22 @@ import argparse
 import base64
 import http.client
 import ipaddress
+import io
+import importlib.util
 import json
 import math
 import mimetypes
 import os
 import re
 import stat
+import struct
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import warnings
+import zlib
 from pathlib import Path
 from typing import Any, Callable
 
@@ -39,6 +44,9 @@ def authenticated_urlopen(request, *, timeout):
 
 DEFAULT_BASE_URL = "https://apihub.agnes-ai.com"
 IMAGE_MODEL = "agnes-image-2.5-flash"
+MAX_IMAGE_BYTES = 64 * 1024 * 1024
+MAX_IMAGE_PIXELS = 64 * 1024 * 1024
+MAX_PNG_DECODED_BYTES = 256 * 1024 * 1024
 VIDEO_MODEL = "agnes-video-2.5-flash"
 STANDARD_VIDEO_MODEL = "agnes-video-2.5"
 VIDEO_MODELS = (VIDEO_MODEL, STANDARD_VIDEO_MODEL)
@@ -439,7 +447,17 @@ def request_json(
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
         with authenticated_urlopen(request, timeout=timeout) as response:
-            result = json.loads(response.read().decode("utf-8"))
+            if payload and payload.get("model") == IMAGE_MODEL:
+                limit = 4 * ((MAX_IMAGE_BYTES + 2) // 3) + 1024 * 1024
+                raw = response.read(limit + 1)
+                if len(raw) > limit:
+                    error = AgnesError("Agnes image response exceeds the size limit")
+                    error.recovery = {"status": "unavailable", "automatic_regeneration": False,
+                                      "reason": "response_too_large", "retry": "check_original_request"}
+                    raise error
+            else:
+                raw = response.read()
+            result = json.loads(raw.decode("utf-8"))
     except json.JSONDecodeError as exc:
         raise AgnesError("Agnes returned invalid JSON") from exc
     except (OSError, ValueError, http.client.HTTPException) as exc:
@@ -534,18 +552,128 @@ def save_bytes(data: bytes, output: OutputTarget | Path) -> None:
         raise AgnesError(f"cannot save result to {output}: {error_category(exc)}") from exc
 
 
+def validate_png(data: bytes) -> None:
+    """Check complete PNG chunks, deflate stream and scanlines (including Adam7)."""
+    offset = 8
+    compressed = bytearray()
+    previous_kind = None
+    saw_data = False
+    palette_entries = 0
+    image = memoryview(data)
+    while offset + 12 <= len(image):
+        length, kind = struct.unpack_from(">I4s", image, offset)
+        end = offset + 8 + length
+        if end + 4 > len(image) or zlib.crc32(image[offset + 4:end]) != int.from_bytes(image[end:end + 4], "big"):
+            break
+        chunk = image[offset + 8:end]
+        if offset == 8:
+            if kind != b"IHDR" or length != 13:
+                break
+            width, height, depth, color, compression, filtering, interlace = struct.unpack(">IIBBBBB", chunk)
+            depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8), 4: (8, 16), 6: (8, 16)}
+            if not width or not height or depth not in depths.get(color, ()) or compression or filtering or interlace > 1:
+                break
+            if width * height > MAX_IMAGE_PIXELS:
+                raise AgnesError("PNG exceeds the pixel limit")
+        elif kind == b"PLTE":
+            if not length or length > 768 or length % 3 or saw_data or palette_entries or color in (0, 4):
+                break
+            palette_entries = length // 3
+        elif kind == b"IDAT":
+            if (saw_data and previous_kind != b"IDAT") or (color == 3 and not 0 < palette_entries <= 2 ** depth):
+                break
+            saw_data = True
+            compressed.extend(chunk)
+        elif kind == b"IEND":
+            if length or end + 4 != len(image) or not compressed:
+                break
+            channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color]
+            passes = ((0, 0, 1, 1),) if not interlace else (
+                (0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4),
+                (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2))
+            rows = []
+            for x, y, dx, dy in passes:
+                if width > x and height > y:
+                    columns = (width - x + dx - 1) // dx
+                    stride = 1 + (columns * channels * depth + 7) // 8
+                    rows.append(((height - y + dy - 1) // dy, stride))
+            expected = sum(count * stride for count, stride in rows)
+            if expected > MAX_PNG_DECODED_BYTES:
+                raise AgnesError("PNG exceeds the decoded image size limit")
+            inflater = zlib.decompressobj()
+            try:
+                pixels = inflater.decompress(compressed, expected + 1)
+            except zlib.error:
+                break
+            if len(pixels) != expected or not inflater.eof or inflater.unused_data:
+                break
+            start = 0
+            for count, stride in rows:
+                stop = start + count * stride
+                if any(value > 4 for value in pixels[start:stop:stride]):
+                    raise AgnesError("invalid PNG scanline filter")
+                start = stop
+            return
+        elif not kind[0] & 0x20:
+            break
+        previous_kind = kind
+        offset = end + 4
+    raise AgnesError("invalid or incomplete PNG image")
+
+
+def validate_image(data: bytes, path: Path) -> None:
+    if not data:
+        raise AgnesError("empty image result")
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        validate_png(data)
+        mime = "image/png"
+    else:
+        try:
+            from PIL import Image
+        except ImportError as exc:
+            raise AgnesError("non-PNG image needs a local image decoder") from exc
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                formats = ("JPEG", "WEBP", "GIF", "BMP", "TIFF", "AVIF")
+                with Image.open(io.BytesIO(data), formats=formats) as frame:
+                    if frame.width * frame.height * getattr(frame, "n_frames", 1) > MAX_IMAGE_PIXELS:
+                        raise AgnesError("image exceeds the pixel limit")
+                    if frame.format == "WEBP" and int.from_bytes(data[4:8], "little") + 8 != len(data):
+                        raise AgnesError("incomplete WebP container")
+                    mime = frame.get_format_mimetype()
+                    frame.verify()
+                with Image.open(io.BytesIO(data), formats=formats) as frame:
+                    for index in range(getattr(frame, "n_frames", 1)):
+                        frame.seek(index)
+                        frame.load()
+        except (OSError, ValueError, SyntaxError, EOFError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+            raise AgnesError("invalid or incomplete image result") from exc
+    expected, _ = mimetypes.guess_type(path.name)
+    if expected and expected.startswith("image/") and mime != expected:
+        raise AgnesError("image format does not match the output extension")
+
+
+def download_bytes(url: str, *, timeout: float, limit: int | None = None) -> bytes:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            if limit is None:
+                return response.read()
+            data = response.read(limit + 1)
+            if len(data) > limit:
+                raise AgnesError("downloaded image exceeds the size limit")
+            return data
+    except (OSError, ValueError, http.client.HTTPException) as exc:
+        raise AgnesError(f"cannot download result: {error_category(exc)}") from exc
+
+
 def download(url: str, output: OutputTarget | Path, *, timeout: float) -> None:
     if isinstance(output, Path):
         with prepare_output(output) as target:
             download(url, target, timeout=timeout)
         return
     output.check_parent()
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            data = response.read()
-    except (OSError, ValueError, http.client.HTTPException) as exc:
-        raise AgnesError(f"cannot download result to {output}: {error_category(exc)}") from exc
-    save_bytes(data, output)
+    save_bytes(download_bytes(url, timeout=timeout), output)
 
 
 def save_image_result(result: dict[str, Any], output: OutputTarget | Path, *, timeout: float) -> None:
@@ -558,16 +686,21 @@ def save_image_result(result: dict[str, Any], output: OutputTarget | Path, *, ti
         raise AgnesError("Agnes image response has no data[0] result")
     first = items[0]
     if isinstance(first.get("url"), str):
-        download(first["url"], output, timeout=timeout)
-        return
-    if isinstance(first.get("b64_json"), str):
+        output.check_parent()
+        data = download_bytes(first["url"], timeout=timeout, limit=MAX_IMAGE_BYTES)
+    elif isinstance(first.get("b64_json"), str):
+        if len(first["b64_json"]) > 4 * ((MAX_IMAGE_BYTES + 2) // 3):
+            raise AgnesError("encoded image exceeds the size limit")
         try:
             data = base64.b64decode(first["b64_json"], validate=True)
         except ValueError as exc:
             raise AgnesError(f"cannot decode Base64 image: {error_category(exc)}") from exc
-        save_bytes(data, output)
-        return
-    raise AgnesError("Agnes image response contains neither data[0].url nor data[0].b64_json")
+    else:
+        raise AgnesError("Agnes image response contains neither data[0].url nor data[0].b64_json")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise AgnesError("image exceeds the size limit")
+    validate_image(data, output.path)
+    save_bytes(data, output)
 
 
 def video_result_url(result: dict[str, Any]) -> str | None:
@@ -686,6 +819,11 @@ def preserve_result(
 
 
 def execute(args: argparse.Namespace, payload: dict[str, Any]) -> dict[str, Any]:
+    if args.media == "image" and args.output:
+        image_type, _ = mimetypes.guess_type(args.output.name)
+        if (image_type and image_type.startswith("image/") and image_type != "image/png"
+                and importlib.util.find_spec("PIL") is None):
+            raise AgnesError("this output format needs a local image decoder before submission")
     output = prepare_output(args.output) if args.output is not None else None
     provider_calls = False
     try:

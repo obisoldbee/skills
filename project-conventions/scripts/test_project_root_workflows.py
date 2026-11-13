@@ -155,6 +155,21 @@ class ProjectRootWorkflowTests(unittest.TestCase):
                         validated = self.run_command([sys.executable, "-B", str(VALIDATOR), str(root)])
                         self.assertEqual(validated.returncode, 0, validated.stderr)
 
+    def test_adopt_existing_requires_the_named_directory_before_preview_or_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            parent = Path(raw)
+            existing = parent / "weekly-report"
+            existing.mkdir()
+            target = parent / "weekly-reprot"
+            command = [sys.executable, "-B", str(INITIALIZER), str(target),
+                       "--type", "code", "--mode", "adopt-existing"]
+            for flags in ([], ["--apply"]):
+                with self.subTest(flags=flags):
+                    result = self.run_command(command + flags)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(str(target), result.stderr + result.stdout)
+                    self.assertEqual(list(parent.iterdir()), [existing])
+
     def test_adoption_preserves_task_indexes_evidence_and_legacy_locations(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw) / "adopt-tasks"

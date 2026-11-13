@@ -21,7 +21,8 @@ SPEC = importlib.util.spec_from_file_location("agnes_boundaries", SCRIPT)
 assert SPEC and SPEC.loader
 agnes = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(agnes)
-CONTENT = b"boundary test media"
+# One complete grayscale pixel; shared by the mocked URL and Base64 transports.
+CONTENT = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==")
 PRIVATE = "qa-private-provider-echo"
 URL = "https://example.invalid/result?signature=" + PRIVATE
 

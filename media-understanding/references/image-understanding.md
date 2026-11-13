@@ -2,6 +2,8 @@
 
 2026-10-20 核对 Agnes 3.0 Flash 的公开图片 URL 合同仍适用。包内 adapter 使用 Chat Completions 的 `image_url.url`，支持 `--max-tokens 1..65536` 及显式 `--thinking|--no-thinking`；省略 thinking 保留服务默认，未改变历史 700 token 默认。输出被长度截断时保留原文并报告 `incomplete/accepted`，不作完整识别通过。Responses、Messages 是其他官方协议，字段分别绑定，不沿用 Chat payload 猜测调用。原生视频、音频及本地/Base64 输入仍无本轮确认的模型级合同。
 
+Agnes 预检和执行读取同一槽位文件。填入非空的 AGNES_API_KEY 和 AGNES_MODEL，后者固定为 agnes-3.0-flash。进程中已有的同名凭据、模型或服务地址需与槽位一致，服务地址省略时按默认地址核对。配置冲突会在发送前返回 configuration_mismatch，只列出冲突字段名。
+
 ## 任务分类
 
 | 用户目标 | 路线类型 | 核心输出 |

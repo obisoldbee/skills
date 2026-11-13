@@ -419,6 +419,16 @@ class Bridge:
                         raise Rejected("Previous processing is unknown; inspect before recovery")
                 if parent["final"]:
                     raise Rejected("Final message must be completed, not replied to")
+                if final:
+                    # A reply acknowledges its claimed parent in the transaction below.
+                    # An outgoing multipart final can still carry the last part to its recipient.
+                    pending = self.db.execute(
+                        "SELECT 1 FROM messages WHERE conversation_id=? AND id!=? AND processed_at IS NULL "
+                        "AND rowid <= (SELECT MAX(rowid) FROM messages WHERE conversation_id=? AND recipient=?) "
+                        "LIMIT 1", (cid, parent_id, cid, sender),
+                    ).fetchone()
+                    if pending:
+                        raise Rejected("Earlier reply parts must be acknowledged before sending final")
                 count = self.db.execute("SELECT count(*) FROM messages WHERE conversation_id=? AND end_of_turn=1", (cid,)).fetchone()[0]
                 turn_limit = int(os.getenv('MAX_COMPLETED_TURNS', '0'))
                 if turn_limit and count >= turn_limit:
@@ -544,7 +554,10 @@ class Bridge:
             if not msg or msg["recipient"] != sender or not msg["received_at"]:
                 raise Rejected("Only recipient of a claimed message can acknowledge it")
             if msg['final']:
-                pending = self.db.execute("SELECT count(*) FROM messages WHERE conversation_id=? AND recipient=? AND id!=? AND processed_at IS NULL", (msg['conversation_id'],sender,mid)).fetchone()[0]
+                pending = self.db.execute(
+                    "SELECT 1 FROM messages WHERE conversation_id=? AND id!=? AND processed_at IS NULL LIMIT 1",
+                    (msg['conversation_id'], mid),
+                ).fetchone()
                 if pending:
                     raise Rejected('Earlier reply parts must be acknowledged before completing the conversation')
             self.db.execute("UPDATE messages SET status='completed',processed_at=? WHERE id=?", (utc(), mid))
@@ -743,7 +756,7 @@ def schema(properties, required):
 
 STRING = {"type": "string"}
 TOOLS = [
-    ("send_message", "Send to an enabled registered bot by optional recipient (default grok; replies retain the conversation recipient). Every conversation is bilateral with Dot. Optional task_id and existing parent_task_id associate child work; delegation_id prevents duplicate delegation. Use stable IDs. In an existing conversation, reply_to must reference its latest message. When replying to the other agent, first claim that incoming message and wait for end_of_turn=true. When continuing your own multipart turn, reference your previous outgoing message whose end_of_turn=false; do not claim your own outgoing message. Set end_of_turn=true only on the last part. Collaborate on owner-assigned tasks: delegate, execute with existing tools, clarify and deliver without per-message approval. No fixed turn limit; idle sessions expire after 7 days. Privacy disclosure or payment needs owner approval. final=true ends the conversation; it is not merely end-of-turn.", schema({"conversation_id": STRING, "message_id": STRING, "text": STRING, "reply_to": STRING, "final": {"type": "boolean"}, "end_of_turn": {"type": "boolean"}, "recipient": STRING, "task_id": STRING, "parent_task_id": STRING, "delegation_id": STRING}, ["conversation_id", "message_id", "text"])),
+    ("send_message", "Send to an enabled registered bot by optional recipient (default grok; replies retain the conversation recipient). Every conversation is bilateral with Dot. Optional task_id and existing parent_task_id associate child work; delegation_id prevents duplicate delegation. Use stable IDs. In an existing conversation, reply_to must reference its latest message. When replying to the other agent, first claim that incoming message and wait for end_of_turn=true. When continuing your own multipart turn, reference your previous outgoing message whose end_of_turn=false; do not claim your own outgoing message. Set end_of_turn=true only on the last part. Collaborate on owner-assigned tasks: delegate, execute with existing tools, clarify and deliver without per-message approval. No fixed turn limit; idle sessions expire after 7 days. Privacy disclosure or payment needs owner approval. Before replying final=true, check this conversation for unprocessed earlier parts on either side. Wait for the original message IDs to be delivered and processed. final=true ends the conversation; it is not merely end-of-turn.", schema({"conversation_id": STRING, "message_id": STRING, "text": STRING, "reply_to": STRING, "final": {"type": "boolean"}, "end_of_turn": {"type": "boolean"}, "recipient": STRING, "task_id": STRING, "parent_task_id": STRING, "delegation_id": STRING}, ["conversation_id", "message_id", "text"])),
     ("claim_message", "Claim an incoming message before understanding/replying. On event wakeup with missing payload, message_id='' atomically receives the oldest delivered Dot message. If claimed=false, stop. Never poll on a schedule.", schema({"message_id": STRING}, ["message_id"])),
     ("complete_message", "Acknowledge a claimed message. With end_of_turn=false, process this part and wait before replying. Non-final acknowledgments keep the conversation active. A final acknowledgment completes the conversation only after earlier parts are acknowledged.", schema({"message_id": STRING}, ["message_id"])),
     ("stop_conversation", "Stop queued delivery and future replies. An already running Agent cannot be forcibly cancelled.", schema({"conversation_id": STRING}, ["conversation_id"])),

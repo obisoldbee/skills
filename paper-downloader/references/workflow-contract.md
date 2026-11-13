@@ -41,8 +41,10 @@ Network concurrency defaults to one active lane per public egress IP. Other work
 Freeze optional `collection_role` (`target` by default, or `supplementary`) and
 `collection_role_reason` with each inventory row. The role is bound by the row hash.
 Set manifest `target_count` from the requested quota (`--target-count`); supplementary
-rows never satisfy it. Report target and supplementary totals separately, deduplicated
-by publication identity. Unresolved supplementary candidates do not block target processing
+rows never satisfy it. Match rows through any shared, consistent DOI, PMID or PMCID.
+Retain duplicate row IDs and their canonical links. Count each publication once across
+different file versions, and resolve conflicting identifiers before freezing.
+Unresolved supplementary candidates do not block target processing
 closure, but remain explicitly pending; they do not count as downloaded. A complete
 processing receipt is not a claim that `quota.target_quota_met` is true. Keep and analyze
 counterevidence under its own true identity rather than relabeling it as a requested paper.

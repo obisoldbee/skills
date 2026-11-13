@@ -25,8 +25,11 @@ from manifest_contract import (  # noqa: E402
     declared_output_path,
     declared_output_root,
     empty_pdf_receipt,
+    has_titled_pdf_route,
     identity_key,
+    is_http_pdf_route,
     normalized_identifier,
+    publication_groups,
     relative_output_path,
     require_distinct_paths,
     rows_binding_sha256,
@@ -203,10 +206,14 @@ def first_value(row: dict[str, Any], *keys: str) -> str:
     return ""
 
 
-def pdf_url_from_row(row: dict[str, Any]) -> str:
+def pdf_url_from_row(row: dict[str, Any], legacy: bool = False) -> str:
     for key in ("pdf_url", "online_source_url", "original_publication_url", "url"):
         value = first_value(row, key)
-        if value.lower().split("?", 1)[0].endswith(".pdf"):
+        pdf_suffix = value.lower().split("?", 1)[0].endswith(".pdf")
+        if legacy:
+            if pdf_suffix:
+                return value
+        elif (key == "pdf_url" or pdf_suffix) and is_http_pdf_route(value):
             return value
     return ""
 
@@ -241,13 +248,13 @@ def build_rows(
     path: Path,
     include_duplicates: bool = True,
     inventory_format: str = "auto",
+    legacy_frozen: bool = False,
 ) -> list[dict[str, Any]]:
     """Return every Markdown table data row; include_duplicates is compatibility-only."""
 
     del include_duplicates
     rows: list[dict[str, Any]] = []
     used_row_ids: set[str] = set()
-    first_by_identity: dict[str, str] = {}
     detected_format, tables = inventory_tables(path, inventory_format)
     for table_index, (_header, table_rows) in enumerate(tables):
         for source in table_rows:
@@ -272,7 +279,7 @@ def build_rows(
                 "doi": normalized_identifier("doi", raw_doi),
                 "pmid": normalized_identifier("pmid", raw_pmid),
                 "pmcid": normalized_identifier("pmcid", raw_pmcid),
-                "pdf_url": pdf_url_from_row(raw),
+                "pdf_url": pdf_url_from_row(raw, legacy_frozen),
                 "source_origin": first_value(raw, "source_origin") or "inventory",
                 "input_url": first_value(raw, "input_url", "url"),
                 "original_publication_url": first_value(raw, "original_publication_url", "online_source_url"),
@@ -295,21 +302,45 @@ def build_rows(
                 row["collection_role"] = role or "supplementary"
                 row["collection_role_reason"] = reason
                 collection_role(row)
-            key = identity_key(row)
-            if key and key in first_by_identity:
-                row["duplicate_of"] = first_by_identity[key]
-                row["status"] = "duplicate"
-                row["disposition"] = "duplicate"
-                row["failure_reason"] = "repeated_canonical_identity"
-            elif key:
-                first_by_identity[key] = row_id
             if row["disposition"] in {"declared_duplicate", "excluded_do_not_cite"}:
                 row["status"] = "needs_manual_review"
                 row["failure_reason"] = row["disposition"]
-            if not canonical_identity(row) and row["status"] == "pending":
+            if not canonical_identity(row) and not has_titled_pdf_route(row) and row["status"] == "pending":
                 row["status"] = "unverified_citation"
                 row["failure_reason"] = "stable_identifier_missing_or_invalid"
             rows.append(row)
+    if legacy_frozen:
+        by_key: dict[str, list[int]] = {}
+        for index, row in enumerate(rows):
+            key = identity_key(row)
+            if key:
+                by_key.setdefault(key, []).append(index)
+        groups = by_key.values()
+    else:
+        groups = publication_groups(rows)
+    for group in groups:
+        if len(group) < 2:
+            continue
+        canonical = group[0] if legacy_frozen else min(group, key=lambda i: (
+            rows[i]["disposition"] != "eligible", collection_role(rows[i]) != "target",
+            rows[i]["status"] == "unverified_citation"))
+        primary = rows[canonical]
+        for index in group:
+            row = rows[index]
+            if index == canonical or (not legacy_frozen and row["disposition"] != "eligible"):
+                continue
+            if not legacy_frozen:
+                # The primary row does the fetching. Keep the source row of each
+                # additional lookup key so its route survives deduplication.
+                for field in ("doi", "pmid", "pmcid", "pdf_url"):
+                    if not primary[field] and row[field]:
+                        primary[field] = row[field]
+                        primary.setdefault("route_sources", {})[field] = row["row_id"]
+                locator = row["pdf_url"].split("#", 1)[0]
+                if locator and locator != primary["pdf_url"].split("#", 1)[0]:
+                    primary.setdefault("alternate_pdf_urls", {}).setdefault(locator, row["row_id"])
+            row.update(duplicate_of=primary["row_id"], status="duplicate",
+                       disposition="duplicate", failure_reason="repeated_canonical_identity")
     known_row_ids = {row["row_id"] for row in rows}
     for row in rows:
         if row["disposition"] != "declared_duplicate":
@@ -344,6 +375,7 @@ def build_manifest(
         "paper_root": "papers",
         "target_count": target_count,
         "inventory": {
+            "identity_grouping": "shared-identifiers/v1",
             "source_path": str(path.expanduser().resolve()),
             "sha256": source_sha,
             "row_count": len(rows),

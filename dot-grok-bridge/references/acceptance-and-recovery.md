@@ -14,7 +14,7 @@
 2. 在该任务内让一问产生两段独立回复，首段 end_of_turn=false，末段 true，均 final=false。通过 send_message 或主动 `/messages` 同方续发时，第二段 reply_to 指第一段出站 MID，第一段保持 end_of_turn=false，不 claim 自己消息；作用域 callback 按 part_index 递增。Dot 自动领取、展示并 complete 每段，收到末段才继续。缓存验收同时核对三层 send_message 描述全文，见 [界面与缓存](ui-and-cache.md)。
 3. Dot 给出实际追问或审阅意见，对方修订并交付产物。核对任务的输入、执行及产物，不只核对暗号或自报“完成”。
 4. 核对同一个已登记 bot 持久保存的主动 helper、README、本方唯一 secret 变量与发现规则，分别从 DM、群聊确认可发现。首次运行先在实际 runtime 做 hash-only 预检，对比本方预期 SHA256，匹配后该 bot 才使用自己的 helper 主动向 Dot 发一次用户任务内的实际问题/子任务。检查 send 返回的 sender 等于本 bot 的稳定 slug，再验证当前事件订阅和接收规则；Dot 执行或回答后，bot 接收结果。配置已保存或只有 Webhook 可用时，主动协作继续待验证。
-5. 成果交付并确认后发单条 final=true。原接收方处理并 complete，核对之前各段完成及会话 completed。
+5. 成果交付后按 CID 核对双方各段的 processed_at。若首段暂时投递失败而末段先到，保持 active，等首段按原 MID 补投、由原接收方处理后，再回复末段并发单条 final=true。final 的接收方处理并 complete，回读各段时间和会话 completed。
 
 多 bot 扩展至少逐个验证身份、Dot 发起、主动入口的持久发现和该 bot 主动发起。完整多轮、分段和产物流程先做一个代表目标，再按用户任务覆盖有差异的例程；未跑过的目标与渠道明确列出。任务需要跨 bot 时由 Dot 开独立子会话，使用已存在 parent_task_id 和稳定 delegation_id 汇总。
 

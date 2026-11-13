@@ -12,6 +12,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from common import package_relative, sha256_file, stable_id  # noqa: E402
 from capture_pipeline import decide_gate  # noqa: E402
+from plan_batch import batch_write_lock  # noqa: E402
 
 
 class BatchQualityGateTests(unittest.TestCase):
@@ -217,6 +218,66 @@ class BatchQualityGateTests(unittest.TestCase):
             batch = json.loads((out_dir / "batch-plan.json").read_text(encoding="utf-8"))
             self.assertEqual("planned", batch["cases"][0]["status"])
             self.assertTrue(batch["cases"][0]["quality_assessment_required"])
+
+    def test_resume_reads_case_local_capture_and_assessment_from_planned(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out = root / "batch"
+            urls = ("https://example.com/first", "https://example.com/second")
+            self.assertEqual(self.run_plan(root, out, *urls).returncode, 0)
+            def script(name, case, *args):
+                result = subprocess.run(
+                    [sys.executable, "-B", str(SCRIPT_DIR / name), "--package-root", str(root),
+                     "--case-root", str(case), *map(str, args)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+            for url in urls:
+                case = out / "cases" / stable_id("case", url)
+                case.mkdir(parents=True)
+                intake, html, capture = case / "intake.json", case / "page.html", case / "capture.json"
+                script("intake_case.py", case, "--url", url, "--out", intake)
+                html.write_text("<article><p>" + "研究样本" * 100 + "</p><p>" + "对照观察" * 100 + "</p></article>")
+                script("capture_pipeline.py", case, "--html", html, "--intake", intake, "--rendered", "--out", capture)
+                if url == urls[0]:
+                    script("assess_capture_evidence.py", case, "--intake", intake, "--capture", capture,
+                           "--out", case / "evidence-assessment.json")
+            def states():
+                self.assertEqual(self.run_plan(root, out, *urls).returncode, 0)
+                return [row["status"] for row in json.loads((out / "batch-state.json").read_text())["cases"]]
+            self.assertEqual(states(), ["captured", "pending_quality"])
+            script("assess_capture_evidence.py", case, "--intake", intake, "--capture", capture,
+                   "--out", case / "evidence-assessment.json")
+            self.assertEqual(states(), ["captured", "captured"])
+
+    def test_subset_resume_preserves_unselected_case_with_block_reason(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out = root / "batch"
+            blocked, selected = "ftp://example.com/old", "https://example.com/current"
+            self.assertEqual(self.run_plan(root, out, blocked, selected).returncode, 0)
+            state = out / "batch-state.json"
+            previous = json.loads(state.read_text())["cases"]
+            self.assertEqual(previous[0]["status"], "blocked")
+            self.assertTrue(previous[0]["blocked_reason"])
+            self.assertEqual(self.run_plan(root, out, selected, selected).returncode, 0)
+            self.assertEqual(json.loads(state.read_text())["cases"], previous)
+            self.assertEqual(json.loads((out / "batch-plan.json").read_text())["cases"], [previous[1]])
+
+    def test_concurrent_resume_refuses_before_changing_either_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            out = root / "batch"
+            old, new = "ftp://example.com/blocked", "https://example.com/new"
+            self.assertEqual(self.run_plan(root, out, old).returncode, 0)
+            state, plan = out / "batch-state.json", out / "batch-plan.json"
+            before = (state.read_bytes(), plan.read_bytes())
+            for locked in (state, plan):
+                with batch_write_lock(locked):
+                    competing = self.run_plan(root, out, new)
+                    self.assertNotEqual(competing.returncode, 0)
+                    self.assertIn("cannot acquire batch write lock", competing.stderr)
+                    self.assertEqual((state.read_bytes(), plan.read_bytes()), before)
+            self.assertEqual(self.run_plan(root, out, new).returncode, 0)
+            self.assertEqual([row["status"] for row in json.loads(state.read_bytes())["cases"]], ["blocked", "planned"])
 
     def test_default_plan_is_runtime_neutral_for_web_and_wechat(self):
         with tempfile.TemporaryDirectory() as temporary:
