@@ -21,11 +21,14 @@ DEFAULT_CONFIG = PACKAGE_ROOT / "config" / "routes.json"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--home", type=Path, default=Path.home())
+    parser.add_argument("--home", type=Path)
     parser.add_argument("--route", action="append", default=[], help="Inspect only this route id; repeatable.")
     parser.add_argument("--model", help="Exact model ID supported by the selected route; omitted preserves its default")
     parser.add_argument("--model-alias", help="Exact Kimi alias if multiple profiles serve the model")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.home is None:
+        args.home = Path.home()
+    return args
 
 
 def expand_home(value: str, home: Path) -> Path:

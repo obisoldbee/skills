@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
-DEFAULT_ENV = Path.home() / ".codex" / "secrets" / "agnes.env"
+DEFAULT_ENV = Path("~") / ".codex" / "secrets" / "agnes.env"
 
 
 class NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
@@ -279,7 +279,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    env_path = Path(args.env)
+    env_path = Path(args.env).expanduser()
     if args.check_key:
         print(json.dumps(key_status(env_path), ensure_ascii=False, indent=2))
         return
