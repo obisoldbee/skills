@@ -26,6 +26,7 @@ requires_supported_runtime = unittest.skipUnless(
 
 
 class OthersManagerTests(unittest.TestCase):
+    @requires_supported_runtime
     def test_excluded_repository_is_not_queried_or_updated(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             pool = Path(temporary).resolve()
