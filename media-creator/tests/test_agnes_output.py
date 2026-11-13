@@ -4,6 +4,7 @@ import base64
 import contextlib
 import errno
 import http.client
+import importlib.machinery
 import importlib.util
 import io
 import json
@@ -235,8 +236,12 @@ class AgnesOutputTests(unittest.TestCase):
 
     def test_png_bytes_cannot_be_published_as_jpeg(self):
         output = self.root / "image.jpg"
-        code, report = self.run_cli("b64", output)
+        # Allow JPEG preflight. The returned PNG uses the standard-library decoder.
+        decoder_spec = importlib.machinery.ModuleSpec("PIL", loader=None)
+        with mock.patch.object(agnes.importlib.util, "find_spec", return_value=decoder_spec):
+            code, report = self.run_cli("b64", output)
         self.assertEqual(code, 1)
+        self.assertIn("image format does not match the output extension", report["error"])
         self.assertFalse(output.exists())
         self.assert_recovery(report, output)
 
