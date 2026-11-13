@@ -158,6 +158,14 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
         raise ManagerError("plan pool must be an absolute path")
     validate_fingerprint_shape(plan.get("pool_fingerprint"), "pool_fingerprint")
     names = validate_repository_names(plan.get("repository_names"), "repository_names")
+    exclusions = plan.get("update_exclusions", [])
+    if not isinstance(exclusions, list) or not all(isinstance(value, str) for value in exclusions):
+        raise ManagerError("plan update exclusions are invalid")
+    if exclusions != sorted(set(exclusions)):
+        raise ManagerError("plan update exclusions must be sorted and unique")
+    for identity in exclusions:
+        if normalize_github_url("https://github.com/" + identity)["identity_key"] != identity:
+            raise ManagerError("plan update exclusion identity is invalid")
     repositories = plan.get("repositories")
     if not isinstance(repositories, list) or len(repositories) != len(names):
         raise ManagerError("plan repositories do not match repository_names")
@@ -172,7 +180,7 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
         advisories = item.get("advisories")
         if not isinstance(advisories, list) or not all(isinstance(reason, str) for reason in advisories):
             raise ManagerError("plan advisories must be a list of strings")
-        if item.get("action") not in {"blocked", "already_current", "fast_forward_candidate"}:
+        if item.get("action") not in {"blocked", "already_current", "fast_forward_candidate", "excluded"}:
             raise ManagerError("plan action is invalid")
         # Inspection can stop before observing one or both directory identities.
         # Only its explicit null values are valid on the matching blocked path.
@@ -184,6 +192,11 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
             validate_fingerprint_shape(item.get("fingerprint"), "repository fingerprint")
         if not ((unreadable or inexact) and "git_fingerprint" in item and item["git_fingerprint"] is None):
             validate_fingerprint_shape(item.get("git_fingerprint"), "repository Git fingerprint")
+        if item.get("action") == "excluded":
+            exclusions = plan.get("update_exclusions", [])
+            if blockers or item.get("identity", "").casefold() not in exclusions:
+                raise ManagerError("excluded repository does not match the exclusion list")
+            continue
         if blockers:
             if item.get("action") != "blocked":
                 raise ManagerError("blocked repository must have blocked action")
@@ -1140,13 +1153,37 @@ def inventory(pool: Path) -> dict[str, Any]:
     }
 
 
+def read_update_exclusions(pool: Path) -> list[str]:
+    path = pool / ".update-exclusions.json"
+    if not path.exists() and not path.is_symlink():
+        return []
+    if path.is_symlink() or not path.is_file():
+        raise ManagerError("update exclusions must be a regular file")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        identities = data["identities"]
+        if not isinstance(data, dict) or set(data) != {"identities"} or not isinstance(identities, list):
+            raise ValueError("invalid exclusion list")
+        normalized = [normalize_github_url("https://github.com/" + item)["identity_key"] for item in identities]
+        if any(not isinstance(item, str) for item in identities) or len(set(normalized)) != len(normalized):
+            raise ValueError("invalid exclusion identities")
+        return sorted(normalized)
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, ManagerError) as exc:
+        raise ManagerError("invalid update exclusions file") from exc
+
+
 def plan_update(pool: Path) -> dict[str, Any]:
     snapshot = inventory(pool)
+    exclusions = read_update_exclusions(pool)
     planned: list[dict[str, Any]] = []
     for repo in snapshot["repositories"]:
         item = dict(repo)
         item["remote_head"] = None
         item["github_snapshot"] = None
+        if not item["blockers"] and item.get("identity", "").casefold() in exclusions:
+            item["action"] = "excluded"
+            planned.append(item)
+            continue
         if not item["blockers"]:
             try:
                 github_snapshot = github_update_snapshot(item["canonical_url"])
@@ -1170,6 +1207,7 @@ def plan_update(pool: Path) -> dict[str, Any]:
         "created_at": now_utc(),
         "pool": str(pool),
         "pool_fingerprint": snapshot["pool_fingerprint"],
+        "update_exclusions": exclusions,
         "repository_names": [repo["name"] for repo in planned],
         "repositories": planned,
         "ignored_entries": snapshot["ignored_entries"],
@@ -1237,6 +1275,8 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
         raise ManagerError("plan pool does not match exact resolved pool")
     if not same_fingerprint(pool, plan["pool_fingerprint"]):
         raise ManagerError("pool identity changed after planning")
+    if read_update_exclusions(pool) != plan.get("update_exclusions", []):
+        raise ManagerError("update exclusions changed after planning")
     paths, ignored = discover_repositories(pool)
     names = [path.name for path in paths]
     if names != plan.get("repository_names"):
@@ -1266,6 +1306,10 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
             "candidate_licenses": [],
             "advisories": sorted(set(planned_advisories)),
         }
+        if planned.get("action") == "excluded":
+            result["result"] = "excluded"
+            results.append(result)
+            continue
         if planned.get("blockers"):
             result["result"] = "blocked"
             result["blockers"] = [f"planned:{reason}" for reason in planned["blockers"]]
@@ -1409,6 +1453,7 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "counts": {
             "updated": sum(item["result"] == "updated" for item in results),
             "already_current": sum(item["result"] == "already_current" for item in results),
+            "excluded": sum(item["result"] == "excluded" for item in results),
             "blocked": blocked,
             "changed_with_blocker": sum(item["result"] == "changed_with_blocker" for item in results),
         },

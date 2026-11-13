@@ -26,6 +26,35 @@ requires_supported_runtime = unittest.skipUnless(
 
 
 class OthersManagerTests(unittest.TestCase):
+    def test_excluded_repository_is_not_queried_or_updated(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            pool = Path(temporary).resolve()
+            repo = pool / "fixture"
+            repo.mkdir()
+            self.run_git(repo, "init")
+            self.run_git(repo, "config", "user.name", "Fixture")
+            self.run_git(repo, "config", "user.email", "fixture@example.invalid")
+            (repo / "file").write_text("fixture", encoding="utf-8")
+            self.run_git(repo, "add", "file")
+            self.run_git(repo, "commit", "-m", "fixture")
+            self.run_git(repo, "branch", "-M", "main")
+            self.run_git(repo, "remote", "add", "origin", "https://github.com/Example/fixture.git")
+            head = self.run_git(repo, "rev-parse", "HEAD").stdout.strip()
+            self.run_git(repo, "update-ref", "refs/remotes/origin/main", head)
+            self.run_git(repo, "branch", "--set-upstream-to", "origin/main", "main")
+            exclusions = pool / ".update-exclusions.json"
+            exclusions.write_text(json.dumps({"identities": ["Example/fixture"]}), encoding="utf-8")
+            with mock.patch.object(manager, "github_update_snapshot", side_effect=AssertionError("network queried")):
+                plan = manager.plan_update(pool)
+                manager.verify_plan(plan, "others-manager-update-plan")
+                self.assertEqual("excluded", plan["repositories"][0]["action"])
+                report = manager.apply_update(pool, plan)
+                self.assertEqual(1, report["counts"]["excluded"])
+                self.assertEqual("excluded", report["repositories"][0]["result"])
+                exclusions.write_text('{"identities": []}', encoding="utf-8")
+                with self.assertRaisesRegex(manager.ManagerError, "exclusions changed"):
+                    manager.apply_update(pool, plan)
+
     def test_github_authenticated_request_uses_cli_without_exposing_token(self) -> None:
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = b'{"ok": true}'

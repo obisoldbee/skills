@@ -43,6 +43,7 @@ Read [operations.md](references/operations.md) before any mutating run. When del
 - Require the pool itself to be a real, non-symlink directory with no `.git` entry.
 - Treat only real first-level child Git roots as managed repositories. Never follow child symlinks.
 - Preserve each child's upstream identity, branch, history, observed license evidence, and local changes.
+- Respect the pool's `.update-exclusions.json` for user-excluded GitHub identities. Inventory still shows these checkouts; update planning and apply report them as excluded and do not query or update them.
 - Update only by verified `fetch` plus `merge --ff-only`. Never use pull, reset, rebase, stash, clean, force, or push.
 - Clone public, enabled, non-archived GitHub repositories even when GitHub cannot verify a license. Record `license.status=unverified` and an advisory instead of treating that uncertainty as a clone or update blocker. Stage inside an owned hidden directory, validate, then rename atomically.
 - Before installing, executing, adapting, adopting, redistributing, publishing, or using a repository commercially, surface its license status and terms. If the license is unverified or the intended use is not clearly permitted, stop that use decision for review; do not retroactively block local cloning or ordinary fast-forward maintenance.

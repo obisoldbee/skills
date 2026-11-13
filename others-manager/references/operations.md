@@ -42,6 +42,8 @@ This is local and read-only. It reports each real first-level Git repository and
 
 ## Full update
 
+The optional pool file `.update-exclusions.json` contains `{ "identities": ["owner/repository"] }`. Explicitly excluded identities remain in local inventory but are not queried or updated. Plans pin the exclusion list; apply stops if it changes. Edit the list only on the user's request.
+
 Create a frozen plan with remote-head evidence:
 
 ```bash
