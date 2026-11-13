@@ -45,9 +45,13 @@ class ProjectHandoffContractTests(unittest.TestCase):
                 for cwd in (root, root / "sub"):
                     with self.subTest(cwd=cwd):
                         expected = subprocess.check_output(["git", "-C", str(cwd), "status", "--short"], text=True)
-                        report = subprocess.check_output([sys.executable, str(scaffold), "--cwd", str(cwd)], text=True)
+                        report = subprocess.check_output(
+                            [sys.executable, str(scaffold), "--cwd", str(cwd)], encoding="utf-8"
+                        )
                         self.assertIn("- git status: " + expected, report)
-            report = subprocess.check_output([sys.executable, str(scaffold), "--cwd", str(parent)], text=True)
+            report = subprocess.check_output(
+                [sys.executable, str(scaffold), "--cwd", str(parent)], encoding="utf-8"
+            )
             self.assertIn("- git status: unavailable:", report)
 
     def test_role_defaults_preserve_independent_axes(self):
