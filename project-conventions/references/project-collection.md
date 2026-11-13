@@ -85,7 +85,7 @@ Rules:
 
 An optional owned private distribution follows the same explicit `repository_root` plus `managed_scope` mapping, but its remote identity and private visibility must be verified before push or export. The standard public initializer does not create it.
 
-A third-party checkout pool has no `.git/` at its root. Preserve each child's upstream Repository Root and use the adoption workflow when the user requests adoption.
+A third-party checkout pool has no `.git/` at its root. Preserve each child's upstream Repository Root. For the named pool's identity and same-name handling, read [Third-party checkout pool](lifecycle-workflows.md#third-party-checkout-pool); use the adoption workflow only when the user requests adoption.
 
 ## Publication class and runtime boundary
 

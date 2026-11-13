@@ -205,10 +205,25 @@ For an explicitly named owned private Skill repository:
 For an explicitly named upstream pool:
 
 1. Require the pool root to be a real non-Git directory.
-2. Scope work to one named child or one observed-only registry row; siblings remain read-only.
+2. Scope work to the named child or registry row. A same-name migration may also include the existing colliding child and its current registry and active references; unrelated siblings remain read-only.
 3. Every cloned child keeps its own exact Git root, upstream identity, license, and history.
 4. A studied but un-cloned upstream gets no fabricated local checkout path.
 5. Clone, update, fork, adopt, install, and execute are separate states and permissions.
+
+For a pool that adopts the `owner-name` collision rule, including the
+`obisoldbee-skills/GitHub-others` pool, check the registry and actual Git `origin`
+before adding a checkout. Reuse the existing checkout when the normalized
+`owner/repository` is the same. When different owners have the same repository
+`name` and the first checkout is still at `name`, first inspect its Git status,
+worktrees, active path references, and both destination paths. If the migration
+is authorized and conflict-free, move the existing checkout as a whole from
+`name` to `A-name`, then add `B/name` at `B-name`. Further same-name repositories
+use `C-name`; a generic name may use `owner-name` from the start. Update the
+current registry and affected live references after a verified move, and retain
+historical records at their original paths. Preserve existing data and stop the
+affected move if a target, active use, Git state, or ownership conflicts; resolve
+that concrete conflict before continuing. This naming policy applies only to the
+specified pool, not ordinary projects or other pools with their own rules.
 
 ## Generic non-shared initialization
 
