@@ -17,6 +17,7 @@
 | [document-workspace](document-workspace/) | 基于文件的文档组织、工作区治理与资料管理 |
 | [web-bookmark-intelligence](web-bookmark-intelligence/) | 网页与书签内容采集、整理和研究输入处理 |
 | [research-qa-plugin](research-qa-plugin/) | 研究问答编排与配套研究视角，按插件内的说明使用 |
+| [career-discovery-plugin](career-discovery-plugin/) | 从稀疏简历开始逐轮访谈，核实个人贡献与成果，再整理职业定位、岗位简历和面试故事 |
 | [paper-downloader](paper-downloader/) | 学术论文与 PDF 获取、下载验证和结果记录 |
 | [media-understanding](media-understanding/) | 按宿主能力和任务需求选择图像等媒体理解路径 |
 | [media-creator](media-creator/) | 跨 Agent 的媒体生成路由；包含 Agnes 图像／视频生成及参数校验 |

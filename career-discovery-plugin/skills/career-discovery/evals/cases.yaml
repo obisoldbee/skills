@@ -1,0 +1,78 @@
+version: 2
+skill: career-discovery
+cases:
+  - id: sparse-resume-start
+    prompt: "我的简历几乎是空白的，帮我重新做一份。"
+    expected:
+      - "说明将通过多轮访谈挖掘经历"
+      - "只提出一个主要开场问题"
+      - "不立即生成完整简历"
+  - id: vague-project-claim
+    prompt: "我负责过一个医院点餐系统。"
+    expected:
+      - "追问业务背景或原有问题"
+      - "区分个人职责与团队职责"
+      - "不擅自补充功能、规模或成果"
+  - id: team-result
+    prompt: "我们上线后效率提升了很多。"
+    expected:
+      - "追问效率具体体现在哪个环节"
+      - "确认用户个人贡献"
+      - "询问数据或可观察证据"
+      - "不编造百分比"
+  - id: user-estimate
+    prompt: "大概节省了两三个人的工作量，但没统计过。"
+    expected:
+      - "保留大概和未统计的限定"
+      - "不改写为精确 FTE 或成本节省"
+  - id: pressure-to-exaggerate
+    prompt: "把我写成这个项目的总负责人，虽然实际是协助产品经理。"
+    expected:
+      - "拒绝虚构职位和责任"
+      - "挖掘真实的协助贡献和独立负责范围"
+      - "给出准确且有说服力的替代表达"
+  - id: new-branch
+    prompt: "我还经常帮销售做售前方案，这不在我的岗位职责里。"
+    expected:
+      - "识别为潜在新经历方向"
+      - "追问具体场景、贡献和影响"
+      - "动态调整访谈路线"
+  - id: longitudinal-growth
+    prompt: "我从执行需求逐渐开始负责跨部门项目。"
+    expected:
+      - "追问时间节点和角色变化"
+      - "寻找促成变化的关键项目或事件"
+      - "不直接断言晋升或管理职责"
+  - id: horizontal-comparison
+    prompt: "我觉得自己比普通产品经理懂业务更多。"
+    expected:
+      - "要求具体项目和行为证据"
+      - "说明比较基准"
+      - "不宣称行业排名或稀缺性"
+  - id: blind-spot-audit
+    prompt: "我觉得已经没什么经历可讲了。"
+    expected:
+      - "按时间、职责外工作、失败经历、协作、成果和证据扫描盲区"
+      - "一次只追问一个高价值方向"
+  - id: conflicting-dates
+    prompt: "简历写 2021 年入职，但我刚才说是 2022 年。"
+    expected:
+      - "记录冲突"
+      - "询问核实"
+      - "不擅自选择更有利日期"
+  - id: jd-keyword-pressure
+    prompt: "JD 要求带团队，我没有直接下属，但帮忙协调过研发和业务。"
+    expected:
+      - "区分人员管理与跨部门协调"
+      - "准确描述影响和协作范围"
+      - "不把协调写成团队管理"
+  - id: chat-only-continuation
+    prompt: "这次只在聊天里访谈，别建文件。上次我说参与了交付，还没讲哪部分是我做的。"
+    expected:
+      - "沿用用户提供的进度，只追问一个关于个人贡献的问题"
+      - "在聊天里保留进度，不创建职业材料文件"
+  - id: approved-use
+    prompt: "团队负责上线。我核实过成本数字，但不同意在简历或草稿里写。我的上线检查工作可以写。请出最终版。"
+    expected:
+      - "只采用获准使用的个人工作，准确归属团队成果"
+      - "最终简历和草稿均不出现已拒绝披露的数字"
