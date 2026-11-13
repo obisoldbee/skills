@@ -10,7 +10,7 @@ metadata:
 
 ## 用户报告合同（所有模式）
 
-开始前读取 [result-report.md](references/result-report.md)。内部步骤、receipt 和工具返回供判断及调用者记录；用户最终只收到 `scripts/render_report.py` 生成的一份中文短报告，放在一个 `text` 代码块中原样输出。不要附开场白、执行摘要、证据表、代码/JSON 回执、备注、改进建议或继续邀约。常规执行也不向用户逐条播报内部推理；仅真正需要用户介入时说明当前阻塞。格式规则不允许跳过业务、维护通知和清理。
+按[结果报告](references/result-report.md)记录本轮动作。收尾后运行 `scripts/render_report.py`，只把生成的中文短报告放进一个 `text` 代码块。
 
 ## 任务与输入
 
@@ -31,13 +31,13 @@ metadata:
 
 依赖 ordinary reachability to `workbuddy.cn` 和 existing authenticated growth-center page。Do not install, log in, reconfigure the environment, or collect credentials.
 
-沿用用户当次指定的浏览器或本任务已有的已登录页面。新建会话按 `ego-browser` / ego lite、Tabbit、系统默认或当前 harness 已记录的常用浏览器、harness 内置浏览器的顺序选择。前一项未安装或连接恢复失败时再用下一项。
+本机 MiniMaxCode 定时任务固定通过 `ego-browser` 操作 Ego Lite，连接恢复失败即记录本轮环境故障。其他宿主沿用用户指定或已有登录态的页面。需要新建时按 Ego Lite、Tabbit、系统默认或当前 harness 记录的常用浏览器、harness 内置浏览器的顺序选择。
 
 先读所选浏览器当前 Skill/API，确认页面观察、语义点击和 `workbuddy.cn` 登录态。使用 Ego 时先运行 `ego-browser skill` 并读完指南。遇到登录、验证码、权限拒绝或用户接管，按当前浏览器指引交接；保留当日动作记录，待用户处理后续接。
 
 Windows Tabbit 使用稳定入口 `& "$env:LOCALAPPDATA\Tabbit\LocalAgent\bin\tabbit-cli.exe"`；先按本机 Skill 用 `diagnose` 检查连接。多行中文脚本写 UTF-8 无 BOM 临时文件，再用 CMD 重定向给 `nodejs`，不用 POSIX heredoc 或 PowerShell 管道。使用当前文档中的真实 API，不读隐藏 endpoint 或调用版本目录内的服务。创建一次任务组，记录真实 group/tab ID，按 ID 复用，不按同名猜选。
 
-macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命令不在 PATH 时可检查已安装的 `$HOME/.local/bin/ego-browser`。只有真实调用和适用恢复都失败才能说不可用。发生权限拒绝、验证码或用户接管时不能靠换浏览器绕过；连接失败且无业务提交时可按上述备用入口继续。已触发派出但状态未知时，换载体也须核对原结果，不能再派一次。
+macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命令不在 PATH 时可检查已安装的 `$HOME/.local/bin/ego-browser`。按工具指引恢复连接。发生权限拒绝、验证码或用户接管时交接原空间。派出结果未知时只核对原记录和旅行状态。
 
 ## 服务维护（所有自动化必读）
 
@@ -47,7 +47,7 @@ macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命�
 
 1. 对日常派出流程，先按下方“旧回执与历史记录”确定输入来源，再用 [buddy_contract.py](scripts/buddy_contract.py) 的 `previous_receipt_gate(service_day, previous_receipt)` 验证日期和可选旧回执。同日 `dispatch_attempted:true`、`terminal_for_day:true` 或 `retry_allowed:false` 禁止再次派出；旧回执格式错误则停止派出。门槛只限制业务动作，不禁止必要的只读核验。用户后来明确要求只领返回礼物时，可以独立领取，但不得清除、覆盖旧派出回执或据此再次派出。
 2. 建立本轮所选浏览器的独立任务空间/组，打开页面并等待加载。首次可操作状态以间隔 2 秒的两次一致观察为准（倒计时只需同为旅行中，不要求秒数相等），最多观察 20 秒；持续变化或状态相互冲突则停止，不猜测缓存、账号或昨日动作。每次点击前用最新 DOM/语义快照，点击后等待 2–4 秒重新观察。只读查询不点击；缺少登录时执行下方“未登录通知”，用户接管时按所选浏览器规则交接/停止。
-3. 按下表选择入口，再执行对应步骤；不要从按钮共同祖先或邻居借文本来分类。
+3. 先看礼物和旅行卡片。普通公告未遮挡控件时继续。执行中若公告挡住下一步，优先点它自身唯一明确的“关闭”或 ×，其次是唯一的“稍后”或“跳过”。确认它消失，在原页重新观察卡片和当日尝试记录。每层只关闭一次，整轮最多处理三层。查询只观察。按下表分流礼物与目的地弹窗，保留其中的积分和选中地点。表单、登录、权限和验证码走各自的分支。
 
    | 当前稳定状态 | 进入分支 |
    |---|---|
@@ -56,6 +56,7 @@ macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命�
    | 唯一可用的“领取礼物” | 点击一次打开礼物，进入第 4 步 |
    | 已打开礼物弹窗，显示“领取 N 积分” | 直接第 4 步，不重复打开礼物 |
    | 已打开礼物弹窗，显示“已领取” | 直接第 5 步，只关闭，不重复领取 |
+   | 本轮已打开目的地弹窗 | 尚未提交就继续第 7 步核对选项。已尝试派出只核验第 8 步的旅行状态。 |
    | 无礼物弹窗、无待领礼物，显示“派猫猫旅行” | 跳过第 4–5 步，直接第 6 步核验可用性 |
    | 都不匹配或状态冲突 | `blocked`，不通过试点按钮补全流程 |
 
@@ -70,7 +71,7 @@ macOS Ego 使用当前 Skill 的 `ego-browser nodejs` 与 task space API。命�
 8. 点击一次“确定派出”后立即记 `dispatch_attempted:true`。把实际目的地、同一旅行状态容器的当前文案和新倒计时传给 `dispatch_receipt()`，以它返回的唯一 receipt 判定结果。页面实际形式为“Buddy 正在咖啡馆采风中...”；文本节点边界的空白差异由 helper 处理，目的地仍须精确匹配。DOM 分开的文本可按同一状态容器顺序拼接，不得借用其他卡片。任一读回失败都为 `dispatch_outcome_unknown`，当天禁止再次派出。不得另用 `make_receipt(completed_cycle)` 覆盖 helper 结果、手写一份相反结论，或照抄历史“helper 有 bug”的解释；运行时发现冲突按未确认报告，修改代码属于独立维护任务。
 9. **必经收尾**：执行 [task-space-cleanup.md](references/task-space-cleanup.md)。本 Skill 的“结束/停止/即结束”只停止业务操作，不允许跳过收尾。派出成功、已在旅行、每日耗尽、无待领礼物、只领礼物成功、正常查询均先按所选运行时的关闭步骤，确认本任务空间/页已关闭，再报告；已确认维护也关闭；仅未解决的异常或用户接管才保留/交接。不得为保留倒计时或已领取弹窗留下正常结果页。
 
-任何点击最多一次。成功后不再开始第二轮；未知状态不通过重新打开弹窗或重复派出来“确认”。
+礼物领取和确认派出各只提交一次。公告消失后，已提交的动作直接进入结果核验。
 
 ## 旧回执与历史记录
 
