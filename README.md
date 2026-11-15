@@ -26,7 +26,7 @@
 | [cdr-processing](cdr-processing/) | CDR 容器检查、预览提取、SVG/PDF/PNG 试转换与保真验收；分层 PSD 条件方案 |
 | [wechat-sticker](wechat-sticker/) | 微信表情专辑、单品及特效素材的规划、生成与交付验收 |
 | [others-manager](others-manager/) | 第三方开源仓库的获取、来源核对和本地维护 |
-| [daily-ai-credits](daily-ai-credits/) | 在桌面应用中检查并领取用户指定的积分或额度 |
+| [daily-ai-credits](daily-ai-credits/SKILL.md) | 查询桌面应用的积分或额度；执行领取时支持豆包工作按账号签到，结束前检查并安装所选应用的官方更新 |
 | [clash-direct-rules](clash-direct-rules/) | 核对并维护 Clash 直连规则 |
 | [dot-grok-bridge](dot-grok-bridge/) | Dot 与 Grok Bot 的协作桥接 |
 | [ikuuu-daily-checkin](ikuuu-daily-checkin/) | Ikuuu 签到与余额核验 |
