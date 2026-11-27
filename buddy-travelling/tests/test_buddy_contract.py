@@ -1,3 +1,5 @@
+import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -26,6 +28,22 @@ DAY = "2026-08-24"
 
 
 class BuddyContractTests(unittest.TestCase):
+    def test_preflight_cli_uses_the_actual_caller_receipt(self):
+        completed = dispatch_receipt(DAY, "咖啡馆", "Buddy 正在咖啡馆采风中...", "旅行倒计时 03:59:57")
+        uncertain = dispatch_receipt(DAY, "咖啡馆", "", None)
+        for day, previous, code in [(DAY, None, 0), (DAY, completed, 1), (DAY, uncertain, 1),
+                                    ("2026-08-25", completed, 0), (DAY, {}, 1)]:
+            with self.subTest(day=day, previous=previous):
+                result = subprocess.run([sys.executable, "-B", str(SCRIPT_DIR / "buddy_contract.py"),
+                                         "--service-day", day], input=json.dumps(previous),
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual(json.loads(result.stdout), previous_receipt_gate(day, previous))
+        missing = subprocess.run([sys.executable, "-B", str(SCRIPT_DIR / "buddy_contract.py"),
+                                  "--service-day", DAY], input="", capture_output=True, text=True)
+        self.assertEqual(missing.returncode, 2)
+        self.assertEqual(missing.stdout, "")
+
     def test_live_destination_text_and_text_node_whitespace(self):
         for status in ("Buddy 正在咖啡馆采风中...", "Buddy 正在 咖啡馆 采风中...",
                        "\nBuddy 正在\n咖啡馆\n采风中...\n"):

@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import re
+import sys
 from datetime import date
 
 
@@ -393,3 +396,16 @@ def dispatch_receipt(
         active_status_text=active_status_text,
         countdown=countdown_text,
     )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Check a caller's previous Buddy receipt before dispatch.")
+    parser.add_argument("--service-day", required=True, metavar="YYYY-MM-DD")
+    args = parser.parse_args()
+    try:
+        previous = json.load(sys.stdin)
+        gate = previous_receipt_gate(args.service_day, previous)
+    except (ValueError, TypeError):
+        parser.exit(2, "Expected a valid service day and a JSON receipt or null on stdin.\n")
+    print(json.dumps(gate, ensure_ascii=False))
+    raise SystemExit(0 if gate["proceed"] else 1)

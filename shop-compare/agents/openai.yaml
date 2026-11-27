@@ -1,0 +1,4 @@
+interface:
+  display_name: "购物搜索与横向比较"
+  short_description: "在淘宝和京东核对商品规格、完整价格、评论与售后，按用途和预算选出具体款式"
+  default_prompt: "用 $shop-compare 按我的用途和预算比较商品，给出具体规格、完整价格、推荐链接和仍需核实的条件。"

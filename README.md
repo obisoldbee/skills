@@ -16,6 +16,7 @@
 | [codex-model-catalog-recovery](codex-model-catalog-recovery/) | 排查 Codex 模型列表缺失：配置优先，核对桌面核心与 CLI，提供备份、回滚和恢复验收 |
 | [document-workspace](document-workspace/) | 基于文件的文档组织、工作区治理与资料管理 |
 | [web-bookmark-intelligence](web-bookmark-intelligence/) | 网页与书签内容采集、整理和研究输入处理 |
+| [shop-compare](shop-compare/SKILL.md) | 在淘宝、京东等平台核对具体商品的规格、完整价格、评论和售后，按预算与用途选款 |
 | [research-qa-plugin](research-qa-plugin/) | 研究问答编排与配套研究视角，按插件内的说明使用 |
 | [career-discovery-plugin](career-discovery-plugin/) | 从稀疏简历开始逐轮访谈，核实个人贡献与成果，再整理职业定位、岗位简历和面试故事 |
 | [paper-downloader](paper-downloader/) | 学术论文与 PDF 获取、下载验证和结果记录 |
@@ -212,6 +213,26 @@ Windows supports scoped `-Agent` or `-Target` installation with `-Skill` or `-Al
 Publication does not imply Agent exposure. The Trae allowlist explicitly includes the entries listed in `config/skill-exports.tsv`. Internal bundled personas, private repositories and third-party pools are not flattened into consumer exports. Check the selected Skill's tool, OS and network requirements before running it.
 
 Cross-Agent packages can be scoped to the shared `agents` consumer so runtimes that already scan `~/.agents/skills` do not receive duplicate same-name brand-root links.
+
+### Gemini CLI and Antigravity App
+
+| Client | Personal Skill directory | Check discovery and invoke |
+|---|---|---|
+| Gemini CLI | `~/.gemini/skills` (`gemini`). It also reads `~/.agents/skills`, which takes precedence for a duplicate name. | Run `gemini skills list` in a terminal, or `/skills reload` then `/skills list` in an open session. Mention the Skill by name in your request. [Gemini CLI Skill guide](https://geminicli.com/docs/cli/skills/) |
+| Antigravity App | `~/.gemini/config/skills` (`antigravity`) | Open **Customizations → Installed → Skills & Rules** to refresh. Type `/shop-compare` in the conversation box and select it. The `@` menu searches files and other context. [Antigravity discovery](https://antigravity.google/docs/customization-discovery) · [Skill invocation](https://antigravity.google/docs/skills#invoking-skills-in-the-antigravity-app) |
+
+In the Gemini Mac or web app, open **Customize → Skills → Create → Upload** to import a Skill folder into your account. Upload the folder again to update its files. [Gemini Apps Help](https://support.google.com/gemini/answer/17094296)
+
+The export table names each public entry separately, including `career-discovery` and `research-qa-orchestrator` inside their plugin folders. A discovered Skill can still need another product for a particular task. For example, a visible Codex handoff needs Codex, and desktop credit collection needs native app control.
+
+Use `gemini skills list` to check which entries already resolve from the shared directory. Scan the missing names individually for Gemini CLI. For Antigravity, use `--all-skills` in place of `--skill shop-compare` to scan the entire public list. Run from the checkout that supplies the Skills. To install, pass `--apply --agent <agent> --skill <name>` once per missing entry.
+
+```bash
+./scripts/link-macos.sh --agent gemini --skill shop-compare
+./scripts/link-macos.sh --agent antigravity --skill shop-compare
+```
+
+### Scoped installation
 
 Scan one exact Agent and Skill first:
 

@@ -2,6 +2,8 @@ platform	agent	path
 unix	agents	~/.agents/skills
 unix	codex	~/.codex/skills
 unix	claude	~/.claude/skills
+unix	gemini	~/.gemini/skills
+unix	antigravity	~/.gemini/config/skills
 unix	minimax	~/.minimax/skills
 unix	trae-cn	~/.trae-cn/skills
 unix	codebuddy	~/.codebuddy/skills
@@ -14,6 +16,8 @@ unix	zcode	~/.zcode/skills
 windows	agents	%USERPROFILE%\.agents\skills
 windows	codex	%USERPROFILE%\.codex\skills
 windows	claude	%USERPROFILE%\.claude\skills
+windows	gemini	%USERPROFILE%\.gemini\skills
+windows	antigravity	%USERPROFILE%\.gemini\config\skills
 windows	minimax	%USERPROFILE%\.minimax\skills
 windows	trae-cn	%USERPROFILE%\.trae-cn\skills
 windows	codebuddy	%USERPROFILE%\.codebuddy\skills

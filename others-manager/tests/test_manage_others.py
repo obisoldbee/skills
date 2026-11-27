@@ -26,6 +26,40 @@ requires_supported_runtime = unittest.skipUnless(
 
 
 class OthersManagerTests(unittest.TestCase):
+    def test_single_repository_plan_never_queries_other_repositories(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            pool = Path(temporary).resolve()
+            for name in ("first", "second"):
+                repo = pool / name
+                repo.mkdir()
+                self.run_git(repo, "init")
+                self.run_git(repo, "config", "user.name", "Fixture")
+                self.run_git(repo, "config", "user.email", "fixture@example.invalid")
+                (repo / "file").write_text(name, encoding="utf-8")
+                self.run_git(repo, "add", "file")
+                self.run_git(repo, "commit", "-m", "fixture")
+                self.run_git(repo, "branch", "-M", "main")
+                self.run_git(repo, "remote", "add", "origin", f"https://github.com/example/{name}.git")
+                head = self.run_git(repo, "rev-parse", "HEAD").stdout.strip()
+                self.run_git(repo, "update-ref", "refs/remotes/origin/main", head)
+                self.run_git(repo, "branch", "--set-upstream-to", "origin/main", "main")
+            first = manager.inspect_repository(pool / "first")
+            snapshot = {"identity": "example/first", "identity_key": "example/first",
+                        "canonical_url": "https://github.com/example/first.git", "default_branch": "main",
+                        "remote_head": first["head"], "license": {"status": "unverified", "spdx_id": None,
+                        "path": None, "blob_sha": None, "reason": "no_license"}}
+            with mock.patch.object(manager, "github_update_snapshot", return_value=snapshot) as lookup:
+                plan = manager.plan_update(pool, "first")
+                manager.verify_plan(plan, "others-manager-update-plan")
+                self.assertEqual(1, lookup.call_count)
+                self.assertEqual(["first"], plan["selected_names"])
+                self.assertEqual("not_selected", plan["repositories"][1]["action"])
+                with mock.patch.object(manager, "run_git", side_effect=AssertionError("unselected Git invoked")):
+                    forged = dict(plan)
+                    forged["selected_names"] = ["second"]
+                    with self.assertRaises(manager.ManagerError):
+                        manager.validate_update_plan_shape(forged)
+
     @requires_supported_runtime
     def test_excluded_repository_is_not_queried_or_updated(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,0 +1,38 @@
+{
+  "question": "怎样按本次请求审查墨刀图片、复测已有预览，或交付能读清规则并能验收的原型？",
+  "trigger": ["阅读、制作或重排墨刀原型与流程图", "审已有墨刀截图或众测导出图的漏注、交叉与裁切", "在正式预览复现关闭、返回、第二次提交或键盘操作"],
+  "decision": ["图片审查按所给材料列出可定位缺陷及待核规则", "预览复测交回步骤和状态变化", "授权制作时改动原型并复核受影响的画面、预览或导出图"],
+  "evidence": ["本次需求和用户最新纠正", "当前文件的可见画面、旧批注正文和图层", "修改后的实际保存读回及任务所需的预览和图片"],
+  "success_measure": "读图能定位缺注或引线问题，并标明需要需求才能判断的项。预览复测有入口、操作和实际结果。制作任务所需的状态、常显备注和落点经逐项核对，要求出图时读回最终文件。",
+  "environment": {
+    "documentation_sources": ["所选控制工具的当前说明", "墨刀帮助中心"],
+    "data_sources": ["用户指定的原型或截图、需求与适用参考"],
+    "required_capabilities": ["阅读指定资料", "编辑任务可控制授权的原生界面，导图任务可取回并打开实际文件"],
+    "readiness_checks": ["分清审图、只读旧稿、预览复测与制作", "图片任务核对所给图及需求；操作任务核对文件、画布和授权范围"]
+  },
+  "risk": {
+    "tier": "moderate",
+    "permissions": ["读取指定原型", "在已授权的原文件或副本内编辑", "任务要求时导出指定范围"],
+    "mutation_boundary": "approval-required",
+    "approval_required": ["用户指定的任务和对象可以直接执行；扩大写入范围或对外分享需有对应授权"]
+  },
+  "software_mutation": {"applies": false},
+  "data_interfaces": {
+    "applies": true,
+    "interface_types": ["structured-file"],
+    "authoritative_sources": ["references/annotation-check.md", "examples/annotation-map.json"],
+    "entities": ["单张可见图的边界、应注规则、控件目标、文字框和引线"],
+    "identifiers": ["本图内唯一的规则号、目标名、备注名"],
+    "relationships": ["规则对应目标，文字框引用实际表达的规则及其目标"],
+    "field_semantics": ["矩形为同一缩放下的左上坐标和宽高，折点按文字框到目标排序"],
+    "invariants": ["每次只检查同一张图的几何", "应注规则从需求梳理，文字框从实际画面观察"],
+    "freshness_and_pagination": ["使用当前版本和同一视图；独立画布分开检查"],
+    "nullability": ["未测的坐标改用逐线看图；本图实无文字框时 notes 可为空"],
+    "readiness_checks": ["测量来自实际可读画面；目标及规则编号可定位"]
+  },
+  "semantic_contract": {"applies": false},
+  "routing_tests": {
+    "should_trigger": ["把这张墨刀长画布按功能拆开", "只看这张墨刀 PNG，哪条备注裁掉了，哪两条线交叉", "在墨刀正式预览复测第二次提交，给我复现步骤", "只读回顾这些墨刀原型的用法"],
+    "should_not_trigger": ["只润色一篇介绍墨刀的文章", "在普通网页复现第二次提交，没有墨刀原型", "把几张 PNG 无损压缩，不审原型内容"]
+  }
+}

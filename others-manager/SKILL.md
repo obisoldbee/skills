@@ -31,6 +31,7 @@ Source classification and execution eligibility are separate:
 3. Choose one operation:
    - local inspection: `inventory`
    - all-repository refresh: delegate `inventory` and `plan-update`, then let the controller review and run `apply-update`
+   - one-repository refresh: use `plan-update --only <exact-local-directory>` and apply the reviewed plan
    - one new upstream: delegate `plan-clone`, then let the controller review and run `apply-clone`
 4. Use `plan_id` to pin the reviewed plan. A delegated worker returns the plan path, ID and descriptive evidence; the controller keeps the writer token private and composes apply.
 5. For `apply-clone/apply-update` only, the controller independently reviews the plan, including `license.status`, acquires an exclusive writer claim in the matching `others-manager` wrapper, and applies with the expected plan ID plus that private capability. Inventory and plan-only work stop at their requested output without entering this apply step.

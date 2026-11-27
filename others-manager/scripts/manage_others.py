@@ -158,6 +158,10 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
         raise ManagerError("plan pool must be an absolute path")
     validate_fingerprint_shape(plan.get("pool_fingerprint"), "pool_fingerprint")
     names = validate_repository_names(plan.get("repository_names"), "repository_names")
+    selected = plan.get("selected_names", names)
+    validate_repository_names(selected, "selected_names")
+    if not set(selected).issubset(names) or (names and not selected):
+        raise ManagerError("selected repositories must exist in the plan")
     exclusions = plan.get("update_exclusions", [])
     if not isinstance(exclusions, list) or not all(isinstance(value, str) for value in exclusions):
         raise ManagerError("plan update exclusions are invalid")
@@ -174,6 +178,12 @@ def validate_update_plan_shape(plan: dict[str, Any]) -> None:
             raise ManagerError("plan repository order or name is invalid")
         if item.get("path") != str(Path(pool_value) / expected_name):
             raise ManagerError("plan repository path is outside its direct child")
+        if item.get("action") == "not_selected":
+            if expected_name in selected:
+                raise ManagerError("selected repository cannot be skipped")
+            continue
+        if expected_name not in selected:
+            raise ManagerError("unselected repository cannot be updated")
         blockers = item.get("blockers")
         if not isinstance(blockers, list) or not all(isinstance(reason, str) for reason in blockers):
             raise ManagerError("plan blockers must be a list of strings")
@@ -1172,14 +1182,22 @@ def read_update_exclusions(pool: Path) -> list[str]:
         raise ManagerError("invalid update exclusions file") from exc
 
 
-def plan_update(pool: Path) -> dict[str, Any]:
+def plan_update(pool: Path, only: str | None = None) -> dict[str, Any]:
     snapshot = inventory(pool)
     exclusions = read_update_exclusions(pool)
+    names = [repo["name"] for repo in snapshot["repositories"]]
+    if only is not None and only not in names:
+        raise ManagerError("selected repository is not present in the pool")
+    selected = [only] if only is not None else names
     planned: list[dict[str, Any]] = []
     for repo in snapshot["repositories"]:
         item = dict(repo)
         item["remote_head"] = None
         item["github_snapshot"] = None
+        if item["name"] not in selected:
+            item["action"] = "not_selected"
+            planned.append(item)
+            continue
         if not item["blockers"] and item.get("identity", "").casefold() in exclusions:
             item["action"] = "excluded"
             planned.append(item)
@@ -1208,6 +1226,7 @@ def plan_update(pool: Path) -> dict[str, Any]:
         "pool": str(pool),
         "pool_fingerprint": snapshot["pool_fingerprint"],
         "update_exclusions": exclusions,
+        "selected_names": selected,
         "repository_names": [repo["name"] for repo in planned],
         "repositories": planned,
         "ignored_entries": snapshot["ignored_entries"],
@@ -1306,6 +1325,10 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
             "candidate_licenses": [],
             "advisories": sorted(set(planned_advisories)),
         }
+        if planned.get("action") == "not_selected":
+            result["result"] = "not_selected"
+            results.append(result)
+            continue
         if planned.get("action") == "excluded":
             result["result"] = "excluded"
             results.append(result)
@@ -1454,6 +1477,7 @@ def apply_update(pool: Path, plan: dict[str, Any]) -> dict[str, Any]:
             "updated": sum(item["result"] == "updated" for item in results),
             "already_current": sum(item["result"] == "already_current" for item in results),
             "excluded": sum(item["result"] == "excluded" for item in results),
+            "not_selected": sum(item["result"] == "not_selected" for item in results),
             "blocked": blocked,
             "changed_with_blocker": sum(item["result"] == "changed_with_blocker" for item in results),
         },
@@ -1997,6 +2021,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     plan_update_parser = subparsers.add_parser("plan-update", help="freeze local and remote update facts")
     plan_update_parser.add_argument("--pool", required=True)
+    plan_update_parser.add_argument("--only", help="update only this exact first-level repository name")
     plan_update_parser.add_argument("--output", required=True)
 
     apply_update_parser = subparsers.add_parser("apply-update", help="apply a reviewed update plan")
@@ -2038,9 +2063,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2 if report["counts"]["blocked"] else 0
         if args.command == "plan-update":
             ensure_output_available(args.output)
-            plan = plan_update(pool)
+            plan = plan_update(pool, args.only)
             emit(plan, args.output)
-            return 2 if any(repo["blockers"] for repo in plan["repositories"]) else 0
+            return 2 if any(repo["blockers"] for repo in plan["repositories"] if repo["action"] != "not_selected") else 0
         if args.command == "apply-update":
             if not args.controller_confirm_reviewed_plan:
                 raise ManagerError("apply-update requires reviewed-plan confirmation")
