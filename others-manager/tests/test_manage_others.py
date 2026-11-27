@@ -26,6 +26,7 @@ requires_supported_runtime = unittest.skipUnless(
 
 
 class OthersManagerTests(unittest.TestCase):
+    @requires_supported_runtime
     def test_single_repository_plan_never_queries_other_repositories(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             pool = Path(temporary).resolve()
