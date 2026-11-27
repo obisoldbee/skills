@@ -124,7 +124,15 @@ class AgnesOutputTests(unittest.TestCase):
                     self.assertFalse(report["provider_calls"])
                     self.assertFalse(report["secrets_read"])
                     self.assertIn("already exists", report["error"])
-                    self.assertEqual(output.lstat(), before)
+                    after = output.lstat()
+                    # Reading a file also used as input can advance its access time.
+                    for field in (
+                        "st_dev", "st_ino", "st_mode", "st_nlink", "st_uid", "st_gid",
+                        "st_size", "st_mtime_ns", "st_ctime_ns",
+                    ):
+                        self.assertEqual(getattr(after, field), getattr(before, field), field)
+                    if kind == "file":
+                        self.assertEqual(output.read_bytes(), b"existing output")
                     self.assertEqual(original.read_bytes(), b"original")
                     self.assertEqual(list(directory.glob(".agnes-*")), [])
                     self.config.assert_not_called()
