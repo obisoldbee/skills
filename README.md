@@ -30,6 +30,7 @@
 | [others-manager](others-manager/) | 第三方开源仓库的获取、来源核对和本地维护 |
 | [daily-ai-credits](daily-ai-credits/SKILL.md) | 查询桌面应用的积分或额度；执行领取时支持豆包工作按账号签到，结束前检查并安装所选应用的官方更新 |
 | [clash-direct-rules](clash-direct-rules/) | 核对并维护 Clash 直连规则 |
+| [wireguard-client-routing](wireguard-client-routing/) | 核对现有 WireGuard 服务端，为手机和桌面客户端生成分流配置 |
 | [dot-grok-bridge](dot-grok-bridge/) | Dot 与 Grok Bot 的协作桥接 |
 | [ikuuu-daily-checkin](ikuuu-daily-checkin/) | Ikuuu 签到与余额核验 |
 | [minimax-agent-daily-checkin](minimax-agent-daily-checkin/) | MiniMax Agent 签到与结果核验 |
@@ -39,7 +40,7 @@
 
 1. 将仓库克隆到自己选定的位置，每台设备保留一个真源 checkout。
 2. 打开目标包的 `SKILL.md` 或 `README.md`，确认适用任务、依赖、工具及设备／网络要求。
-3. 根据所用 Agent 的加载方式，连接或安装需要的技能。仓库的共享链接脚本只处理明确允许的目标；Windows 支持对单个 Agent 扫描并安装 Junction 目录链接。
+3. 使用共享目录的 Agent 可从仓库根运行 `./scripts/link-macos.sh --agent agents --all-skills` 检查已有链接。安装某个技能时，运行 `./scripts/link-macos.sh --apply --agent agents --skill <name>`。仓库的共享链接脚本只处理明确允许的目标；Windows 支持对单个 Agent 扫描并安装 Junction 目录链接。
 4. 使用前配置所需服务的凭据，避免将密钥、Cookie 或私人材料提交到 Git。修改技能后运行对应包的验证脚本。
 
 项目并发默认采用 worktree-first：代码任务分别在独立分支和工作目录中修改，最后由一个执行者合并；只读任务和独立报告不申请持久化 claim。已有项目需按 `project-conventions` 的迁移说明切换本地规则，旧数据库保留为历史。当前提供执行指引和策略迁移工具，尚不自动分配 worktree 或强制重定向 Agent 的编辑位置，实际隔离依赖 Agent 创建并使用正确的工作目录。
@@ -199,7 +200,7 @@ The operation requires this exact checkout to be a clean attached `main` trackin
 
 After updating, it rereads `config/skill-exports.tsv` and `config/agent-paths.tsv`, preflights every selected existing compatible Agent root, then creates only missing declared links. It skips missing Agent roots during an all-Agent run and fails for a specifically requested missing Agent. If consumer creation fails after the repository update, report the completed update and the exact remaining consumer conflict.
 
-It never creates another checkout or a missing Agent root, modifies a member package, changes export policy, replaces a real path or wrong/dangling link, touches local wrappers/indexes/records, . Packages not declared in the public export allowlist are not installed by this operation.
+The refresh uses the existing checkout and Agent directories. It creates links listed in the public export allowlist and reports conflicts for existing real paths or mismatched links.
 
 ## Agent installation
 
@@ -213,7 +214,7 @@ Windows supports scoped `-Agent` or `-Target` installation with `-Skill` or `-Al
 
 Publication does not imply Agent exposure. The Trae allowlist explicitly includes the entries listed in `config/skill-exports.tsv`. Internal bundled personas, private repositories and third-party pools are not flattened into consumer exports. Check the selected Skill's tool, OS and network requirements before running it.
 
-Cross-Agent packages can be scoped to the shared `agents` consumer so runtimes that already scan `~/.agents/skills` do not receive duplicate same-name brand-root links.
+The shared consumer `agents` exposes the public entries in the catalog at `~/.agents/skills`. Each link points to the directory containing that entry’s `SKILL.md`. Use this directory directly in clients that scan it.
 
 ### Gemini CLI and Antigravity App
 
@@ -267,7 +268,7 @@ For the cross-Agent web package, use the shared consumer id:
 ./scripts/link-macos.sh --apply --agent agents --skill web-bookmark-intelligence
 ```
 
-The multimodal router is scoped to the Codex consumer:
+To link the multimodal router for Codex, run the following commands.
 
 ```bash
 ./scripts/link-macos.sh --agent codex --skill media-understanding
@@ -281,7 +282,7 @@ The research QA plugin exposes one first-level Skill for the Codex consumer:
 ./scripts/link-macos.sh --apply --agent codex --skill research-qa-orchestrator
 ```
 
-Paper Downloader is exported to the shared `.agents` root plus the explicit Codex, MiniMax, and WorkBuddy roots. Scan and apply each exact consumer separately:
+For Paper Downloader, choose the shared entry or a specific consumer from the export table. Examples for four consumers follow.
 
 ```bash
 ./scripts/link-macos.sh --agent agents --skill paper-downloader
@@ -301,7 +302,7 @@ The non-native media generation router is exported to every declared consumer. C
 ./scripts/link-macos.sh --apply --agent agents --skill media-creator
 ```
 
-The handoff controller is exported only to Codex consumers:
+For visible Codex task dispatch, link the handoff controller to Codex.
 
 ```bash
 ./scripts/link-macos.sh --agent codex --skill project-handoff
