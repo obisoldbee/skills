@@ -1,0 +1,68 @@
+{
+  "question": "这次《梦幻模拟战》该先完成什么，怎样从当前画面确认领取、配装、布阵和通关结果？",
+  "trigger": [
+    "新号开荒和免费奖励",
+    "主线或时空裂缝的三星、成就和隐藏箱",
+    "秘境日常、律定之途及战前换阵"
+  ],
+  "decision": [
+    "根据按钮和代价决定领免费奖励还是跳过",
+    "根据账号配装与敌方机制决定阵容、站位和攻击",
+    "根据回合预算、用户优先级和游戏反馈决定完成顺序与是否重试"
+  ],
+  "evidence": [
+    "游戏内的奖励按钮与装备槽",
+    "战前关卡条件、战场技能状态、参战人数与棋子位置",
+    "箱子拾取反馈和胜利结算"
+  ],
+  "success_measure": "逐项核对用户目标有无达成。装备、上阵、隐箱、三星、成就和资源变化各有对应画面或记录。",
+  "environment": {
+    "documentation_sources": [
+      "references/new-account.md",
+      "references/stages.md"
+    ],
+    "data_sources": [
+      "当前游戏界面、截图或已有战报"
+    ],
+    "required_capabilities": [
+      "读游戏界面或静态资料",
+      "仅实机模式需要操作用户已授权的游戏窗口"
+    ],
+    "readiness_checks": [
+      "核对账号、关卡、难度与用户目标",
+      "核对剩余资源和付费限制"
+    ]
+  },
+  "risk": {
+    "tier": "moderate",
+    "mutation_boundary": "approval-required",
+    "permissions": [
+      "读取现有游戏界面或历史战报",
+      "在用户请求实机时操作指定账号"
+    ],
+    "approval_required": [
+      "按用户已有的实机授权与资源约定执行，遇到超出授权的消费先停"
+    ]
+  },
+  "software_mutation": {
+    "applies": false
+  },
+  "data_interfaces": {
+    "applies": false
+  },
+  "semantic_contract": {
+    "applies": false
+  },
+  "routing_tests": {
+    "should_trigger": [
+      "梦幻模拟战新号红点多，先领什么装备怎么配？",
+      "帮我把普通裂缝 1-1 的三星和隐藏箱一起做了",
+      "这个梦战号的兄贵日常和律定之途怎么打？"
+    ],
+    "should_not_trigger": [
+      "帮我设计一款原创回合制战棋游戏",
+      "设置 Windows 鼠标的双击速度",
+      "整理梦幻西游手游的日常活动"
+    ]
+  }
+}
